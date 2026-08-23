@@ -1086,10 +1086,11 @@ This lets KB teams focus on the one thing that requires human judgment — extra
 
 ## 3.2 KB Input Model
 
-Before `hcag` runs, the tree looks like whatever the KB team produced. Only two rules are enforced on input:
+Before `hcag` runs, the tree looks like whatever the KB team produced. Only two rules apply on input:
 
-1. **Every file is either a markdown file (`.md`) or a recognized image type** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`). Any other file is an error.
-2. **The folder structure encodes the taxonomy.** Depth is unrestricted; there is no required schema for folder names beyond being valid filesystem names.
+1. **Only markdown files (`.md`) and recognized image types** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`) contribute to the KB. Any other file encountered during preprocessing is **silently ignored** (a `WARN` is logged for observability). This lets teams keep incidental artifacts — `.DS_Store`, editor lock files, source documents like `.docx` / `.pdf` kept alongside extracted markdown, `README` notes, etc. — inside the KB tree without breaking the build.
+2. **`packet.md` and `catalog.md` are HCAG-owned output artifacts, never input.** If they exist in a folder from a prior run, they are ignored for input-classification purposes — their contents are never treated as source markdown to be merged. Preprocessing either regenerates them from the true sources or skips per the overwrite policy (§3.4.7); it does not concatenate them into a new packet.
+3. **The folder structure encodes the taxonomy.** Depth is unrestricted; there is no required schema for folder names beyond being valid filesystem names.
 
 A **leaf** in taxonomy terms is a folder that contains at least one `.md` file — regardless of whether it also has subfolders (see §3.3). A **taxonomy node** is a folder that contains at least one subfolder.
 
@@ -1157,7 +1158,7 @@ For each folder `F` encountered:
 
 For folders classified as packet:
 
-1. **Collect source .md files** in stable order (lexicographic by filename). If `packet.md` already exists from a prior run and `--force` is not set, skip.
+1. **Collect source .md files** in stable order (lexicographic by filename). Only true source `.md` files count — `packet.md` and `catalog.md` are HCAG-owned output artifacts and are **excluded from the source set** even if present in the folder (§3.2 rule 2). If `packet.md` already exists from a prior run and `--force` is not set, skip.
 2. **Concatenate** the source .md files into a single `packet.md` with a heading separator between each source:
    ```markdown
    <!-- HCAG:PACKET id=billing.refunds -->
@@ -1180,8 +1181,8 @@ For folders classified as packet:
 
    <content of refund_states.md, image refs rewritten to assets/...>
    ```
-3. **Move all images** in the folder (referenced or not — see §3.4.6) into `F/assets/`. Rewrite every image reference in the merged content to `assets/<filename>`.
-4. **Delete the original source .md files** after successful merge. `packet.md` is now the single source of truth for the leaf's text. (Images have been moved to `assets/`, so their originals no longer exist in the folder.)
+3. **Copy all images** in the folder (referenced or not — see §3.4.6) into `F/assets/`. The originals are left in place. Rewrite every image reference in the merged content to `assets/<filename>`.
+4. **Preserve the original source files.** After merge, the source `.md` files and the original image files remain untouched at their locations; they are the KB team's authoring surface and the source of truth for future re-runs. `packet.md` and everything under `assets/` are derived artifacts. On the next `hcag preprocess --force`, the sources are re-read and both are regenerated.
 5. **Compute token size estimate** on the final `packet.md` + image count using a configured tokenizer (see §3.6). Store in front-matter.
 6. **Generate metadata via LLM.** Send the merged content to the configured LLM (§3.6) with a fixed prompt that requests exactly the fields `title`, `short_description` (one line), and `long_description` (2–4 sentences). Write them into the front-matter.
 
@@ -1238,9 +1239,9 @@ Packet and taxonomy IDs are the **dotted path from the KB root**, using folder n
 
 ### 3.4.6 Asset policy
 
-- **All images move to `assets/`**, whether referenced by any MD or not. Rationale: images the KB team dropped into a folder are intentional even if not yet linked; keeping them ensures they travel with the packet at load time.
-- **External references** (an MD referencing `../other/img.png`) are resolved: the image is copied into the leaf's `assets/` and the reference rewritten. A WARN is logged because it usually indicates the source content was authored assuming a different layout.
-- **Non-MD, non-image files** are an ERROR. `hcag preprocess` refuses to proceed until they are removed or the KB is cleaned. This keeps the raw KB unambiguous.
+- **All images are copied to `assets/`**, whether referenced by any MD or not. Originals are **not** moved or deleted — they remain at their authored location. Rationale: images the KB team dropped into a folder are intentional even if not yet linked; keeping a copy in `assets/` ensures they travel with the packet at load time, while preserving the original preserves the authoring workflow and lets re-runs regenerate `assets/` from source.
+- **External references** (an MD referencing `../other/img.png`) are resolved: the image is copied into the leaf's `assets/` and the reference rewritten. The original at the external path is untouched. A WARN is logged because an external reference usually indicates the source content was authored assuming a different layout.
+- **Non-MD, non-image files** are **silently ignored** — the file is left in place, a `WARN` log line records what was skipped (path + reason), and preprocessing proceeds. Rationale: KB teams often keep original source documents (`.docx`, `.pdf`), editorial notes (`README`), or OS metadata (`.DS_Store`, `Thumbs.db`) inside the tree; failing the build over them is more disruptive than useful. The runtime never sees these files because the memory module reads only `catalog.md`, `packet.md`, and files under `assets/`.
 
 ### 3.4.7 Overwrite policy (D-CLI-1)
 
@@ -1256,7 +1257,7 @@ If a file exists without the HCAG marker, the tool errors — it will not overwr
 
 | Condition | Behavior |
 |---|---|
-| Non-MD/non-image file present | ERROR, abort |
+| Non-MD/non-image file present | WARN, ignored, preprocessing continues |
 | Folder with no `.md` and no subfolders | WARN, skip |
 | LLM call fails for a packet | ERROR for that packet; continue with siblings; final exit non-zero if any packet failed |
 | Image referenced by MD but not found | WARN, leave the (broken) reference in packet.md |
@@ -1400,7 +1401,7 @@ $ hcag aggregate raw_kb/
 
 - `INFO`: pass start/end, per-folder classification, LLM call summary, per-packet token estimate, catalog counts.
 - `DEBUG`: full LLM prompts and responses, full front-matter written, file moves.
-- `WARN`: skipped folders, external image references, unreferenced images moved.
+- `WARN`: skipped folders, external image references, unreferenced images copied, non-.md/non-image files ignored.
 - `ERROR`: aborts (see failure-mode tables above).
 
 The CLI also honors the `OTEL_EXPORTER_OTLP_ENDPOINT` env var: if set, build spans (`hcag.preprocess.folder`, `hcag.llm.call`, `hcag.aggregate.walk`) are exported for build-time observability. This is symmetric with §2.11 — runtime and build tooling share the same observability model.

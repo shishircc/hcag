@@ -36,6 +36,7 @@ class FolderInfo:
     subdirs: list[Path]
     source_md_files: list[Path]  # excludes generated packet.md / catalog.md
     image_files: list[Path]      # top-level images (not in assets/)
+    ignored_files: list[Path]    # non-.md, non-image files silently skipped (§3.4.6)
     has_generated_packet: bool
     has_generated_catalog: bool
 
@@ -48,10 +49,18 @@ class FolderInfo:
         return bool(self.subdirs)
 
 
-def scan_folder(path: Path) -> FolderInfo:
+def scan_folder(path: Path, logger: HcagLogger | None = None) -> FolderInfo:
+    """Enumerate a folder.
+
+    Per §3.2 and §3.4.6, files that are neither `.md` nor a recognized image
+    type are silently ignored (a WARN is logged when a logger is provided) so
+    that incidental artifacts — source `.docx`/`.pdf` documents, editor notes,
+    `.DS_Store`, etc. — do not break the build.
+    """
     subdirs: list[Path] = []
     source_md: list[Path] = []
     images: list[Path] = []
+    ignored: list[Path] = []
     has_pkt = False
     has_cat = False
     for entry in sorted(path.iterdir()):
@@ -73,12 +82,20 @@ def scan_folder(path: Path) -> FolderInfo:
         elif suffix in IMAGE_EXTS:
             images.append(entry)
         else:
-            raise ValueError(f"Unsupported file type in KB: {entry}")
+            ignored.append(entry)
+            if logger is not None:
+                logger.warn(
+                    "preprocess.ignored_file",
+                    path=str(entry),
+                    reason="unsupported_extension",
+                    suffix=suffix or "(none)",
+                )
     return FolderInfo(
         path=path,
         subdirs=subdirs,
         source_md_files=source_md,
         image_files=images,
+        ignored_files=ignored,
         has_generated_packet=has_pkt,
         has_generated_catalog=has_cat,
     )
@@ -96,22 +113,22 @@ def dotted_id_for(root: Path, folder: Path, mixed_suffix: str = "_", as_packet_o
 
 
 def _relocate_images_and_rewrite(folder: Path, source_files: list[Path]) -> tuple[list[tuple[str, str]], list[str]]:
-    """Move all top-level images to assets/, rewrite references in source files.
+    """Copy all top-level images into assets/ (originals preserved per §3.4.6)
+    and rewrite image references in source files to point at assets/<name>.
 
-    Returns (body_sections, moved_image_filenames).
+    Returns (body_sections, copied_image_filenames).
     body_sections is a list of (source_filename, rewritten_markdown).
     """
     assets_dir = folder / "assets"
     assets_dir.mkdir(exist_ok=True)
 
-    # First move every top-level image
-    moved: list[str] = []
+    # Copy every top-level image into assets/. Originals stay in place.
+    copied: list[str] = []
     for entry in sorted(folder.iterdir()):
         if entry.is_file() and entry.suffix.lower() in IMAGE_EXTS:
             target = assets_dir / entry.name
-            if not target.exists():
-                shutil.move(str(entry), str(target))
-            moved.append(entry.name)
+            shutil.copy2(str(entry), str(target))
+            copied.append(entry.name)
 
     # Then rewrite image refs in each source
     body_sections: list[tuple[str, str]] = []
@@ -128,7 +145,7 @@ def _relocate_images_and_rewrite(folder: Path, source_files: list[Path]) -> tupl
 
         rewritten = IMAGE_REF_RE.sub(_rewrite, text)
         body_sections.append((src.name, rewritten))
-    return body_sections, moved
+    return body_sections, copied
 
 
 def process_packet(
@@ -155,9 +172,13 @@ def process_packet(
         logger.info("preprocess.skip_packet", folder=str(folder), id=packet_id)
         return existing
 
-    # Collect sources and move images
+    # Collect sources and copy images. Non-.md/non-image files were already
+    # logged when preprocess_tree scanned this folder; scan silently here to
+    # avoid duplicate WARN lines. Per §3.4.3 step 4 and §3.4.6, source .md
+    # files and original images are preserved — only derived artifacts
+    # (packet.md and assets/<name>) are (re)written.
     info = scan_folder(folder)
-    body_sections, moved_images = _relocate_images_and_rewrite(folder, info.source_md_files)
+    body_sections, copied_images = _relocate_images_and_rewrite(folder, info.source_md_files)
 
     if not body_sections:
         # No source .md files (mixed folder that only has subfolders and images, unusual)
@@ -169,7 +190,7 @@ def process_packet(
     logger.info("preprocess.metadata.request", folder=str(folder), id=packet_id, chars=len(merged))
     meta = generate_packet_metadata(cfg.llm, merged)
 
-    tokens = estimate_tokens(merged, cfg.tokenizer, image_count=len(moved_images))
+    tokens = estimate_tokens(merged, cfg.tokenizer, image_count=len(copied_images))
 
     fm = PacketFrontMatter(
         id=packet_id,
@@ -181,14 +202,7 @@ def process_packet(
     )
     write_packet_md(packet_md_path, fm, body_sections)
 
-    # Delete originals (they've been merged and images moved)
-    for src in info.source_md_files:
-        try:
-            src.unlink()
-        except FileNotFoundError:
-            pass
-
-    logger.info("preprocess.packet_written", id=packet_id, tokens=tokens, images=len(moved_images))
+    logger.info("preprocess.packet_written", id=packet_id, tokens=tokens, images=len(copied_images))
     return fm
 
 
@@ -243,8 +257,9 @@ def preprocess_tree(root: Path, cfg: CliConfig, logger: HcagLogger, force: bool)
     packet_metadata: dict[Path, PacketFrontMatter] = {}
 
     for folder in order:
-        # Re-scan (state may have changed for deeper folders)
-        info = scan_folder(folder)
+        # Re-scan (state may have changed for deeper folders). Pass the logger
+        # so non-.md/non-image files are recorded as WARN and then skipped.
+        info = scan_folder(folder, logger=logger)
         is_packet = info.is_packet
         is_node = info.is_node
 

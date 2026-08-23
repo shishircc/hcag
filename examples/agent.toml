@@ -1,0 +1,76 @@
+# ==============================================================================
+# HCAG Runtime Agent — sample config
+# Load with: cfg = load_agent_config(Path("./agent.toml"))
+# ==============================================================================
+
+# KB root — the directory that holds catalog.md (produced by `hcag aggregate`)
+# and the per-packet folders.
+kb_root = "./kb"
+
+# Token budget for the active packet set. When adding new packets would exceed
+# this, the memory module evicts LRU packets to make room. Excludes system
+# prompt, conversation history, and LLM output — this is packet-content only.
+max_active_tokens = 100000
+
+# Optional: override the system-prompt prefix. The catalog is auto-appended
+# after this text at bootstrap.
+# system_prompt_prefix = """
+# You are an internal support agent grounded in the product knowledge base.
+# Always check the catalog before answering. Cite packet IDs in your response.
+# """
+
+# ------------------------------------------------------------------------------
+# LLM — provider-neutral. All calls go through LiteLLM.
+# Pick ONE section below and comment out the others.
+# ------------------------------------------------------------------------------
+
+# --- Anthropic direct (default) ---
+[llm]
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"     # or claude-3-5-haiku-20241022 for cheaper
+api_key_env = "ANTHROPIC_API_KEY"
+max_tokens  = 4096
+temperature = 0.0
+
+# --- AWS Bedrock ---
+# Credentials come from the standard AWS chain (env vars, ~/.aws/credentials,
+# or IAM role). Nothing to put here besides the model string.
+# [llm]
+# provider   = "bedrock"
+# model      = "bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0"
+# max_tokens = 4096
+# temperature = 0.0
+
+# --- Ollama (local) ---
+# [llm]
+# provider    = "ollama"
+# model       = "ollama/llama3.1:70b"
+# endpoint    = "http://localhost:11434"
+# max_tokens  = 4096
+# temperature = 0.0
+
+# ------------------------------------------------------------------------------
+# Observability — two independent layers.
+# ------------------------------------------------------------------------------
+
+# JSON-lines file log (always on).
+[observability.log]
+file_path        = "./hcag-agent.log"
+level            = "INFO"      # DEBUG | INFO | WARN | ERROR
+rotation_size_mb = 50
+rotation_keep    = 5
+
+# OpenTelemetry traces — activated only when `endpoint` is set.
+# Point at Langfuse, AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb,
+# or any OTLP-compatible receiver.
+[observability.otel]
+# endpoint     = "https://cloud.langfuse.com/api/public/otel"
+# protocol     = "http/protobuf"                       # or "grpc"
+# service_name = "hcag-agent"
+# headers      = { Authorization = "Basic <base64(pk:sk)>" }
+
+# --- AWS CloudWatch example (via local ADOT collector) ---
+# [observability.otel]
+# endpoint     = "http://localhost:4318"
+# protocol     = "http/protobuf"
+# service_name = "hcag-agent"

@@ -2,3 +2,4 @@ pycache
 *.pyc
 kb
 .DS_Store
+*.log
