@@ -1,0 +1,1413 @@
+# DESIGN.md — Hierarchical Context Augmented Generation (HCAG)
+
+An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG over chunks, HCAG navigates a taxonomy, retrieves whole leaf documents, classifies the problem's branch once, and reuses that retrieval across the reasoning steps of a task.
+
+---
+
+## Table of Contents
+
+- [Part 1 — High-Level Design](#part-1--high-level-design)
+  - [1.1 The HCAG Approach](#11-the-hcag-approach)
+  - [1.2 What HCAG Solves](#12-what-hcag-solves)
+    - [Problem 1 — Knowledge Isolation](#problem-1--knowledge-isolation)
+    - [Problem 2 — Complex Reasoning](#problem-2--complex-reasoning)
+    - [Problem 3 — Speed and Cost](#problem-3--speed-and-cost)
+  - [1.3 When to Use HCAG (vs Alternatives)](#13-when-to-use-hcag-vs-alternatives)
+    - [1.3.1 Choose HCAG when…](#131-choose-hcag-when)
+    - [1.3.2 Choose Agentic Search when…](#132-choose-agentic-search-when)
+    - [1.3.3 Choose Flat RAG when…](#133-choose-flat-rag-when)
+    - [1.3.4 At a Glance](#134-at-a-glance)
+    - [1.3.5 Combining Approaches](#135-combining-approaches)
+  - [1.4 What the Agent Provides](#14-what-the-agent-provides)
+  - [1.5 Design Goals](#15-design-goals)
+  - [1.6 Non-Goals](#16-non-goals)
+  - [1.7 Core Concepts](#17-core-concepts)
+  - [1.8 Key Design Decisions](#18-key-design-decisions)
+  - [1.9 Component Boundary](#19-component-boundary)
+  - [1.10 Tool Surface](#110-tool-surface)
+  - [1.11 Out of Scope](#111-out-of-scope)
+- [Part 2 — Detailed Design](#part-2--detailed-design)
+  - [2.1 KB Layout](#21-kb-layout)
+  - [2.2 `catalog.md` Schema](#22-catalogmd-schema)
+  - [2.3 Tool Contracts](#23-tool-contracts)
+    - [2.3.1 `get_catalog`](#231-get_catalog)
+    - [2.3.2 `check_and_load_kb`](#232-check_and_load_kb)
+    - [2.3.3 Selection semantics](#233-selection-semantics)
+  - [2.4 Active-Set Protocol](#24-active-set-protocol)
+  - [2.5 Token Budget & Eviction Algorithm](#25-token-budget--eviction-algorithm)
+  - [2.6 Packet Loading (Multimodal Assembly)](#26-packet-loading-multimodal-assembly)
+  - [2.7 System Prompt Composition (Bootstrap)](#27-system-prompt-composition-bootstrap)
+  - [2.8 Error Handling](#28-error-handling)
+  - [2.9 Component Class Diagram](#29-component-class-diagram)
+  - [2.10 Sequence Diagrams](#210-sequence-diagrams)
+    - [2.10.1 Cold start + first turn (additive load)](#2101-cold-start--first-turn-additive-load)
+    - [2.10.2 Follow-up turn — no reload needed](#2102-follow-up-turn--no-reload-needed)
+    - [2.10.3 Follow-up turn — additive load within budget](#2103-follow-up-turn--additive-load-within-budget)
+    - [2.10.4 Follow-up turn — load with eviction](#2104-follow-up-turn--load-with-eviction)
+  - [2.11 Observability](#211-observability)
+    - [2.11.1 Configuration](#2111-configuration)
+    - [2.11.2 OTEL Trace Model](#2112-otel-trace-model)
+    - [2.11.3 Local File Logging](#2113-local-file-logging)
+    - [2.11.4 What the Two Layers Together Answer](#2114-what-the-two-layers-together-answer)
+  - [2.12 Prompt-Cache Alignment (realizing Problem 3)](#212-prompt-cache-alignment-realizing-problem-3)
+  - [2.13 Tech Stack](#213-tech-stack)
+    - [2.13.1 Language and Runtime](#2131-language-and-runtime)
+    - [2.13.2 LLM Access — Provider-Neutral](#2132-llm-access--provider-neutral)
+    - [2.13.3 Configuration, CLI, Content, Tokenization](#2133-configuration-cli-content-tokenization)
+    - [2.13.4 Observability](#2134-observability)
+    - [2.13.5 Testing and Packaging](#2135-testing-and-packaging)
+    - [2.13.6 Dependency Summary](#2136-dependency-summary)
+    - [2.13.7 Credentials](#2137-credentials)
+    - [2.13.8 Deliberate Non-Dependencies](#2138-deliberate-non-dependencies)
+  - [2.14 Open Questions / Future Work](#214-open-questions--future-work)
+- [Part 3 — The `hcag` CLI Tool](#part-3--the-hcag-cli-tool)
+  - [3.1 Purpose](#31-purpose)
+  - [3.2 KB Input Model](#32-kb-input-model)
+  - [3.3 CLI Overview](#33-cli-overview)
+  - [3.4 `hcag preprocess` — Detailed Semantics](#34-hcag-preprocess--detailed-semantics)
+    - [3.4.1 Traversal order](#341-traversal-order)
+    - [3.4.2 Per-folder classification](#342-per-folder-classification)
+    - [3.4.3 Packet generation (leaf and mixed folders)](#343-packet-generation-leaf-and-mixed-folders)
+    - [3.4.4 Catalog generation (taxonomy node and mixed folders)](#344-catalog-generation-taxonomy-node-and-mixed-folders)
+    - [3.4.5 Packet ID scheme](#345-packet-id-scheme-d34)
+    - [3.4.6 Asset policy](#346-asset-policy)
+    - [3.4.7 Overwrite policy](#347-overwrite-policy-d-cli-1)
+    - [3.4.8 Failure modes](#348-failure-modes)
+  - [3.5 `hcag aggregate` — Detailed Semantics](#35-hcag-aggregate--detailed-semantics)
+    - [3.5.1 Input](#351-input)
+    - [3.5.2 Algorithm](#352-algorithm)
+    - [3.5.3 Root `catalog.md` output shape](#353-root-catalogmd-output-shape)
+    - [3.5.4 Failure modes](#354-failure-modes)
+  - [3.6 Configuration](#36-configuration)
+  - [3.7 Generated File Formats — Summary](#37-generated-file-formats--summary)
+  - [3.8 End-to-End Workflow](#38-end-to-end-workflow)
+  - [3.9 Observability (CLI)](#39-observability-cli)
+  - [3.10 Non-Goals for the CLI](#310-non-goals-for-the-cli)
+
+---
+
+# Part 1 — High-Level Design
+
+## 1.1 The HCAG Approach
+
+HCAG is a knowledge-taxonomy pattern for agentic AI applications. Rather than searching a flat index of chunks on every query, an HCAG agent classifies the problem — **domain → subdomain → topic** — and lets that classification decide which documents from the knowledge base are active. The classification happens **once per task** (or, at most, a few times when a task genuinely spans multiple branches), and the same active set is reused across the many reasoning, tool-use, and generation steps that follow.
+
+**The core mechanism.**
+
+1. The KB is organized as a tree: **domain → subdomain → topic → leaf documents**.
+2. On receiving a task, the agent classifies the task's branch(es) and loads the corresponding leaf documents in full.
+3. The agent then performs all subsequent reasoning steps — planning, tool use, drafting, refining — against that stable active set.
+4. Only if a new step genuinely requires knowledge outside the active branch does the agent re-classify and load additional documents.
+
+**How this differs from flat RAG.**
+
+| | Flat RAG | HCAG |
+|---|---|---|
+| Retrieval unit | Chunks (fragments of documents) | Whole leaf documents |
+| When retrieval fires | Every query, often every step | Once per task, reused across steps |
+| Candidate pool per retrieval | All chunks from all documents (potentially millions) | Only leaves under the classified branch (a handful) |
+| What competes | Every chunk in the corpus | Nothing — the taxonomy has already gated the corpus |
+| Failure mode | "Similar but wrong" chunks from unrelated documents | Wrong branch classification (rarer, and detectable) |
+| Continuity across steps | Working set flickers as each step retrieves anew | Working set is stable across the task |
+
+The essential shift is **from repeated similarity search over a flat pool to a one-shot taxonomic classification that gates the pool**. Because only a few branches are ever active, thousands of unrelated documents cannot compete for the model's attention. Because leaves are retrieved whole, disambiguating context (definitions, caveats, scope) travels with the content instead of being sheared off by chunking. And because classification is amortized across the task, retrieval cost is paid once instead of at every reasoning step.
+
+The rest of §1 makes this concrete: the three problems this solves (§1.2), when to reach for HCAG vs alternatives (§1.3), what the agent provides (§1.4), the design decisions that realize it (§1.8), and the component boundary that isolates the KB behind a memory module (§1.9).
+
+## 1.2 What HCAG Solves
+
+Given the approach in §1.1, HCAG addresses three failure modes of flat RAG.
+
+### Problem 1 — Knowledge Isolation
+
+The KB is organized as a **taxonomy**, not a flat index. At any point in a task, only one or two branches are active; the remaining 90%+ of the corpus is out of scope and cannot compete during retrieval. Flat RAG has no such gate — every chunk in the store is a candidate on every query, which is where "similar but wrong" retrievals come from, and those wrong retrievals are a common source of hallucination.
+
+HCAG also retrieves **whole leaf documents**, not fragments. A full document carries its own disambiguating context — definitions, caveats, scope — that a chunk usually strips away. This is why packets are folder-scoped (see D2): the atomic unit of loading is a whole document plus its images, not a slice.
+
+### Problem 2 — Complex Reasoning
+
+Multi-faceted problems are where flat RAG breaks down: covering them properly requires several distinct queries, and any one of them can miss the right chunk. Once HCAG selects the correct branch, the model has the **complete body of knowledge that the problem needs**, in one shot. It reasons over full material rather than assembling an answer from partial excerpts.
+
+### Problem 3 — Speed and Cost
+
+Two effects compound:
+
+| Mechanism | Effect |
+|---|---|
+| Prompt caching across repeated LLM calls sharing a stable prefix | 90%+ reduction in token cost on repeat calls, lower latency |
+| Domain → subdomain → topic classification done **once** per task, retrieval reused across reasoning steps | Removes one or more retrieval round-trips per step |
+
+The agent classifies the problem's domain / subdomain / topic up front and then stays with that active set for most of the task. Retrieval cost is paid once, not at every reasoning step. Decisions D5 (agent-driven, explicit reload) and D6 (delta-only responses) exist to protect this property: they keep the prompt prefix byte-stable across turns so cache hits accumulate.
+
+## 1.3 When to Use HCAG (vs Alternatives)
+
+HCAG is not a universal replacement for retrieval. It sits on a spectrum whose other main points are **Agentic Search** and **flat RAG**. The right choice depends on latency budget, cost sensitivity, task shape, and how much unpredictability the application can tolerate.
+
+### 1.3.1 Choose HCAG when…
+
+- You need **fast responses at low cost** on a **knowledge-heavy** task.
+- The task requires **strong reasoning and planning grounded in specific knowledge** — diagnostic assistants, technical support agents, policy or compliance advisors, developer copilots against a large internal documentation set.
+- The KB is large enough that injecting all of it every turn is impractical, but structured enough that a taxonomy exists or can be created.
+- You want **predictable behavior**: the classification is inspectable, the loaded packets are enumerable, and the same question routes to the same knowledge.
+- Prompt-cache hit rate matters — long conversations against the same branch.
+
+**Prototypical use cases.** The pattern fits when the task is knowledge-heavy, largely stays within one branch of a well-defined taxonomy, and demands strong reasoning grounded in that branch:
+
+- **Autonomous customer support over large, complex knowledge.** A support agent handling technical questions against a big product or policy corpus. Each conversation anchors in one or two product areas, classification stays stable across turns, and multi-turn reasoning benefits from the same active documents.
+- **Root cause analysis.** A diagnostic agent walks a fault tree — symptoms → subsystem → component — retrieves the runbooks, telemetry references, and known-issue notes for the classified branch, and reasons through causes and fixes against that stable set. The taxonomy *is* the diagnostic hierarchy.
+- **Autonomous operation workflows.** An operational agent executing a multi-step procedure (incident response, change management, provisioning, compliance action) grounded in the SOPs for a specific operation type. Classification picks the workflow; the packet holds the procedure and prerequisites; the agent plans and executes across many steps against that same knowledge without re-retrieving.
+
+**Prerequisite — taxonomy investment.** HCAG's quality is bounded by the quality of the taxonomy. If a good taxonomy for your domain does not already exist, expect meaningful upfront work to design one — deciding what the branches are, where the boundaries fall, and how leaf documents map onto them. A poorly-crafted taxonomy will cause branch misclassification (the model activates the wrong branch) and coverage gaps (relevant knowledge is spread across branches that never co-activate). Existing documentation ontologies (product areas, service catalogs, policy chapters) are often good starting points, but rarely usable as-is. Budget for this. HCAG shifts effort from *repeated retrieval quality tuning* (RAG's ongoing cost) to *one-time taxonomy design* (HCAG's upfront cost).
+
+### 1.3.2 Choose Agentic Search when…
+
+- The task is **open-ended** — a research question, an investigative report, a market scan — where the agent should decide *what* to look for as it works.
+- **Predictability is less important than coverage.** You want the agent to surprise you with connections across the KB or the open web.
+- Backend batch processing is acceptable; the user is not waiting synchronously for a snappy response.
+- Latency in the seconds-to-minutes range is fine; cost per task is amortized over the value of the output.
+
+Agentic Search means the agent iteratively issues search queries (over web, KB, or both), reads results, refines queries, and synthesizes. There is no single upfront classification; the search plan evolves with what the agent finds.
+
+**Prototypical use case:** "Write me a report on how our competitors are positioning against feature X." The agent decides what to search for, follows leads, cross-references sources. Wrong or missing sources are recoverable in-loop.
+
+### 1.3.3 Choose Flat RAG when…
+
+- You need a **quick MVP** — ship a knowledge-grounded feature this week.
+- The **KB is small** and unlikely to grow into taxonomy territory.
+- The questions are **FAQ-style** — short, self-contained, answered from a single passage.
+- The task requires **little multi-step reasoning** — the answer lives in one passage, not synthesized across many.
+- You can accept a **~70–80% accuracy ceiling**. The "similar but wrong" chunks that Problem 1 (§1.2) describes will be a persistent noise floor.
+- You do **not** want to invest in taxonomy design; embedding + chunking gives you a working system on day one.
+
+Flat RAG is the right first-cut for many products; it becomes limiting when the task shifts from "answer a question" to "reason across a body of knowledge," or when the KB grows past what a flat similarity search can gate well.
+
+### 1.3.4 At a Glance
+
+| | HCAG | Agentic Search | Flat RAG |
+|---|---|---|---|
+| **Best task shape** | Knowledge-heavy reasoning within a bounded domain | Open-ended research and report generation | FAQ / single-passage lookup |
+| **Latency** | Low (single classification + cached prefix) | Medium–high (multi-step search loop) | Low |
+| **Cost per task** | Low (retrieval paid once, cache reused) | High (many LLM calls, many searches) | Low |
+| **Predictability** | High | Low (varies by query) | Medium |
+| **Accuracy ceiling** | High when taxonomy is well-designed | Task-dependent, hard to bound | ~70–80% for non-trivial questions |
+| **Setup cost** | Medium–high (**design a good taxonomy** + run `hcag`) | Low (define search tools) | Low (embed and index) |
+| **Prerequisite** | A well-crafted taxonomy for the domain (often the biggest cost) | Well-defined search corpus/tools | A chunkable KB and an embedding model |
+| **Fails when…** | Taxonomy is missing, poor quality, or the task genuinely spans many branches | Open-ended goals get lost mid-loop | Question requires reasoning across multiple documents, or KB is large enough that similar-but-wrong retrievals dominate |
+
+### 1.3.5 Combining Approaches
+
+The three are not mutually exclusive:
+
+- **HCAG + Agentic Search fallback.** Use HCAG for the common case; if the agent's classification confidence is low, or the active set fails to answer, fall back to agentic search over the same KB (or the open web).
+- **HCAG + Flat RAG within a packet.** For very large leaf documents, an embedding index over the packet's content can support fine-grained lookup while the taxonomy still gates the outer scope.
+- **Agentic Search grounded on HCAG catalogs.** The agent's search tool can search over catalog metadata as one of its sources, mixing taxonomic navigation with open exploration.
+
+## 1.4 What the Agent Provides
+
+To realize the three properties above, the agent:
+
+1. Sees a **catalog** (the taxonomy) describing everything available in the KB.
+2. Loads specific **knowledge packets** (folders of markdown + images = whole leaf documents) on demand.
+3. **Classifies the task's branch once** and persists that active set across turns rather than re-selecting each turn.
+4. Reloads **only when the agent itself decides** its current knowledge is insufficient.
+5. Handles **multimodal** content (packet.md + associated images) as first-class.
+
+## 1.5 Design Goals
+
+- **Taxonomic gating.** Only packets from the selected branch(es) of the KB can enter the model's context; the rest of the corpus is out of scope by construction, not by similarity score.
+- **Whole-document retrieval.** Leaf documents load in full; no chunking, no fragment assembly.
+- **Classify once, reason many times.** The task's branch is decided up front and reused across reasoning steps; the active set stays put unless the agent judges it insufficient.
+- **Explicit, agent-driven memory control.** The agent decides when to expand its working knowledge, not a background retriever.
+- **Prompt-cache friendliness.** The prompt prefix (system prompt + prior tool results) stays byte-stable across turns so cache hits accumulate and per-call cost drops.
+- **Delta-only transport.** Reloads move only what changed (newly-loaded packets + newly-evicted IDs), never re-transmitting stable packets.
+- **Bounded working memory.** A token budget caps the active set; LRU eviction reclaims space when the agent asks for more than fits.
+- **Multimodal by default.** Images referenced by a packet ride with the packet as multimodal content blocks.
+- **Framework-agnostic contract.** The design describes interfaces and protocols; a concrete implementation may bind to any agent SDK.
+- **Deterministic packet units.** A packet is a folder; boundaries are physical, not inferred.
+
+## 1.6 Non-Goals
+
+- ~~Catalog generation~~ — **in scope**, covered by the `hcag` CLI in Part 3. The runtime agent still assumes a valid `catalog.md` already exists at query time; the CLI is what produces it.
+- **Semantic embedding retrieval.** No vector store, no similarity search. Selection is LLM-driven, informed by catalog metadata.
+- **Multi-user / concurrent-session** orchestration. Single conversation, single agent instance.
+- **Write-back / KB mutation** from the agent. The KB is read-only from the agent's perspective.
+- **Persistence of the active set across process restarts.** Session-scoped only.
+
+## 1.7 Core Concepts
+
+| Term | Definition |
+|---|---|
+| **Knowledge Base (KB)** | A file-system tree of packet folders rooted at a KB directory, plus a single `catalog.md` at the root. |
+| **Packet** | A folder containing exactly one `packet.md` and an optional `assets/` subdirectory of images. The atomic loadable unit. |
+| **Catalog** | A single `catalog.md` at KB root that enumerates every packet with metadata (id, path, title, short + long description, token size estimate). |
+| **Active Set** | The set of packets currently loaded into the agent's working context in the current conversation. |
+| **Delta** | The pair `(loaded, evicted)` returned when the active set changes — only new packet content is transmitted; only evicted IDs are named. |
+| **Token Budget** | A hard upper bound on the total tokens the active set may occupy. Enforced by the memory module via LRU eviction. |
+
+## 1.8 Key Design Decisions
+
+Each decision below is a choice made deliberately over specific alternatives.
+
+### D1. Hierarchy = file-system tree
+The KB is a nested directory tree. Hierarchy is physical (folders), not conceptual (taxonomy) or temporal (memory tiers). **Rationale:** Simplest mental model; the directory is the source of truth; no separate taxonomy to keep in sync.
+
+### D2. Packet = folder (`packet.md` + `assets/`)
+Each packet folder has exactly one `packet.md` for text content and an optional `assets/` subdirectory for images. Subfolders that themselves contain `packet.md` are independent packets. **Rationale:** Physical boundaries; images travel with their text; no need for manifest files or section-parsing.
+
+### D3. Catalog = single `catalog.md` at KB root
+One file at the root, generated by the `hcag` CLI (Part 3) via a two-pass build: (a) `hcag preprocess` writes per-level catalog.md files and per-leaf packet.md files, (b) `hcag aggregate` merges the per-level catalog.md files into the root catalog.md that the runtime consumes. Manually re-triggered when the KB changes. **Rationale:** One place to look at query time; no distributed index to reconcile at runtime; a standardized offline pipeline lets KB authors focus on extracting raw markdown from source documents.
+
+### D4. Catalog auto-injected into system prompt (fetched via memory module)
+At conversation start, the agent runtime calls `memory_module.get_catalog()` and injects the returned catalog into the system prompt. The agent always "knows" what exists. `get_catalog` remains available as a tool for re-inspection mid-session, but the common path is a single bootstrap call. **Rationale:** Removes an entire round-trip class from the per-turn common path; agent can decide from the outset whether loading is needed.
+
+### D4a. Memory module is the sole KB accessor
+Neither the agent runtime nor the LLM ever reads the KB file system directly — not for the catalog, not for packets, not for images. Every byte of KB content is fetched via the memory module's tools (`get_catalog`, `check_and_load_kb`). **Rationale:** The KB backing store is an implementation detail of the memory module. Today it is a local file tree; tomorrow it can become an object store, a versioned KV, or a remote service — with zero change to the agent contract. This isolation is enforced at the layering boundary: the runtime has no KB path, no reader, no direct dependency on the file system for KB content.
+
+### D5. Classify once, agent-driven explicit reload
+The agent classifies the task's domain / subdomain / topic at the first turn and loads the corresponding leaf packet(s) via `check_and_load_kb`. On subsequent turns it does **not** re-classify or re-select — it calls `check_and_load_kb` only when it judges its current active set insufficient for the new request. No per-turn re-evaluation, no background retriever, no topic-shift heuristic. **Rationale:** Prevents active-set churn; preserves prompt-cache locality across turns (Problem 3); matches the observation that most multi-step reasoning within a task stays inside the same branch.
+
+### D6. Delta-only responses from `check_and_load_kb`
+The tool returns only **newly loaded packets** (with content) and **newly evicted packet IDs** (without content). It does not re-send content of packets already in the active set. **Rationale:** Minimizes token traffic **and** — critically for Problem 3 — keeps prior tool-result blocks byte-stable in history, so the prompt prefix remains cacheable turn after turn.
+
+### D7. Agent tracks the active set; passes it in each call
+The memory module is **stateless across calls**. The agent LLM tracks currently-loaded packet IDs (they are in its conversation history) and passes them as an argument to `check_and_load_kb`. **Rationale:** Framework-agnostic; no session store; the ground truth is the conversation itself.
+
+### D8. Token-budget-bounded active set with LRU eviction
+The module enforces a hard token budget. If new loads would exceed budget, the module evicts least-recently-used packets from the caller-supplied active set to make room, and reports the eviction in the delta. **Rationale:** Predictable context growth; the agent never has to reason about tokens itself.
+
+### D9. Multimodal loading is first-class
+Images under a packet's `assets/` directory are loaded as multimodal content blocks alongside the packet's markdown. Not text descriptions, not deferred loads. **Rationale:** The agent should see what the packet contains, in full fidelity, from the moment it is loaded.
+
+### D10. Framework-agnostic contracts
+The design specifies interfaces (tool schemas, return shapes, active-set protocol) but not a specific SDK, language, or LLM binding. **Rationale:** Portable across Claude Agent SDK (Python/TS), raw Anthropic SDK, or any other agent runtime.
+
+## 1.9 Component Boundary
+
+```
+┌──────────────────────────────────────────────────────────┐
+│                    AGENT RUNTIME                         │
+│                                                          │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │   LLM (holds active-set IDs in its context)        │  │
+│  └───────────────┬────────────────────────────────────┘  │
+│                  │ tool calls                            │
+│                  │ (get_catalog, check_and_load_kb)      │
+│                  │                                       │
+│  Bootstrap ▲     │                                       │
+│  get_catalog│    │                                       │
+│             │    ▼                                       │
+│  ┌────────────────────────────────────────────────────┐  │
+│  │           Memory Module (per-call stateless)       │  │
+│  │  - get_catalog                                     │  │
+│  │  - check_and_load_kb(context, requested, active)   │  │
+│  │  - Token budgeting + LRU eviction                  │  │
+│  │  - Multimodal packet assembly                      │  │
+│  │  - **SOLE OWNER OF KB ACCESS**                     │  │
+│  └───────────────┬────────────────────────────────────┘  │
+└──────────────────┼───────────────────────────────────────┘
+                   │ reads (private to module)
+        ┌──────────▼──────────┐
+        │  KB (backing store) │
+        │  catalog.md         │
+        │  <packet>/packet.md │
+        │  <packet>/assets/*  │
+        └─────────────────────┘
+```
+
+The **Memory Module** is the only component that touches the KB. Everything else — the agent runtime (for bootstrap), the LLM (for per-turn loads) — goes through it. Because of this, the backing store can be swapped (local FS → object store → remote KV service) without any change to the agent or LLM contract.
+
+## 1.10 Tool Surface
+
+Two tools are exposed to the agent:
+
+| Tool | Purpose | When the agent calls it |
+|---|---|---|
+| `get_catalog` | Return the current catalog. | Rare — catalog is auto-injected. Used only if agent wants to re-examine metadata mid-session. |
+| `check_and_load_kb` | Given a natural-language description of what the agent needs and the current active-set IDs, load any missing packets (with eviction if needed) and return the delta. | When the agent judges its current active set insufficient for the user's request. |
+
+## 1.11 Out of Scope
+
+- Catalog generation pipeline (batch scanner + summarizer).
+- Multi-tenant / concurrent-session state.
+- Persistence of active set across process restarts.
+- Vector search or embedding-based retrieval.
+- KB write-back from the agent.
+- Cross-packet reference resolution (e.g., a packet linking to another by ID).
+
+---
+
+# Part 2 — Detailed Design
+
+## 2.1 KB Layout
+
+```
+<kb_root>/
+├── catalog.md                        # Root catalog, offline-generated
+├── billing/
+│   ├── refunds/
+│   │   ├── packet.md
+│   │   └── assets/
+│   │       ├── refund_flow.png
+│   │       └── refund_states.png
+│   └── invoices/
+│       ├── packet.md
+│       └── assets/
+│           └── invoice_layout.png
+├── auth/
+│   ├── oauth/
+│   │   └── packet.md                 # No images
+│   └── sso/
+│       ├── packet.md
+│       └── assets/
+│           └── sso_sequence.png
+└── ...
+```
+
+**Rules:**
+
+- A directory is a **packet** iff it contains `packet.md` at its immediate level.
+- A packet's `assets/` directory is optional and, if present, contains images referenced by the packet.
+- Non-packet directories serve only as organizational intermediates.
+- Packet IDs are assigned by the catalog generator (stable, opaque strings). They are **not** derived from paths at runtime by the memory module — the module reads IDs from the catalog.
+
+## 2.2 `catalog.md` Schema
+
+`catalog.md` is a human-readable + machine-parseable markdown document. Each catalog entry is a section with a YAML front-matter-style block or a table row (choice is left to the generator; the module only requires that the following fields be recoverable per entry):
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | Stable, opaque packet identifier. |
+| `path` | string | Relative path (from KB root) to the packet folder. |
+| `title` | string | Human-readable title. |
+| `short_description` | string | One-line summary — shown in catalog listings. |
+| `long_description` | string | Multi-sentence description — used by the LLM to decide relevance. |
+| `token_size_estimate` | integer | Precomputed total token count for `packet.md` + image blocks. Used by the module for budgeting **without** loading. |
+
+**Illustrative rendering** (one entry):
+
+```markdown
+### `bill.refunds`
+
+- **path**: `billing/refunds/`
+- **title**: Refund Processing
+- **short**: How refunds are issued, states, and edge cases.
+- **long**: Covers the full refund lifecycle: eligibility rules, state machine
+  (pending → approved → issued → settled), partial refunds, chargebacks,
+  and reconciliation. Includes two diagrams (flow, state machine).
+- **tokens**: 3420
+```
+
+## 2.3 Tool Contracts
+
+### 2.3.1 `get_catalog`
+
+**Input:** none.
+
+**Output:** the current `catalog.md` content (string). Equivalent to what is auto-injected at conversation start; provided in case the agent wants to re-examine.
+
+### 2.3.2 `check_and_load_kb`
+
+**Input:**
+
+| Field | Type | Description |
+|---|---|---|
+| `context` | string | The agent's own description of what it currently needs from the KB (natural language). Used only for logging/observability — the module does not perform selection from this. |
+| `requested_packet_ids` | list<string> | The packet IDs the agent wants **added** to its active set. |
+| `active_packet_ids` | list<string> | The packet IDs the agent believes are currently active (its self-tracked set). Ordered by most-recently-used **last**. |
+
+**Output (delta):**
+
+| Field | Type | Description |
+|---|---|---|
+| `loaded` | list<Packet> | Newly-loaded packets (full content — markdown + image content blocks + per-packet metadata header). |
+| `evicted` | list<string> | Packet IDs that were evicted from the active set to make room. |
+| `active_after` | list<string> | The authoritative active-set IDs after this call, in LRU order (most-recently-used last). Serves as a reconciliation aid. |
+| `errors` | list<Error> | Per-packet errors (e.g., unknown ID, load failure). Non-fatal — the call still returns whatever succeeded. |
+
+**Packet content shape (per loaded packet):**
+
+```
+[
+  { "type": "text",  "text": "--- packet: bill.refunds ---\nTitle: Refund Processing\n..." },
+  { "type": "text",  "text": "<contents of packet.md>" },
+  { "type": "image", "source": {...} },   # for each image under assets/
+  { "type": "image", "source": {...} },
+  ...
+]
+```
+
+A textual **metadata header** precedes each packet so the LLM can always identify what it is looking at from context alone. Images follow the markdown.
+
+### 2.3.3 Selection semantics
+
+The agent picks `requested_packet_ids` by consulting the catalog (already in its context). The module does **not** perform semantic matching. If `requested_packet_ids` is a subset of `active_packet_ids`, the module returns an empty delta (no-op).
+
+## 2.4 Active-Set Protocol
+
+- The **agent** is the tracker of the active set. Its knowledge of "what is loaded" is the sequence of prior `check_and_load_kb` tool results in its own conversation history.
+- The **module** is stateless across calls; it treats `active_packet_ids` as authoritative input each call.
+- The module returns `active_after` so the agent can reconcile in case of eviction. The agent trusts `active_after` over its own prior tracking.
+
+**Ordering (LRU):**
+
+- On each call, the module treats the concatenation `active_packet_ids ++ requested_packet_ids` (with duplicates removed, keeping the last occurrence) as the LRU-ordered candidate set. Most-recently-used is at the tail.
+- Eviction, when needed, removes from the **head** (least-recently-used).
+
+## 2.5 Token Budget & Eviction Algorithm
+
+**Configuration:** `MAX_ACTIVE_TOKENS` — a fixed budget for the active set (excluding conversation, system prompt, and other overhead — this is the packet-content budget only).
+
+**Algorithm** (executed inside `check_and_load_kb`):
+
+```
+Input: active_ids (ordered LRU), requested_ids
+Let catalog = load_catalog()
+Let to_add = [id for id in requested_ids if id not in active_ids]
+
+# Build LRU-ordered candidate set: existing (in LRU order) + newly-requested at the tail
+Let ordered = dedup_keep_last(active_ids + to_add)
+
+# Sum token estimates from catalog
+Let total = sum(catalog[id].token_size_estimate for id in ordered)
+Let evicted = []
+
+# Evict from the head (LRU) until total fits within budget
+While total > MAX_ACTIVE_TOKENS and len(ordered) > 0:
+    victim = ordered.pop_front()
+    if victim in to_add or victim == ordered_tail:
+        # Special case: cannot evict a packet the agent just requested;
+        # if a single requested packet exceeds budget alone, return an error.
+        raise BudgetExceeded(victim)
+    total -= catalog[victim].token_size_estimate
+    evicted.append(victim)
+
+# Load only the newly-added packets (existing active packets are already in
+# the agent's context from prior tool results and are NOT re-transmitted)
+Let loaded = [load_packet(id) for id in to_add if id in ordered]
+
+Return { loaded, evicted, active_after: ordered }
+```
+
+**Guarantees:**
+
+- Packets in the delta's `loaded` list are always a subset of `to_add`.
+- Packets in `evicted` are always drawn from the input `active_ids` (never from the same-call `to_add`).
+- `active_after` equals the LRU-ordered final active set.
+
+## 2.6 Packet Loading (Multimodal Assembly)
+
+Given a packet ID, the module:
+
+1. Looks up `path` from the catalog.
+2. Reads `<kb_root>/<path>/packet.md` as UTF-8.
+3. Enumerates `<kb_root>/<path>/assets/*` (if the folder exists) for image files.
+4. Emits, in order:
+   - A text metadata header block (packet ID, title, short description).
+   - The raw markdown text of `packet.md`.
+   - One image content block per file under `assets/`, in a stable order (e.g., lexicographic filename).
+
+Images are read from disk and passed as multimodal image content blocks to the agent runtime (encoding — base64, URL, file reference — is chosen by the runtime binding; the module contract is "multimodal content block").
+
+## 2.7 System Prompt Composition (Bootstrap)
+
+The agent runtime **never** reads the KB directly. At conversation start it obtains the catalog by calling `memory_module.get_catalog()` and injects the returned string into the system prompt:
+
+```
+<static agent instructions>
+<usage guidance for get_catalog and check_and_load_kb>
+
+--- KNOWLEDGE CATALOG ---
+<catalog returned by memory_module.get_catalog()>
+--- END CATALOG ---
+```
+
+The agent is instructed to:
+
+- Consult the catalog before answering domain questions.
+- Call `check_and_load_kb` **only when** its currently-loaded packets are insufficient.
+- Pass its currently-known active IDs and its requested IDs.
+- Trust `active_after` from the tool result as authoritative.
+- Never assume it can read the KB directly — every packet must be obtained via `check_and_load_kb`.
+
+## 2.8 Error Handling
+
+| Condition | Behavior |
+|---|---|
+| Unknown packet ID in `requested_packet_ids` | Skip; add an entry to `errors[]`; other loads proceed. |
+| `packet.md` missing on disk | Add to `errors[]`; do not add packet to active set. |
+| Image under `assets/` unreadable | Include the packet with a placeholder text block noting the missing image; add to `errors[]`. |
+| Single requested packet exceeds `MAX_ACTIVE_TOKENS` | Return `errors[]` entry with reason `BudgetExceeded`; do not load; active set unchanged. |
+| Catalog file missing at startup | Startup failure — the agent cannot function without a catalog. |
+
+## 2.9 Component Class Diagram
+
+The class diagram below shows the runtime object model of the HCAG agent: the components introduced conceptually in §1.9 rendered as classes, interfaces, and relationships. The diagram deliberately elides configuration types, logging, and tracing surfaces (those are documented separately in §2.11); it focuses on the domain classes that participate in serving a turn.
+
+The **memory module** is modeled as an interface (`MemoryModule`) with a concrete file-system implementation (`FileSystemMemoryModule`). The KB backing store is a further-abstracted interface (`KBStorage`) so that the file-system implementation can be swapped for an object store, a versioned KV, or a remote service (D4a) without touching the agent runtime or the LLM contract. The two data-transfer objects on the tool boundary (`CheckAndLoadRequest`, `Delta`) are first-class classes so that framework bindings can serialize them to whatever tool-call format their SDK requires.
+
+```mermaid
+classDiagram
+    direction LR
+
+    class AgentRuntime {
+        +LLM llm
+        +MemoryModule memory
+        +Config config
+        +bootstrap() void
+        +run_turn(user_msg) response
+    }
+
+    class LLM {
+        <<interface>>
+        +chat(messages, tools) response
+    }
+
+    class MemoryModule {
+        <<interface>>
+        +get_catalog() Catalog
+        +check_and_load_kb(request) Delta
+    }
+
+    class FileSystemMemoryModule {
+        -KBStorage storage
+        -EvictionPolicy eviction
+        -TokenBudget budget
+        +get_catalog() Catalog
+        +check_and_load_kb(request) Delta
+        -load_packet(id, entry) Packet
+    }
+
+    class KBStorage {
+        <<interface>>
+        +read_catalog() string
+        +read_packet_markdown(path) string
+        +list_assets(path) list~string~
+        +read_asset(path) bytes
+    }
+
+    class LocalFsStorage {
+        -string kb_root
+        +read_catalog() string
+        +read_packet_markdown(path) string
+        +list_assets(path) list~string~
+        +read_asset(path) bytes
+    }
+
+    class Catalog {
+        +list~CatalogEntry~ entries
+        +get(id) CatalogEntry
+        +raw_markdown() string
+    }
+
+    class CatalogEntry {
+        +string id
+        +string path
+        +string title
+        +string short_description
+        +string long_description
+        +int token_size_estimate
+    }
+
+    class CheckAndLoadRequest {
+        +string context
+        +list~string~ requested_packet_ids
+        +list~string~ active_packet_ids
+    }
+
+    class Delta {
+        +list~Packet~ loaded
+        +list~string~ evicted
+        +list~string~ active_after
+        +list~LoadError~ errors
+    }
+
+    class Packet {
+        +string id
+        +string title
+        +list~ContentBlock~ content
+    }
+
+    class ContentBlock {
+        <<abstract>>
+    }
+
+    class TextBlock {
+        +string text
+    }
+
+    class ImageBlock {
+        +bytes data
+        +string mime_type
+    }
+
+    class LoadError {
+        +string packet_id
+        +string reason
+    }
+
+    class TokenBudget {
+        +int max_active_tokens
+        +sum_estimate(ids, catalog) int
+        +fits(total) bool
+    }
+
+    class EvictionPolicy {
+        <<interface>>
+        +plan(active, incoming, budget, catalog) EvictionPlan
+    }
+
+    class LRUEvictionPolicy {
+        +plan(active, incoming, budget, catalog) EvictionPlan
+    }
+
+    class EvictionPlan {
+        +list~string~ ordered_active_after
+        +list~string~ evicted
+        +list~string~ to_load
+    }
+
+    AgentRuntime --> LLM : invokes
+    AgentRuntime --> MemoryModule : bootstrap and per-turn
+    LLM ..> MemoryModule : tool-calls
+
+    FileSystemMemoryModule ..|> MemoryModule
+    FileSystemMemoryModule --> KBStorage : reads via
+    FileSystemMemoryModule --> EvictionPolicy : delegates
+    FileSystemMemoryModule --> TokenBudget : enforces
+
+    LocalFsStorage ..|> KBStorage
+    LRUEvictionPolicy ..|> EvictionPolicy
+
+    MemoryModule ..> Catalog : returns
+    MemoryModule ..> Delta : returns
+    MemoryModule ..> CheckAndLoadRequest : accepts
+    EvictionPolicy ..> EvictionPlan : returns
+
+    Catalog "1" *-- "*" CatalogEntry
+    Delta "1" *-- "*" Packet : loaded
+    Delta "1" *-- "*" LoadError : errors
+    Packet "1" *-- "*" ContentBlock : content
+
+    TextBlock --|> ContentBlock
+    ImageBlock --|> ContentBlock
+```
+
+### 2.9.1 Class Responsibilities
+
+| Class | Responsibility | Key references |
+|---|---|---|
+| `AgentRuntime` | Owns the conversation loop. On bootstrap calls `MemoryModule.get_catalog()` to inject the catalog into the system prompt (§2.7). On each user turn, invokes the LLM; forwards any `check_and_load_kb` tool calls to the memory module. | §1.9, §2.7, §2.10 |
+| `LLM` (interface) | Abstract chat interface. Any concrete binding (Anthropic SDK, framework SDK) implements this. | §1.5 (framework-agnostic) |
+| `MemoryModule` (interface) | The tool contract exposed to the LLM. Stateless across calls (D7). | §1.10, §2.3 |
+| `FileSystemMemoryModule` | Concrete implementation. Composes a `KBStorage`, an `EvictionPolicy`, and a `TokenBudget`. Assembles `Packet` objects from storage-returned bytes. | §2.5, §2.6 |
+| `KBStorage` (interface) | Backing-store abstraction. The seam that lets the KB move off local disk later (D4a). | §1.9, D4a |
+| `LocalFsStorage` | Default implementation: reads catalog and packet files from a local KB root. | §2.1 |
+| `Catalog` / `CatalogEntry` | Parsed catalog and per-packet metadata. `Catalog.raw_markdown()` returns the exact string for system-prompt injection. | §2.2 |
+| `CheckAndLoadRequest` | Input DTO for `check_and_load_kb`. Carries `context`, `requested_packet_ids`, `active_packet_ids`. | §2.3.2 |
+| `Delta` | Output DTO. Contains `loaded` (new content), `evicted` (IDs only), `active_after` (authoritative), and per-packet `errors`. | §2.3.2, D6 |
+| `Packet` | A loaded packet: id, title, and an ordered list of `ContentBlock`s (metadata header text, packet markdown, and images). | §2.6 |
+| `ContentBlock` / `TextBlock` / `ImageBlock` | Polymorphic content blocks. `ImageBlock` carries raw bytes + MIME type; runtime bindings render to their SDK's image format. | §2.6, D9 |
+| `TokenBudget` | Holds `max_active_tokens`; sums per-entry `token_size_estimate` from the catalog. | §2.5 |
+| `EvictionPolicy` (interface) | Decides which packets to evict when adding new ones would exceed budget. Pluggable — LRU is the default. | §2.5, D8 |
+| `LRUEvictionPolicy` | Default: order candidates LRU, evict from head until `TokenBudget.fits()`. Produces an `EvictionPlan`. | §2.5 |
+| `EvictionPlan` | Result of an eviction pass: `ordered_active_after`, `evicted` IDs, `to_load` IDs. Consumed by `FileSystemMemoryModule` to drive storage reads. | §2.5 |
+| `LoadError` | Per-packet error (unknown ID, missing file, budget-exceeded). Bundled inside `Delta.errors` so partial success is representable. | §2.8 |
+
+### 2.9.2 Extension Points
+
+Three points in the class model are designed for substitution:
+
+1. **`KBStorage`** — swap `LocalFsStorage` for `S3Storage`, `GitVersionedStorage`, `RemoteHttpStorage`, etc. Zero changes elsewhere.
+2. **`EvictionPolicy`** — swap `LRUEvictionPolicy` for `LFUEvictionPolicy`, `PinnedFirstEvictionPolicy` (allow pinning a packet), or `TaskAwareEvictionPolicy` (weight by classification confidence).
+3. **`LLM`** — bind to any framework or provider. `AgentRuntime` depends only on the `chat(messages, tools)` shape.
+
+`MemoryModule` itself is also an interface, so in principle an alternative implementation (e.g., an in-process cache-only module wrapping another) could replace `FileSystemMemoryModule` without touching the agent.
+
+## 2.10 Sequence Diagrams
+
+**Diagram conventions.** To keep Mermaid syntax portable, message labels are short verbs, and structured data (packet ID lists, delta contents) is shown in `Note` blocks. No semicolons, brackets, or pipes appear inside labels or notes.
+
+### 2.10.1 Cold start + first turn (additive load)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant R as Agent Runtime
+    participant L as LLM
+    participant M as Memory Module
+    participant K as KB
+
+    Note over R,K: BOOTSTRAP
+    R->>M: get_catalog
+    M->>K: read catalog.md
+    K-->>M: catalog contents
+    M-->>R: catalog
+    R->>L: init system prompt with catalog
+
+    Note over U,L: FIRST TURN
+    U->>R: How do partial refunds work
+    R->>L: user message
+    Note over L: Consults catalog<br/>Needs bill.refunds<br/>active is empty
+    L->>M: check_and_load_kb
+    Note over L,M: requested = bill.refunds<br/>active = empty
+    M->>K: read billing/refunds/packet.md
+    M->>K: read billing/refunds/assets
+    K-->>M: text and images
+    M-->>L: delta
+    Note over L,M: loaded = bill.refunds<br/>evicted = empty<br/>active_after = bill.refunds
+    L-->>R: answer
+    R-->>U: answer
+```
+
+### 2.10.2 Follow-up turn — no reload needed
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant R as Agent Runtime
+    participant L as LLM
+    participant M as Memory Module
+
+    Note over U,L: active_after from prior turn is bill.refunds
+
+    U->>R: What about chargebacks
+    R->>L: user message
+    Note over L: bill.refunds already loaded<br/>Covers chargebacks<br/>No reload needed
+    L-->>R: answer from loaded packet
+    R-->>U: answer
+
+    Note over L,M: Memory module not called<br/>Active set unchanged
+```
+
+### 2.10.3 Follow-up turn — additive load within budget
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant R as Agent Runtime
+    participant L as LLM
+    participant M as Memory Module
+    participant K as KB
+
+    Note over U,L: active = bill.refunds<br/>Well under budget
+
+    U->>R: How do invoices connect to refunds
+    R->>L: user message
+    Note over L: Needs bill.invoices<br/>bill.refunds still relevant
+    L->>M: check_and_load_kb
+    Note over L,M: requested = bill.invoices<br/>active = bill.refunds
+    Note over M: LRU order becomes<br/>bill.refunds then bill.invoices<br/>Sum under budget<br/>No eviction
+    M->>K: read billing/invoices/packet.md and assets
+    K-->>M: text and images
+    M-->>L: delta
+    Note over L,M: loaded = bill.invoices<br/>evicted = empty<br/>active_after = bill.refunds then bill.invoices
+    L-->>R: answer
+    R-->>U: answer
+```
+
+### 2.10.4 Follow-up turn — load with eviction
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant R as Agent Runtime
+    participant L as LLM
+    participant M as Memory Module
+    participant K as KB
+
+    Note over U,L: active = bill.refunds then bill.invoices then auth.oauth<br/>Near budget
+
+    U->>R: Walk me through SSO
+    R->>L: user message
+    Note over L: Needs auth.sso<br/>bill items less relevant now
+    L->>M: check_and_load_kb
+    Note over L,M: requested = auth.sso<br/>active = bill.refunds then bill.invoices then auth.oauth
+    Note over M: LRU candidate order<br/>bill.refunds bill.invoices auth.oauth auth.sso<br/>Sum over budget so evict head
+    Note over M: Evict bill.refunds<br/>Still over budget<br/>Evict bill.invoices<br/>Now within budget
+    M->>K: read auth/sso/packet.md and assets
+    K-->>M: text and images
+    M-->>L: delta
+    Note over L,M: loaded = auth.sso<br/>evicted = bill.refunds and bill.invoices<br/>active_after = auth.oauth then auth.sso
+    Note over L: Drops refunds and invoices from working memory<br/>Reasons over oauth and sso
+    L-->>R: answer
+    R-->>U: answer
+
+    Note over L: If a later turn needs bill.refunds again<br/>the agent re-requests it<br/>Module re-loads from KB
+```
+
+## 2.11 Observability
+
+Observability has two independent layers:
+
+1. **OTEL traces for AI observability** — *optional*, configuration-driven. When an OTEL exporter endpoint is configured, the agent emits distributed traces of turns, LLM calls, and tool calls. Consumers can point this at Langfuse, AWS CloudWatch, Grafana Tempo, Honeycomb, or any OpenTelemetry-compatible backend without code changes.
+2. **Local file logging** — *always on*. Structured log lines at `DEBUG` / `INFO` / `WARN` / `ERROR` levels written to a local log file. Ensures that key decisions (which branch was classified, which packets loaded, which evicted, why) are followable post-hoc even when tracing is disabled.
+
+### 2.11.1 Configuration
+
+Observability is driven by configuration only — no code changes to switch backends.
+
+| Config key | Type | Default | Effect |
+|---|---|---|---|
+| `otel.endpoint` | URL (string) | unset | If set, initialize OTEL SDK with an OTLP exporter pointing here. If unset, tracing is a no-op. |
+| `otel.protocol` | `http/protobuf` or `grpc` | `http/protobuf` | OTLP transport. |
+| `otel.headers` | map<string,string> | empty | Auth headers (e.g., Langfuse public/secret, AWS SigV4 side-car, bearer tokens). |
+| `otel.service_name` | string | `hcag-agent` | `service.name` resource attribute. |
+| `log.file_path` | path (string) | `./hcag.log` | Local log file destination. |
+| `log.level` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` | `INFO` | Threshold for file logging. |
+| `log.rotation` | struct (size/time) | size 50MB, keep 5 | Optional rotation policy. |
+
+Example destinations:
+
+- **Langfuse:** `otel.endpoint = https://cloud.langfuse.com/api/public/otel`, headers include the Langfuse public/secret key pair.
+- **AWS CloudWatch (via ADOT):** `otel.endpoint = http://localhost:4318` pointing at a local ADOT collector, which forwards to CloudWatch.
+- **Grafana Tempo / Honeycomb / any OTLP receiver:** point `otel.endpoint` at their OTLP ingest URL.
+
+### 2.11.2 OTEL Trace Model
+
+When enabled, the agent emits a span hierarchy per user turn. Spans follow OpenTelemetry **GenAI semantic conventions** where they exist and custom `hcag.*` attributes where they do not.
+
+```
+conversation.turn                              [span]
+├─ attrs: turn.index, session.id, user.message.chars
+│
+├─ gen_ai.chat                                 [span] LLM call
+│  ├─ attrs: gen_ai.system=anthropic,
+│  │         gen_ai.request.model,
+│  │         gen_ai.usage.input_tokens,
+│  │         gen_ai.usage.output_tokens,
+│  │         gen_ai.usage.cache_read_input_tokens
+│  │
+│  └─ tool.check_and_load_kb                   [span] tool call
+│     ├─ attrs: hcag.tool.requested_ids,
+│     │         hcag.tool.active_ids_in,
+│     │         hcag.tool.context (truncated),
+│     │         hcag.tool.loaded_ids,
+│     │         hcag.tool.evicted_ids,
+│     │         hcag.tool.active_ids_after,
+│     │         hcag.tool.tokens_used,
+│     │         hcag.tool.tokens_budget
+│     │
+│     ├─ kb.packet.load                        [span] per loaded packet
+│     │  ├─ attrs: hcag.packet.id,
+│     │  │         hcag.packet.path,
+│     │  │         hcag.packet.markdown_bytes,
+│     │  │         hcag.packet.image_count,
+│     │  │         hcag.packet.token_estimate
+│     │  └─ status: OK | ERROR (with error message)
+│     │
+│     └─ kb.eviction                           [span, only if evictions occurred]
+│        └─ attrs: hcag.eviction.ids,
+│                  hcag.eviction.reason=budget,
+│                  hcag.eviction.tokens_reclaimed
+│
+└─ gen_ai.chat (final answer)                  [span]
+   └─ attrs: gen_ai.usage.*
+```
+
+**Bootstrap-only span (once per conversation):**
+
+```
+memory.bootstrap                               [span]
+└─ tool.get_catalog                            [span]
+   ├─ attrs: hcag.catalog.entries,
+   │         hcag.catalog.bytes
+   └─ status: OK | ERROR
+```
+
+**Attribute policy.** Never put full packet content, full user messages, or full LLM outputs into span attributes — attributes are size-bounded and often sent unfiltered to third-party services. Truncate to a configurable byte cap (default 512 chars) and prefer IDs + sizes over payloads. Full payloads belong in the file log, at DEBUG.
+
+### 2.11.3 Local File Logging
+
+The file log is the **decision log**. Its job is to make it possible to reconstruct, after the fact, what the agent decided and why — without needing an OTEL backend running. It is always on.
+
+**Levels and what belongs at each:**
+
+| Level | What is logged |
+|---|---|
+| `ERROR` | Failures that abort a step or turn: catalog missing at startup, packet load failure, budget-exceeded on a single requested packet, tool contract violation. |
+| `WARN` | Recoverable oddities: unknown packet ID skipped, image unreadable (packet still returned), unusually large delta, active-set thrash detected (N reloads within M turns). |
+| `INFO` | Key decisions: bootstrap complete (catalog entries, bytes), turn start, `check_and_load_kb` call with counts (requested, active-in, loaded, evicted, budget), branch classification result (which domain/subdomain/topic the agent picked). |
+| `DEBUG` | Full detail: catalog contents digest, per-packet metadata, full requested/active/loaded/evicted ID lists, per-packet token accounting, full tool arguments and results (subject to a max-size cap). |
+
+**Format.** JSON-lines, one record per line, with fields: `ts` (ISO-8601), `level`, `event`, `session_id`, `turn`, `trace_id` (correlates with OTEL when enabled), and event-specific fields. Example:
+
+```json
+{"ts":"2026-08-23T14:22:07Z","level":"INFO","event":"check_and_load_kb.result","session_id":"s-abc","turn":3,"trace_id":"7f2a...","requested":["auth.sso"],"active_in":["bill.refunds","bill.invoices","auth.oauth"],"loaded":["auth.sso"],"evicted":["bill.refunds","bill.invoices"],"active_after":["auth.oauth","auth.sso"],"tokens_used":6820,"tokens_budget":8000}
+```
+
+**Correlation.** Every log record includes `trace_id` (and `span_id` where available). When OTEL is enabled, a support engineer can pivot from a log line to the corresponding trace in Langfuse / CloudWatch and vice versa.
+
+### 2.11.4 What the Two Layers Together Answer
+
+- **"Why did the agent load bill.refunds on turn 3?"** — INFO log has the classification decision and the requested IDs; DEBUG log has the reasoning context; OTEL span has the timing and token counts.
+- **"Is the active set thrashing?"** — WARN log fires on excessive reload rate; OTEL dashboard shows load/evict spans per turn over time.
+- **"Where is the token cost going?"** — OTEL `gen_ai.usage.*` attributes aggregated across `gen_ai.chat` spans; file log gives per-turn budget snapshots.
+- **"Did prompt caching hit?"** — OTEL `gen_ai.usage.cache_read_input_tokens` per LLM span.
+
+
+## 2.12 Prompt-Cache Alignment (realizing Problem 3)
+
+The "classify once, reuse across steps" property in §1.1 and §1.2 only pays off if the prompt prefix that the model sees stays byte-stable across turns. Concrete implementation guidance:
+
+1. **Stable system prompt.** The catalog is injected once at conversation start and does not change mid-session. If catalog re-inspection is needed, use the `get_catalog` tool (which appears as a per-turn tool result, not a system-prompt mutation).
+2. **Stable tool-result blocks.** A prior `check_and_load_kb` response, once emitted into history, is never rewritten. Delta semantics (D6) guarantee this — subsequent calls append new tool results rather than modifying old ones.
+3. **Deterministic packet serialization.** For a given packet ID, the module must emit byte-identical content (same metadata header, same markdown, same image ordering) across calls. Any nondeterminism (e.g., variable timestamps in headers) breaks caching.
+4. **Cache-control markers.** In runtimes that expose them (e.g., Anthropic prompt caching), mark the system prompt and each `check_and_load_kb` tool result as a cache breakpoint. Combined with (1)–(3), this yields the 90%+ token-cost reduction on subsequent reasoning steps within the same task.
+5. **Avoid unnecessary reloads.** The agent should not call `check_and_load_kb` "just to refresh" — every call that produces a delta (even an empty one) is a new tool-result block. D5 forbids this.
+
+## 2.13 Tech Stack
+
+Design decisions above are language-agnostic; this section pins the implementation choices. The overriding constraint: **the LLM is invoked through a provider-neutral library, not a vendor SDK**. This preserves D10 (framework-agnostic contracts) at the implementation layer and lets the same code target Anthropic direct today and AWS Bedrock (or others) tomorrow with only a config change.
+
+### 2.13.1 Language and Runtime
+
+- **Python 3.11+**
+- Rationale: `tomllib` is stdlib (config parsing), mature OTEL SDK, first-class LiteLLM support, wide availability of tokenizers, natural fit for CLI + service in one package.
+
+### 2.13.2 LLM Access — Provider-Neutral
+
+**Chosen library: LiteLLM (`litellm`).**
+
+LiteLLM exposes a single `litellm.completion(model, messages, tools, ...)` API that transparently dispatches to 100+ providers. Provider selection is a config-only switch — no code changes to move between Anthropic-direct and Bedrock.
+
+| Provider | LiteLLM `model` string | Credentials source |
+|---|---|---|
+| Anthropic direct | `claude-3-5-sonnet-20241022`, `claude-3-5-haiku-20241022`, etc. | `ANTHROPIC_API_KEY` env var |
+| AWS Bedrock (Anthropic models) | `bedrock/anthropic.claude-3-5-sonnet-20241022-v2:0` | Standard AWS credential chain (`AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION`, or IAM role) |
+| AWS Bedrock (other models) | `bedrock/<vendor>.<model>` | Same |
+| Ollama (local) | `ollama/llama3`, `ollama/mistral` | `OLLAMA_API_BASE` (default `http://localhost:11434`) |
+| OpenAI-compatible (future) | `openai/<model>` with `api_base` | `OPENAI_API_KEY` |
+
+**Consequences of the LiteLLM choice, relevant to HCAG:**
+
+- **Tool use.** LiteLLM normalizes tool-call format across providers. HCAG's `get_catalog` and `check_and_load_kb` are defined once and work identically on Anthropic and Bedrock.
+- **Prompt caching.** LiteLLM supports Anthropic's `cache_control` markers (§2.12); on Bedrock, prompt caching is enabled per Bedrock's own semantics. The HCAG runtime tags the system prompt and each `check_and_load_kb` tool-result block as cache breakpoints; LiteLLM forwards this to whichever provider is active.
+- **OTEL integration.** LiteLLM emits GenAI-semantic-convention spans natively when the OTEL SDK is initialized; this satisfies most of §2.11.2's `gen_ai.chat` span layer with zero extra glue. HCAG adds only the `tool.*`, `kb.*`, `hcag.*` spans.
+
+The runtime's `LLM` interface (§2.9) is bound to LiteLLM by a single thin adapter class — the rest of the code sees only the interface.
+
+### 2.13.3 Configuration, CLI, Content, Tokenization
+
+| Concern | Library | Notes |
+|---|---|---|
+| Config schema and validation | **Pydantic v2** | `hcag.toml` (CLI) and `agent.toml` (runtime) are loaded into typed models |
+| TOML parsing | **`tomllib`** (stdlib) | Python 3.11+ |
+| YAML front-matter in `packet.md` / `catalog.md` | **python-frontmatter** + **PyYAML** | Reading and writing |
+| CLI framework | **Typer** (built on Click) | Typed subcommands (`hcag preprocess`, `hcag aggregate`) |
+| Tokenization (build-time estimates) | **tiktoken** (default, `cl100k_base` proxy) | Runtime never re-tokenizes; the design's `token_size_estimate` is read from catalog |
+| Image MIME detection (CLI, optional) | **Pillow** | Runtime uses file extension only |
+
+Markdown content is treated as opaque UTF-8 text; no markdown-parser dependency is required for the memory module. The CLI concatenates source `.md` files verbatim between separators, so no round-tripping through a markdown AST.
+
+### 2.13.4 Observability
+
+| Layer | Library | Notes |
+|---|---|---|
+| Traces | **`opentelemetry-api`**, **`opentelemetry-sdk`**, **`opentelemetry-exporter-otlp-proto-http`** | Initialized only when `otel.endpoint` is configured (§2.11.1). `otel.protocol=grpc` swaps to `opentelemetry-exporter-otlp-proto-grpc`. |
+| File log | **stdlib `logging`** + custom JSON formatter | No extra dependency; JSON-lines format per §2.11.3 |
+| GenAI spans | **LiteLLM native OTEL** | Emits `gen_ai.chat` spans with the usage attributes described in §2.11.2 |
+| HCAG-specific spans | Direct OTEL SDK calls | `tool.*`, `kb.*`, `hcag.*` per §2.11.2 |
+
+The two layers stay independent (§2.11): tracing may be disabled entirely; file logging is always on.
+
+### 2.13.5 Testing and Packaging
+
+- **Testing:** `pytest` + `pytest-mock`. LLM calls in tests are stubbed via a `FakeLLM` implementing the same `LLM` protocol as the LiteLLM adapter (see §2.9). No live network calls in the default test suite.
+- **Packaging:** `pyproject.toml` with PEP 621 metadata. Package-manager-neutral (works with `uv`, `pip`, `poetry`). The `hcag` command is registered as a console script.
+
+### 2.13.6 Dependency Summary
+
+```
+Required (runtime + CLI):
+  litellm                                        # LLM provider abstraction
+  pydantic>=2                                    # Config validation
+  typer                                          # CLI
+  python-frontmatter                             # packet.md / catalog.md front-matter
+  pyyaml                                         # YAML
+  tiktoken                                       # Token estimation
+
+Optional (feature-flagged by config):
+  opentelemetry-api                              # tracing (enabled when otel.endpoint is set)
+  opentelemetry-sdk
+  opentelemetry-exporter-otlp-proto-http
+  opentelemetry-exporter-otlp-proto-grpc         # only for otel.protocol=grpc
+  pillow                                         # image MIME detection in CLI
+
+Dev:
+  pytest
+  pytest-mock
+```
+
+### 2.13.7 Credentials
+
+The provider is picked in config; the corresponding env vars must be present at runtime and CLI build time.
+
+| Provider | Required env vars |
+|---|---|
+| **Anthropic direct** (default) | `ANTHROPIC_API_KEY` |
+| **AWS Bedrock** | `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION` — or an attached IAM role / AWS profile |
+| Ollama / local | `OLLAMA_API_BASE` (optional; defaults to `http://localhost:11434`) |
+| OpenAI-compatible (future) | `OPENAI_API_KEY` |
+
+### 2.13.8 Deliberate Non-Dependencies
+
+The implementation does **not** import these libraries, and the design forbids adding them at the LLM call site:
+
+- **`anthropic`** — the vendor SDK. Adding it would tie HCAG to one provider and violate D10. LiteLLM handles Anthropic transparently.
+- **`openai`** — same rationale.
+- **`boto3` at the call site** — Bedrock is reached via LiteLLM, not by direct `boto3.client('bedrock-runtime')` calls in HCAG code. (`boto3` may appear transitively via LiteLLM's Bedrock backend; that transitive presence is acceptable because it does not leak into HCAG's own API surface.)
+- **`langchain` / `llama-index`** — heavy retrieval frameworks. HCAG's retrieval pattern is agent-driven and controlled by the memory module (Part 2); a chain/graph framework would add layers without benefit here.
+
+## 2.14 Open Questions / Future Work
+
+1. **Catalog scaling.** If the catalog itself grows beyond a comfortable system-prompt size, we may need a summarized catalog + on-demand `get_catalog_entry(id)` tool. Deferred.
+2. **Partial packet loading.** Packets are all-or-nothing today. If some packets become very large, section-level loading could be introduced without changing the tool surface (packet IDs would become `packet_id#section`).
+3. **Cross-packet links.** Packets may reference each other by ID in prose; today the agent must interpret and re-request. A "referenced_ids" hint in the catalog could enable eager prefetch.
+4. **Prompt-cache alignment.** Because delta responses do not retransmit stable packets, prior tool results remain byte-stable in history — good for prompt caching. Explicit cache-control markers on tool-result blocks may further improve hit rates; runtime-specific.
+5. **Session persistence.** Currently the active set is implicit in the conversation history. A resumable-session feature would require serializing active-set IDs (not content).
+
+---
+
+# Part 3 — The `hcag` CLI Tool
+
+## 3.1 Purpose
+
+`hcag` is a command-line tool that transforms a **raw KB folder tree** — where subject-matter experts have dropped `.md` files and images according to a taxonomy of their choosing — into a **normalized KB** that the runtime memory module (Part 2) can serve directly. It standardizes:
+
+- The **format** of `packet.md` and `catalog.md`.
+- The **metadata schema** each catalog entry must carry (id, path, title, short/long description, token estimate).
+- The **layout** of leaf packet folders (`packet.md` + `assets/`).
+
+This lets KB teams focus on the one thing that requires human judgment — extracting well-organized markdown from source documents — and delegates everything else (layout normalization, image relocation, metadata generation, catalog assembly) to the tool.
+
+## 3.2 KB Input Model
+
+Before `hcag` runs, the tree looks like whatever the KB team produced. Only two rules are enforced on input:
+
+1. **Every file is either a markdown file (`.md`) or a recognized image type** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`). Any other file is an error.
+2. **The folder structure encodes the taxonomy.** Depth is unrestricted; there is no required schema for folder names beyond being valid filesystem names.
+
+A **leaf** in taxonomy terms is a folder that contains at least one `.md` file — regardless of whether it also has subfolders (see §3.3). A **taxonomy node** is a folder that contains at least one subfolder.
+
+**Mixed folders are legal and become both.** A folder that has both subfolders and `.md` files at its own level becomes simultaneously (a) a taxonomy node — gets a `catalog.md` listing its children, and (b) a packet — gets a `packet.md` assembled from its own `.md` files. This is a first-class case, not an edge case: it lets a taxonomy node carry its own overview content (e.g., a `billing/` folder that contains both `billing/refunds/` and `billing/invoices/` **and** a top-level `billing.md` overview).
+
+Example raw KB before `hcag preprocess`:
+
+```
+raw_kb/
+├── billing/
+│   ├── overview.md
+│   ├── glossary.md
+│   ├── billing_ecosystem.png
+│   ├── refunds/
+│   │   ├── refund_policy.md
+│   │   ├── refund_states.md
+│   │   ├── flow.png
+│   │   └── state_machine.png
+│   └── invoices/
+│       ├── invoicing.md
+│       └── layout.png
+└── auth/
+    ├── oauth/
+    │   └── oauth_spec.md
+    └── sso/
+        ├── sso_intro.md
+        ├── sso_flows.md
+        └── sso_seq.png
+```
+
+## 3.3 CLI Overview
+
+Two subcommands, each a distinct pass:
+
+| Command | Purpose |
+|---|---|
+| `hcag preprocess <root>` | Walks the tree bottom-up. At every folder that qualifies as a packet, assembles `packet.md` and moves images into `assets/`. At every folder that qualifies as a taxonomy node, writes a `catalog.md` describing its immediate children. |
+| `hcag aggregate <root>` | Reads the per-level `catalog.md` files produced by `preprocess` and merges them into a single root-level `catalog.md` — the file the runtime memory module serves via `get_catalog`. |
+
+**Design decisions embedded in this structure:**
+
+- Two passes, not one. Preprocess and aggregate can be re-run independently — e.g., editorial edits to a single leaf require re-preprocessing only that subtree and then re-aggregating.
+- Aggregate **reads intermediate catalog.md files**; it does not re-scan packets. This is fast and trusts the prior pass. If intermediates are stale, re-run preprocess.
+- No `hcag build` super-command. Chaining is left to the caller (`hcag preprocess raw_kb && hcag aggregate raw_kb`).
+
+## 3.4 `hcag preprocess` — Detailed Semantics
+
+### 3.4.1 Traversal order
+
+Bottom-up post-order: process children before parents. Necessary because a parent's `catalog.md` references its children by ID and needs each child's generated title / description / token estimate to already exist.
+
+### 3.4.2 Per-folder classification
+
+For each folder `F` encountered:
+
+1. Let `has_md = any .md file directly in F (excluding generated packet.md)`
+2. Let `has_subdirs = any subdirectory of F`
+3. Classify:
+   - `has_md AND NOT has_subdirs` → **leaf packet** (packet-only)
+   - `has_subdirs AND NOT has_md` → **taxonomy node** (catalog-only)
+   - `has_md AND has_subdirs` → **mixed** (both packet AND catalog)
+   - Neither → skip with WARN
+
+### 3.4.3 Packet generation (leaf and mixed folders)
+
+For folders classified as packet:
+
+1. **Collect source .md files** in stable order (lexicographic by filename). If `packet.md` already exists from a prior run and `--force` is not set, skip.
+2. **Concatenate** the source .md files into a single `packet.md` with a heading separator between each source:
+   ```markdown
+   <!-- HCAG:PACKET id=billing.refunds -->
+   ---
+   id: billing.refunds
+   title: <LLM-generated>
+   short_description: <LLM-generated>
+   long_description: <LLM-generated>
+   token_size_estimate: <computed>
+   source_files:
+     - refund_policy.md
+     - refund_states.md
+   ---
+
+   # <LLM-generated title>
+
+   <content of refund_policy.md, image refs rewritten to assets/...>
+
+   ---
+
+   <content of refund_states.md, image refs rewritten to assets/...>
+   ```
+3. **Move all images** in the folder (referenced or not — see §3.4.6) into `F/assets/`. Rewrite every image reference in the merged content to `assets/<filename>`.
+4. **Delete the original source .md files** after successful merge. `packet.md` is now the single source of truth for the leaf's text. (Images have been moved to `assets/`, so their originals no longer exist in the folder.)
+5. **Compute token size estimate** on the final `packet.md` + image count using a configured tokenizer (see §3.6). Store in front-matter.
+6. **Generate metadata via LLM.** Send the merged content to the configured LLM (§3.6) with a fixed prompt that requests exactly the fields `title`, `short_description` (one line), and `long_description` (2–4 sentences). Write them into the front-matter.
+
+### 3.4.4 Catalog generation (taxonomy node and mixed folders)
+
+For folders classified as taxonomy node (or the taxonomy side of a mixed folder):
+
+1. Enumerate the folder's **immediate children** that were classified as packet, mixed, or taxonomy node.
+2. For each child that is a packet (leaf or mixed), pull metadata from its just-written `packet.md` front-matter.
+3. For each child that is a pure taxonomy node, pull metadata from its just-written `catalog.md` header block (title + short description — see below).
+4. **Write `catalog.md`** describing the children:
+
+   ```markdown
+   <!-- HCAG:CATALOG level=billing -->
+   ---
+   node_title: <LLM-generated title for this taxonomy node>
+   node_short_description: <LLM-generated one-line summary of this branch>
+   ---
+
+   # <node_title>
+
+   <node_short_description>
+
+   ## Children
+
+   ### `billing.refunds`
+   - **kind**: packet
+   - **path**: `refunds/`
+   - **title**: Refund Processing
+   - **short**: How refunds are issued, states, and edge cases.
+   - **long**: Covers the full refund lifecycle...
+   - **tokens**: 3420
+
+   ### `billing.invoices`
+   - **kind**: packet
+   - **path**: `invoices/`
+   - **title**: Invoice Generation
+   - **short**: ...
+   - **long**: ...
+   - **tokens**: 2810
+   ```
+
+5. The `node_title` and `node_short_description` are **also LLM-generated**, from the children's short descriptions concatenated. This gives the parent's catalog.md a meaningful roll-up that the aggregate pass will use as taxonomy breadcrumbs.
+
+### 3.4.5 Packet ID scheme (D3.4)
+
+Packet and taxonomy IDs are the **dotted path from the KB root**, using folder names as segments.
+
+- `raw_kb/billing/refunds/` → id `billing.refunds`
+- `raw_kb/auth/sso/` → id `auth.sso`
+- `raw_kb/billing/` (mixed folder) → taxonomy id `billing`, packet id `billing` (same string — context disambiguates: catalog.md refers to it as a taxonomy node; packet.md as a packet). If this collision is inconvenient in downstream consumers, use `billing._` for the packet side; the CLI supports a `--mixed-suffix` flag (default `_`).
+
+**Rationale:** Human-readable, stable as long as folder names are stable, computable without any state. Changing folder names is a deliberate ID-change operation.
+
+### 3.4.6 Asset policy
+
+- **All images move to `assets/`**, whether referenced by any MD or not. Rationale: images the KB team dropped into a folder are intentional even if not yet linked; keeping them ensures they travel with the packet at load time.
+- **External references** (an MD referencing `../other/img.png`) are resolved: the image is copied into the leaf's `assets/` and the reference rewritten. A WARN is logged because it usually indicates the source content was authored assuming a different layout.
+- **Non-MD, non-image files** are an ERROR. `hcag preprocess` refuses to proceed until they are removed or the KB is cleaned. This keeps the raw KB unambiguous.
+
+### 3.4.7 Overwrite policy (D-CLI-1)
+
+Default: **skip folders that already contain generated artifacts** (`packet.md` or `catalog.md` with a `<!-- HCAG:PACKET -->` / `<!-- HCAG:CATALOG -->` marker). This protects re-runs from clobbering hand-edits.
+
+- `--force` regenerates unconditionally.
+- `--force-packets` regenerates only packets.
+- `--force-catalogs` regenerates only catalog.md files.
+
+If a file exists without the HCAG marker, the tool errors — it will not overwrite what it did not create.
+
+### 3.4.8 Failure modes
+
+| Condition | Behavior |
+|---|---|
+| Non-MD/non-image file present | ERROR, abort |
+| Folder with no `.md` and no subfolders | WARN, skip |
+| LLM call fails for a packet | ERROR for that packet; continue with siblings; final exit non-zero if any packet failed |
+| Image referenced by MD but not found | WARN, leave the (broken) reference in packet.md |
+| Existing `packet.md` without HCAG marker | ERROR (would clobber hand-written content) |
+
+## 3.5 `hcag aggregate` — Detailed Semantics
+
+### 3.5.1 Input
+
+Requires that `hcag preprocess` has been run at least once. Reads every intermediate `catalog.md` in the tree.
+
+### 3.5.2 Algorithm
+
+1. Walk the tree top-down. At each folder, read its `catalog.md` (if present) to obtain `node_title`, `node_short_description`, and the list of children with metadata.
+2. Build an in-memory taxonomy tree: nodes carry title/short; leaves carry the full packet metadata.
+3. Emit `<root>/catalog.md` in the schema defined by §2.2, extended with a **taxonomy breadcrumb** field per entry so the LLM sees where each packet sits in the tree.
+
+### 3.5.3 Root `catalog.md` output shape
+
+```markdown
+<!-- HCAG:ROOT_CATALOG generated_at=2026-08-23T00:00:00Z -->
+
+# Knowledge Catalog
+
+## Taxonomy Overview
+
+- **billing** — Billing operations across refunds, invoices, and reconciliation.
+  - **billing.refunds** — Refund processing.
+  - **billing.invoices** — Invoice generation.
+- **auth** — Authentication and authorization.
+  - **auth.oauth** — OAuth 2.0 support.
+  - **auth.sso** — Single sign-on integrations.
+
+## Packets
+
+### `billing.refunds`
+- **path**: `billing/refunds/`
+- **breadcrumb**: billing → refunds
+- **title**: Refund Processing
+- **short**: How refunds are issued, states, and edge cases.
+- **long**: Covers the full refund lifecycle: eligibility, state machine, partial refunds, chargebacks, reconciliation.
+- **tokens**: 3420
+
+### `billing.invoices`
+- **path**: `billing/invoices/`
+- **breadcrumb**: billing → invoices
+- **title**: Invoice Generation
+- **short**: ...
+- **long**: ...
+- **tokens**: 2810
+```
+
+The `## Taxonomy Overview` section gives the LLM the shape of the tree (useful for classification — Problem 1); the `## Packets` section gives every packet's metadata (used for `check_and_load_kb` decisions).
+
+### 3.5.4 Failure modes
+
+| Condition | Behavior |
+|---|---|
+| Intermediate `catalog.md` missing at a folder that has subfolders with packets | ERROR — instruct user to re-run `hcag preprocess` |
+| Duplicate packet IDs discovered | ERROR — usually caused by symlinks or copy-paste; must be resolved manually |
+
+## 3.6 Configuration
+
+`hcag` reads a config file (`hcag.toml` or `hcag.yaml`) at the KB root, or accepts flags:
+
+```toml
+[llm]
+provider = "anthropic"            # anthropic | openai | bedrock | ollama | llamacpp
+model    = "claude-haiku-4-5"     # provider-specific model id
+api_key_env = "ANTHROPIC_API_KEY" # env var to read
+endpoint = ""                     # override for local/self-hosted (Ollama, llama.cpp)
+
+[llm.prompts]
+# Paths to prompt template files, overridable
+packet_metadata  = "prompts/packet_metadata.md"
+node_metadata    = "prompts/node_metadata.md"
+
+[tokenizer]
+kind = "tiktoken"                 # tiktoken | anthropic | rough
+# "rough" = chars/4 heuristic; "tiktoken" and "anthropic" call the real tokenizer
+
+[assets]
+mixed_suffix = "_"                # for packet ID on mixed folders
+
+[log]
+file_path = "./hcag-build.log"
+level     = "INFO"
+```
+
+**Local model support.** The `[llm]` block accepts `provider = "ollama"` or `provider = "llamacpp"` with a local `endpoint`. This lets KB teams without cloud credentials build a KB against a locally-hosted model. Metadata quality varies with model choice.
+
+## 3.7 Generated File Formats — Summary
+
+### `packet.md` (per leaf or mixed folder)
+
+- HTML comment marker: `<!-- HCAG:PACKET id=<dotted-id> -->`
+- YAML front-matter: `id`, `title`, `short_description`, `long_description`, `token_size_estimate`, `source_files`
+- Body: concatenated markdown of source files, with image refs rewritten to `assets/<name>`
+
+### `catalog.md` (per non-root taxonomy or mixed folder)
+
+- HTML comment marker: `<!-- HCAG:CATALOG level=<dotted-id> -->`
+- YAML front-matter: `node_title`, `node_short_description`
+- Body: node title, short description, and a `## Children` section listing each immediate child with kind/path/metadata
+
+### `catalog.md` (root, emitted by `aggregate`)
+
+- HTML comment marker: `<!-- HCAG:ROOT_CATALOG generated_at=<iso> -->`
+- Body: `## Taxonomy Overview` (tree of nodes and packets with short descriptions) + `## Packets` (flat list with full metadata for every packet, including breadcrumb)
+- **This is the file the runtime memory module's `get_catalog` returns.**
+
+## 3.8 End-to-End Workflow
+
+```
+1. KB team drops raw .md and image files into taxonomy folders.
+   $ ls raw_kb/billing/refunds/
+     refund_policy.md  refund_states.md  flow.png  state_machine.png
+
+2. Run preprocess (bottom-up: writes packet.md at leaves, catalog.md at nodes).
+   $ hcag preprocess raw_kb/
+
+3. Run aggregate (top-down: assembles root catalog.md).
+   $ hcag aggregate raw_kb/
+
+4. Point the runtime memory module at raw_kb/ (now normalized).
+   The agent's get_catalog will serve raw_kb/catalog.md.
+```
+
+**Re-run after editorial edits:**
+
+```
+# Edit refund_policy.md, add a new section
+$ vim raw_kb/billing/refunds/packet.md   # or edit sources and re-run
+$ hcag preprocess raw_kb/ --force-packets --only billing/refunds/
+$ hcag aggregate raw_kb/
+```
+
+## 3.9 Observability (CLI)
+
+`hcag` writes a build log to the path in `[log]` config (default `./hcag-build.log`), using the same JSON-lines format as the runtime file log (§2.11.3). Levels:
+
+- `INFO`: pass start/end, per-folder classification, LLM call summary, per-packet token estimate, catalog counts.
+- `DEBUG`: full LLM prompts and responses, full front-matter written, file moves.
+- `WARN`: skipped folders, external image references, unreferenced images moved.
+- `ERROR`: aborts (see failure-mode tables above).
+
+The CLI also honors the `OTEL_EXPORTER_OTLP_ENDPOINT` env var: if set, build spans (`hcag.preprocess.folder`, `hcag.llm.call`, `hcag.aggregate.walk`) are exported for build-time observability. This is symmetric with §2.11 — runtime and build tooling share the same observability model.
+
+## 3.10 Non-Goals for the CLI
+
+- **Content editing.** `hcag` does not rewrite the meaning of source markdown; it only concatenates, moves images, and adds metadata front-matter.
+- **Vector embedding generation.** Explicitly not produced; HCAG retrieval is taxonomic, not embedding-based (§1.1).
+- **Runtime hot-reload.** The CLI is a build tool. Runtime picks up new artifacts on next agent bootstrap; no watcher.
+- **KB validation beyond schema.** Fact-checking, link-checking across packets, and stale-content detection are separate concerns.
