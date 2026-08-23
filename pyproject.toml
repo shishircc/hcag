@@ -1,0 +1,45 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "hcag"
+version = "0.1.0"
+description = "Hierarchical Context Augmented Generation — a knowledge-taxonomy pattern for agentic AI"
+readme = "DESIGN.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "HCAG Authors" }]
+
+dependencies = [
+    "litellm>=1.50.0",
+    "pydantic>=2.5",
+    "typer>=0.12",
+    "python-frontmatter>=1.1",
+    "pyyaml>=6.0",
+    "tiktoken>=0.7",
+]
+
+[project.optional-dependencies]
+otel = [
+    "opentelemetry-api>=1.25",
+    "opentelemetry-sdk>=1.25",
+    "opentelemetry-exporter-otlp-proto-http>=1.25",
+]
+otel-grpc = [
+    "opentelemetry-exporter-otlp-proto-grpc>=1.25",
+]
+image = ["pillow>=10.0"]
+dev = [
+    "pytest>=8.0",
+    "pytest-mock>=3.12",
+]
+
+[project.scripts]
+hcag = "hcag.cli.main:app"
+
+[tool.hatch.build.targets.wheel]
+packages = ["hcag"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
