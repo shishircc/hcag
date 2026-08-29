@@ -1,0 +1,53 @@
+# ==============================================================================
+# HCAG `rag` CLI — sample config (DESIGN §8.7)
+#
+# Index a KB folder into LanceDB for hybrid (dense + BM25) retrieval.
+# CLI flags override; precedence: CLI > this file > defaults.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Dense-embedding provider. Any LiteLLM-supported embedding model works.
+# ------------------------------------------------------------------------------
+[embedding]
+provider    = "openai"                    # openai | anthropic | bedrock | ollama
+model       = "text-embedding-3-small"
+api_key_env = "OPENAI_API_KEY"
+endpoint    = ""                          # for self-hosted / local
+batch_size  = 32
+# dimension = 1536                        # optional pin; validated on first response
+
+# ------------------------------------------------------------------------------
+# Multimodal LLM for image descriptions (§8.4.3). Skipped entirely if the CLI
+# is run with --no-include-images.
+# ------------------------------------------------------------------------------
+[image]
+provider          = "anthropic"
+model             = "claude-haiku-4-5-20251001"
+api_key_env       = "ANTHROPIC_API_KEY"
+max_retries       = 2
+max_output_tokens = 400
+temperature       = 0.0
+# prompt_path     = "prompts/image_describe.md"     # override packaged default
+
+# ------------------------------------------------------------------------------
+# Chunker parameters (§8.4.2). Markdown-aware — respects heading boundaries
+# and never splits inside a fenced code block.
+# ------------------------------------------------------------------------------
+[chunking]
+target_tokens    = 500
+overlap_tokens   = 60
+respect_headings = true
+
+# ------------------------------------------------------------------------------
+# Output index.
+# ------------------------------------------------------------------------------
+[index]
+table          = "kb"
+include_images = true                     # overridden by --no-include-images
+
+# ------------------------------------------------------------------------------
+# Local file log — JSON-lines, symmetric with the other CLIs (§8.9).
+# ------------------------------------------------------------------------------
+[log]
+file_path = "./rag.log"
+level     = "INFO"                        # DEBUG | INFO | WARN | ERROR

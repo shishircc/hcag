@@ -44,6 +44,12 @@ web = [
     "uvicorn[standard]>=0.29",
     "livekit-api>=0.7",
 ]
+rag = [
+    "lancedb>=0.13",
+    "pyarrow>=15",
+    "pillow>=10",
+    "tantivy>=0.22",
+]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
@@ -57,6 +63,7 @@ hcag-voice = "hcag.voice.main:main"
 hcag-server = "hcag.server.main:main"
 evalgen = "hcag.evalgen.main:main"
 eval = "hcag.eval.main:main"
+rag = "hcag.rag.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["hcag"]
