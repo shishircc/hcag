@@ -101,10 +101,12 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
 - [Part 5 — Voice Agent (LiveKit)](#part-5--voice-agent-livekit)
   - [5.1 Purpose](#51-purpose)
   - [5.2 Component Boundary](#52-component-boundary)
+    - [5.2.1 Voice Class Diagram](#521-voice-class-diagram)
   - [5.3 Real-Time Architecture](#53-real-time-architecture)
   - [5.4 Session Startup](#54-session-startup)
     - [5.4.1 Warm-start with initial packets](#541-warm-start-with-initial-packets)
     - [5.4.2 Prompt-cache warm-up call](#542-prompt-cache-warm-up-call)
+    - [5.4.3 Startup Sequence Diagram](#543-startup-sequence-diagram)
   - [5.5 Real-Time Turn Pipeline](#55-real-time-turn-pipeline)
   - [5.6 STT / TTS Provider Selection](#56-stt--tts-provider-selection)
   - [5.7 Live Transcription Channel (Web Client Contract)](#57-live-transcription-channel-web-client-contract)
@@ -573,6 +575,8 @@ The agent is instructed to:
 The class diagram below shows the runtime object model of the HCAG agent: the components introduced conceptually in §1.9 rendered as classes, interfaces, and relationships. The diagram deliberately elides configuration types, logging, and tracing surfaces (those are documented separately in §2.11); it focuses on the domain classes that participate in serving a turn.
 
 The **memory module** is modeled as an interface (`MemoryModule`) with a concrete file-system implementation (`FileSystemMemoryModule`). The KB backing store is a further-abstracted interface (`KBStorage`) so that the file-system implementation can be swapped for an object store, a versioned KV, or a remote service (D4a) without touching the agent runtime or the LLM contract. The two data-transfer objects on the tool boundary (`CheckAndLoadRequest`, `Delta`) are first-class classes so that framework bindings can serialize them to whatever tool-call format their SDK requires.
+
+The voice agent (Part 5) **composes** the classes below rather than modifying them — its `VoiceSession` wraps an `AgentRuntime` and adds STT/TTS adapters plus a transcription publisher. The voice-specific extension is diagrammed in §5.2.1.
 
 ```mermaid
 classDiagram
@@ -1586,6 +1590,123 @@ The voice agent **wraps** the runtime defined in Parts 1–2 rather than replaci
 
 The `AgentRuntime`, `MemoryModule`, and `catalog.md` / `packet.md` artifacts are unchanged. Swapping the voice front-end for a text front-end does not touch the reasoning path.
 
+### 5.2.1 Voice Class Diagram
+
+Extends the core class diagram (§2.9). `VoiceSession` is the new orchestrator; it composes an `AgentRuntime` (reused verbatim) with an `STTAdapter`, a `TTSAdapter`, and a `TranscriptionPublisher`. The two startup phases (§5.4.1, §5.4.2) are pure functions that operate on a runtime — modeled here as free-standing operations rather than methods so they can be exercised independently in tests and in the `dry-run` CLI (§5.9).
+
+```mermaid
+classDiagram
+    direction LR
+
+    class VoiceSession {
+        +VoiceAgentConfig cfg
+        +AgentRuntime runtime
+        +STTAdapter stt
+        +TTSAdapter tts
+        +TranscriptionPublisher publisher
+        +string turn_id
+        +start() void
+        +on_user_partial(text) void
+        +on_user_final(text) void
+        +on_llm_delta(text) void
+        +on_llm_final(text) void
+        +cancel_current_turn() void
+    }
+
+    class VoiceAgentConfig {
+        +string kb_root
+        +int max_active_tokens
+        +list~string~ initial_packet_ids
+        +LLMConfig llm
+        +LiveKitConfig livekit
+        +STTConfig stt
+        +TTSConfig tts
+        +WarmupConfig warmup
+    }
+
+    class AgentRuntime {
+        <<from §2.9>>
+        +bootstrap() void
+        +run_turn(user_msg) response
+    }
+
+    class STTAdapter {
+        <<interface>>
+        +stream(audio) async_iter~SttEvent~
+        +close() void
+    }
+
+    class TTSAdapter {
+        <<interface>>
+        +stream(text) async_iter~AudioFrame~
+        +cancel() void
+        +close() void
+    }
+
+    class DeepgramSTT
+    class ElevenLabsSTT
+    class ElevenLabsTTS
+    class DeepgramTTS
+
+    class TranscriptionPublisher {
+        +int seq
+        +bind(sink) void
+        +emit(kind, turn_id, text) TranscriptionMessage
+    }
+
+    class TranscriptionMessage {
+        +int seq
+        +string kind
+        +string turn_id
+        +string text
+    }
+
+    class PreloadResult {
+        +list~string~ loaded_ids
+        +list~string~ skipped_unknown
+        +int tokens_used
+        +int elapsed_ms
+        +bool budget_exceeded
+    }
+
+    class WarmupResult {
+        +bool ran
+        +int elapsed_ms
+        +int prompt_tokens
+        +int cache_write_tokens
+    }
+
+    class preload_initial_packets {
+        <<function>>
+        +preload_initial_packets(runtime, ids, logger) PreloadResult
+    }
+
+    class warmup_prompt_cache {
+        <<function>>
+        +warmup_prompt_cache(runtime, logger, enabled, prompt) WarmupResult
+    }
+
+    VoiceSession --> AgentRuntime : wraps
+    VoiceSession --> STTAdapter : uses
+    VoiceSession --> TTSAdapter : uses
+    VoiceSession --> TranscriptionPublisher : publishes via
+    VoiceSession --> VoiceAgentConfig : configured by
+
+    DeepgramSTT ..|> STTAdapter
+    ElevenLabsSTT ..|> STTAdapter
+    ElevenLabsTTS ..|> TTSAdapter
+    DeepgramTTS ..|> TTSAdapter
+
+    TranscriptionPublisher ..> TranscriptionMessage : emits
+
+    preload_initial_packets ..> AgentRuntime : mutates history of
+    preload_initial_packets ..> PreloadResult : returns
+    warmup_prompt_cache ..> AgentRuntime : reads prefix of
+    warmup_prompt_cache ..> WarmupResult : returns
+```
+
+**How this composes with §2.9.** `AgentRuntime`, `MemoryModule`, `Catalog`, `Delta`, and the packet loader are unchanged — they appear in this diagram only where `VoiceSession` reaches into them. Every real-turn call still goes through `AgentRuntime.run_turn`, so §2.10's sequence diagrams apply to the reasoning path even inside a voice session.
+
 ## 5.3 Real-Time Architecture
 
 ```mermaid
@@ -1660,6 +1781,64 @@ with `cache_control` breakpoints placed at the end of the system block and after
 **Ordering matters.** The warm-up call must run *after* §5.4.1 — the byte-stable prefix is only defined once the initial packets have been folded in. Running it earlier caches a prefix the real turns will never send, wasting the write.
 
 **Cost accounting.** The warm-up call is a full-prefix cache *write*, priced above a cold prompt at most providers. It is paid once per session and amortizes across every subsequent turn. If a session ends before the first real turn, the write is a loss; §5.10 tracks this as `voice.warmup.wasted` for tuning.
+
+### 5.4.3 Startup Sequence Diagram
+
+The two-phase startup, end-to-end. The room is created up front but the browser is told to wait until `system.ready` is emitted — nothing from the mic is transported to the STT adapter before the cache is primed.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant W as Voice Worker
+    participant R as LiveKit Room
+    participant V as Voice Session
+    participant A as AgentRuntime
+    participant M as Memory Module
+    participant L as LLM
+    participant P as Transcription Publisher
+
+    Note over W,P: DISPATCH — room-join event received
+
+    W->>R: join room
+    R-->>W: connected
+    W->>V: construct VoiceSession(cfg, runtime)
+    V->>P: bind publisher to room
+
+    Note over V,M: PHASE 1 — WARM-START (§5.4.1)
+
+    V->>A: bootstrap
+    A->>M: get_catalog
+    M-->>A: catalog
+    A-->>V: system prompt ready
+
+    V->>A: preload_initial_packets(ids)
+    A->>M: check_and_load_kb(requested=ids, active=empty)
+    M-->>A: delta (loaded packets)
+    A-->>V: PreloadResult
+
+    alt budget exceeded
+        V->>P: emit system.error(reason=budget_exceeded)
+        V->>R: close room
+        Note over V,R: startup aborted
+    end
+
+    Note over V,L: PHASE 2 — CACHE WARM-UP (§5.4.2)
+
+    V->>A: warmup_prompt_cache(prompt)
+    A->>L: chat(history + stub user, cache_control)
+    L-->>A: response (discarded)
+    A-->>V: WarmupResult (cache_write_tokens)
+
+    Note over V,B: ROOM OPENS TO INPUT
+
+    V->>P: emit system.ready
+    P->>R: publish on hcag.transcription
+    R-->>B: system.ready
+    Note over B: UI unlocks mic — first real turn can begin
+```
+
+Failure paths are explicit: an unknown packet ID logs `voice.startup.unknown_packet` and continues (step 8 loops on the remaining IDs); a budget-exceeded delta shortcuts to `system.error` and closes the room; a warm-up call that errors is a WARN, not a fatal — the session proceeds without a primed cache (first real turn eats the full-prefix read).
 
 ## 5.5 Real-Time Turn Pipeline
 

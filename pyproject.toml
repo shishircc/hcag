@@ -34,17 +34,25 @@ otel-grpc = [
     "opentelemetry-exporter-otlp-proto-grpc>=1.25",
 ]
 image = ["pillow>=10.0"]
+voice = [
+    "livekit-agents>=0.10",
+    "livekit-plugins-deepgram>=0.6",
+    "livekit-plugins-elevenlabs>=0.7",
+]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
+    "pytest-asyncio>=0.23",
 ]
 
 [project.scripts]
 hcag = "hcag.cli.main:app"
 crawl = "hcag.crawl.main:main"
+hcag-voice = "hcag.voice.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["hcag"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+asyncio_mode = "auto"
