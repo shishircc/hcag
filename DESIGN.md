@@ -83,6 +83,21 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [3.8 End-to-End Workflow](#38-end-to-end-workflow)
   - [3.9 Observability (CLI)](#39-observability-cli)
   - [3.10 Non-Goals for the CLI](#310-non-goals-for-the-cli)
+- [Part 4 — The `crawl` CLI Tool](#part-4--the-crawl-cli-tool)
+  - [4.1 Purpose](#41-purpose)
+  - [4.2 Invocation](#42-invocation)
+  - [4.3 Traversal Semantics](#43-traversal-semantics)
+    - [4.3.1 Seed prefix scope](#431-seed-prefix-scope)
+    - [4.3.2 Visited-URL tracking](#432-visited-url-tracking)
+    - [4.3.3 Depth](#433-depth)
+  - [4.4 Document Types](#44-document-types)
+    - [4.4.1 HTML](#441-html)
+    - [4.4.2 PDF](#442-pdf)
+    - [4.4.3 Images](#443-images)
+  - [4.5 Output Layout](#45-output-layout)
+  - [4.6 Relationship to `hcag`](#46-relationship-to-hcag)
+  - [4.7 Observability (CLI)](#47-observability-cli)
+  - [4.8 Non-Goals](#48-non-goals)
 
 ---
 
@@ -1412,3 +1427,122 @@ The CLI also honors the `OTEL_EXPORTER_OTLP_ENDPOINT` env var: if set, build spa
 - **Vector embedding generation.** Explicitly not produced; HCAG retrieval is taxonomic, not embedding-based (§1.1).
 - **Runtime hot-reload.** The CLI is a build tool. Runtime picks up new artifacts on next agent bootstrap; no watcher.
 - **KB validation beyond schema.** Fact-checking, link-checking across packets, and stale-content detection are separate concerns.
+
+---
+
+# Part 4 — The `crawl` CLI Tool
+
+## 4.1 Purpose
+
+`crawl` takes a set of seed URLs and builds a local Markdown knowledge base from the pages they lead to. Each seed is fetched, converted to Markdown, and its outbound links are followed recursively — staying within the site regions defined by the seed URL prefixes. The output is a local `./kb/` tree whose directory shape mirrors the domains and URL paths of the crawled sites, ready to hand to `hcag preprocess` (Part 3) as raw KB input.
+
+## 4.2 Invocation
+
+```
+$ crawl --depth <N> <seed_url> [<seed_url> ...]
+```
+
+- `<seed_url>` — one or more starting URLs. Each seed defines both a starting point and a prefix scope (§4.3.1). At least one seed is required.
+- `--depth <N>` — maximum link-following depth from any seed. `N=0` fetches only the seed documents themselves; `N=1` also fetches documents reachable in one hop from a seed; and so on.
+
+Output is written under `./kb/` in the current working directory (§4.5).
+
+## 4.3 Traversal Semantics
+
+### 4.3.1 Seed prefix scope
+
+Each seed URL doubles as a **prefix scope**. A discovered link is followed only if its URL begins with the same string as at least one of the seed URLs. This keeps the crawl inside the sites and subpaths the operator explicitly named, and prevents it from escaping to unrelated domains or wandering up to parent paths.
+
+- A seed of `https://docs.example.com/api/v2/` allows following `https://docs.example.com/api/v2/auth.html` but **not** `https://docs.example.com/api/v1/anything` (different subpath) or `https://blog.example.com/…` (different subdomain).
+- With multiple seeds, the allowed set is the union of their prefixes: a link is in scope if it matches **any** seed's prefix.
+
+Rationale: the seed set defines both *where to start* and *what belongs in the KB* with a single knob — the operator does not have to state the site boundary a second time.
+
+### 4.3.2 Visited-URL tracking
+
+`crawl` maintains a set of every URL it has already fetched. If a link resolves to a URL already in that set, it is skipped — neither re-fetched nor recursed into. Every in-scope URL is therefore fetched and converted at most once per invocation, and cycles between pages cannot cause repeat work or infinite loops.
+
+### 4.3.3 Depth
+
+The seed URL sits at depth `0`. A document reached by following a link from a depth-`k` document is at depth `k+1`. Links discovered *inside* a document whose depth equals `--depth` are **not** followed; the document itself is still fetched, converted, and written, but no further descent occurs from it.
+
+## 4.4 Document Types
+
+### 4.4.1 HTML
+
+HTML pages are fetched, parsed, and converted to Markdown. The links to follow are the `href` values of `<a>` elements in the document. Relative hrefs are resolved against the fetched document's URL before the prefix-scope check (§4.3.1).
+
+### 4.4.2 PDF
+
+Linked `.pdf` documents are treated as first-class pages: fetched, converted to Markdown (extracted text with document structure preserved), and written to the same layout as HTML output. PDFs do not contribute outbound links for further traversal.
+
+### 4.4.3 Images
+
+Images embedded in HTML pages (`<img src>`) and images embedded inside PDF documents are extracted and saved as separate files alongside the Markdown output (§4.5). Every image reference in the generated Markdown is rewritten to point at the local saved file rather than the original remote URL, so the Markdown renders correctly offline.
+
+Images are content of their containing document, not link targets: they are neither depth-counted nor prefix-checked.
+
+## 4.5 Output Layout
+
+Output is rooted at `./kb/`, with the domain as the first path segment and the URL path preserved below it. For a page at `https://webdomain/topic-domain/topic/subtopic/something.html`:
+
+- Markdown goes to `./kb/webdomain/topic-domain/topic/subtopic/something.md`.
+- An embedded image named `apple.jpg` goes to `./kb/webdomain/topic-domain/topic/subtopic/something-apple.jpg`.
+
+Rules:
+
+- **Domain first.** Content from different sites lands in distinct top-level folders under `./kb/`, so multiple seed domains stay cleanly separated.
+- **Path preservation.** Below the domain, the directory structure mirrors the URL path, so the shape of the source site is legible in the output tree.
+- **Extension.** Output Markdown always uses the `.md` extension, regardless of the source (`.html`, `.htm`, `.pdf`, or a directory-index URL that ends with `/`).
+- **Image naming.** Each extracted image is written with a filename of the form `<document-basename>-<image-name>`. Prefixing with the source document's basename guarantees that identically-named images extracted from different pages do not collide when they land in the same directory.
+
+## 4.6 Relationship to `hcag`
+
+`crawl` produces the raw markdown-and-image tree that `hcag preprocess` (§3.4) consumes. The two tools compose end-to-end:
+
+```
+$ crawl --depth 3 https://docs.example.com/api/
+$ hcag preprocess kb/
+$ hcag aggregate kb/
+```
+
+`crawl` is responsible only for turning a set of remote sites into a mirrored local Markdown tree. It does not classify folders, produce `packet.md` / `catalog.md`, call an LLM, or make any decisions about the KB's taxonomy — those remain `hcag`'s job.
+
+## 4.7 Observability (CLI)
+
+`crawl` emits a log line for every meaningful event during a crawl — each URL fetched, each Markdown document written, each image extracted, and each candidate link that was skipped — using the same JSON-lines format as the rest of the toolchain (§2.11.3, §3.9). This makes a completed crawl auditable after the fact: given the log, an operator can reconstruct exactly which URLs were visited, which were skipped and why, and which files ended up in `./kb/`.
+
+**Configuration.** The log path defaults to `./crawl.log` and can be overridden with `--log-file <path>`. Level is controlled with `--log-level {debug,info,warn,error}` (default `info`). If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`crawl.fetch`, `crawl.convert`, `crawl.image.extract`) are also exported, matching the observability model used by the runtime (§2.11) and by `hcag` (§3.9).
+
+**Levels.**
+
+- `INFO`:
+  - Crawl start line with the resolved seed list, `--depth`, and the output root.
+  - One line per fetched document: URL, depth, content type, byte size, elapsed fetch time, and the output Markdown path.
+  - One line per extracted image: source document URL, remote image URL, and the local file path written under `./kb/`.
+  - Crawl end summary: totals for pages fetched, pages converted, images extracted, links skipped (out-of-scope / already-visited), wall-clock elapsed, and log-level counts.
+- `DEBUG`:
+  - HTTP request/response headers, redirect chains, and retry attempts.
+  - Markdown-conversion internals (heading count, link count, image count per document) and PDF-extraction internals (page count, image count).
+  - For each page, the full list of `<a href>` values discovered, each tagged with its disposition: `queued`, `skipped:out-of-scope`, `skipped:visited`, or `skipped:depth-cap`.
+- `WARN`:
+  - Fetch returned a non-2xx status for an in-scope URL (URL is dropped, siblings continue).
+  - Fetched content type is neither HTML nor PDF (URL is dropped).
+  - Image extraction failed for a specific asset — the containing page is still written; the image reference is left pointing at the original remote URL and flagged in the log.
+  - `href` value could not be parsed or resolved against the base URL.
+  - Redirect chain exceeded the safety cap and was terminated.
+  - Output path collision detected and resolved by disambiguation (e.g., two URLs mapping to the same local filename).
+- `ERROR`:
+  - Crawl cannot start: no valid seeds, seed URL malformed, or `./kb/` not writable.
+  - Fetch aborted after retries due to network failure or timeout.
+  - Fatal I/O error while writing Markdown or an image file.
+
+If any `ERROR`-level event is logged during a run, `crawl` exits with a non-zero status; `WARN`-level events do not affect exit status but are reflected in the end-of-run summary.
+
+## 4.8 Non-Goals
+
+- **Content editing.** `crawl` does not rewrite prose, summarize pages, or filter noise; the HTML/PDF → Markdown conversion is mechanical.
+- **JavaScript execution.** Only the initial fetched HTML is parsed. Pages whose content is constructed client-side are captured only to the extent that content is present in the server-rendered response.
+- **Auth-gated content.** Login flows, cookies, and custom headers beyond a plain fetch are out of scope.
+- **Non-HTML, non-PDF assets.** Videos, archives, and other binary formats are neither followed as links nor mirrored into `./kb/`.
+- **Incremental re-crawl.** Each invocation fetches every in-scope URL once; change detection and freshness re-crawling are not provided.

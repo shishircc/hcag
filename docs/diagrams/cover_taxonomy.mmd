@@ -1,0 +1,37 @@
+---
+config:
+  flowchart:
+    nodeSpacing: 40
+    rankSpacing: 140
+    padding: 40
+---
+flowchart TB
+    ROOT(("Knowledge<br/>Base"))
+
+    ROOT --> BILL[Billing]
+    ROOT --> AUTH[Authentication]
+    ROOT --> OPS[Operations]
+
+    BILL --> REF[Refunds]
+    BILL --> INV[Invoices]
+    AUTH --> OAUTH[OAuth]
+    AUTH --> SSO[SSO / SAML]
+    OPS --> RB[Runbooks]
+    OPS --> IR[Incident Response]
+
+    REF --> D1[/"Refund Policy<br/>State Machine<br/>Chargebacks"/]
+    INV --> D2[/"Invoice Generation<br/>Layout &amp; Rules"/]
+    OAUTH --> D3[/"OAuth Flows<br/>Scopes &amp; Errors"/]
+    SSO --> D4[/"SAML Config<br/>Troubleshooting"/]
+    RB --> D5[/"Playbooks<br/>Procedures"/]
+    IR --> D6[/"IR Guide<br/>Postmortems"/]
+
+    classDef root fill:#0f172a,stroke:#0f172a,color:#ffffff,stroke-width:3px,font-weight:bold
+    classDef domain fill:#4338ca,stroke:#312e81,color:#ffffff,stroke-width:2px,font-weight:bold
+    classDef sub fill:#818cf8,stroke:#4338ca,color:#0f172a
+    classDef leaf fill:#fef3c7,stroke:#a16207,color:#78350f
+
+    class ROOT root
+    class BILL,AUTH,OPS domain
+    class REF,INV,OAUTH,SSO,RB,IR sub
+    class D1,D2,D3,D4,D5,D6 leaf

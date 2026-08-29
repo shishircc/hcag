@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant R as Agent Runtime
+    participant L as LLM
+    participant M as Memory Module
+    participant K as KB
+
+    Note over R,K: BOOTSTRAP
+    R->>M: get_catalog
+    M->>K: read catalog.md
+    K-->>M: catalog contents
+    M-->>R: catalog
+    R->>L: init system prompt with catalog
+
+    Note over U,L: FIRST TURN
+    U->>R: How do partial refunds work
+    R->>L: user message
+    Note over L: Consults catalog<br/>Needs bill.refunds<br/>active is empty
+    L->>M: check_and_load_kb
+    Note over L,M: requested = bill.refunds<br/>active = empty
+    M->>K: read billing/refunds/packet.md
+    M->>K: read billing/refunds/assets
+    K-->>M: text and images
+    M-->>L: delta
+    Note over L,M: loaded = bill.refunds<br/>evicted = empty<br/>active_after = bill.refunds
+    L-->>R: answer
+    R-->>U: answer

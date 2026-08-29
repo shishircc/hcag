@@ -1,0 +1,144 @@
+classDiagram
+    direction LR
+
+    class AgentRuntime {
+        +LLM llm
+        +MemoryModule memory
+        +Config config
+        +bootstrap() void
+        +run_turn(user_msg) response
+    }
+
+    class LLM {
+        <<interface>>
+        +chat(messages, tools) response
+    }
+
+    class MemoryModule {
+        <<interface>>
+        +get_catalog() Catalog
+        +check_and_load_kb(request) Delta
+    }
+
+    class FileSystemMemoryModule {
+        -KBStorage storage
+        -EvictionPolicy eviction
+        -TokenBudget budget
+        +get_catalog() Catalog
+        +check_and_load_kb(request) Delta
+        -load_packet(id, entry) Packet
+    }
+
+    class KBStorage {
+        <<interface>>
+        +read_catalog() string
+        +read_packet_markdown(path) string
+        +list_assets(path) list~string~
+        +read_asset(path) bytes
+    }
+
+    class LocalFsStorage {
+        -string kb_root
+        +read_catalog() string
+        +read_packet_markdown(path) string
+        +list_assets(path) list~string~
+        +read_asset(path) bytes
+    }
+
+    class Catalog {
+        +list~CatalogEntry~ entries
+        +get(id) CatalogEntry
+        +raw_markdown() string
+    }
+
+    class CatalogEntry {
+        +string id
+        +string path
+        +string title
+        +string short_description
+        +string long_description
+        +int token_size_estimate
+    }
+
+    class CheckAndLoadRequest {
+        +string context
+        +list~string~ requested_packet_ids
+        +list~string~ active_packet_ids
+    }
+
+    class Delta {
+        +list~Packet~ loaded
+        +list~string~ evicted
+        +list~string~ active_after
+        +list~LoadError~ errors
+    }
+
+    class Packet {
+        +string id
+        +string title
+        +list~ContentBlock~ content
+    }
+
+    class ContentBlock {
+        <<abstract>>
+    }
+
+    class TextBlock {
+        +string text
+    }
+
+    class ImageBlock {
+        +bytes data
+        +string mime_type
+    }
+
+    class LoadError {
+        +string packet_id
+        +string reason
+    }
+
+    class TokenBudget {
+        +int max_active_tokens
+        +sum_estimate(ids, catalog) int
+        +fits(total) bool
+    }
+
+    class EvictionPolicy {
+        <<interface>>
+        +plan(active, incoming, budget, catalog) EvictionPlan
+    }
+
+    class LRUEvictionPolicy {
+        +plan(active, incoming, budget, catalog) EvictionPlan
+    }
+
+    class EvictionPlan {
+        +list~string~ ordered_active_after
+        +list~string~ evicted
+        +list~string~ to_load
+    }
+
+    AgentRuntime --> LLM : invokes
+    AgentRuntime --> MemoryModule : bootstrap and per-turn
+    LLM ..> MemoryModule : tool-calls
+
+    FileSystemMemoryModule ..|> MemoryModule
+    FileSystemMemoryModule --> KBStorage : reads via
+    FileSystemMemoryModule --> EvictionPolicy : delegates
+    FileSystemMemoryModule --> TokenBudget : enforces
+
+    LocalFsStorage ..|> KBStorage
+    LRUEvictionPolicy ..|> EvictionPolicy
+
+    MemoryModule ..> Catalog : returns
+    MemoryModule ..> Delta : returns
+    MemoryModule ..> CheckAndLoadRequest : accepts
+    EvictionPolicy ..> EvictionPlan : returns
+
+    Catalog "1" *-- "*" CatalogEntry
+    Delta "1" *-- "*" Packet : loaded
+    Delta "1" *-- "*" LoadError : errors
+    Packet "1" *-- "*" ContentBlock : content
+
+    TextBlock --|> ContentBlock
+    ImageBlock --|> ContentBlock
