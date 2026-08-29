@@ -131,6 +131,22 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [6.9 Failure Modes](#69-failure-modes)
   - [6.10 Observability (CLI)](#610-observability-cli)
   - [6.11 Non-Goals](#611-non-goals)
+- [Part 7 — The `eval` CLI Tool](#part-7--the-eval-cli-tool)
+  - [7.1 Purpose](#71-purpose)
+  - [7.2 Input Model](#72-input-model)
+  - [7.3 Invocation](#73-invocation)
+  - [7.4 Execution Loop](#74-execution-loop)
+    - [7.4.1 Single-turn exchange](#741-single-turn-exchange)
+    - [7.4.2 Multi-turn clarification](#742-multi-turn-clarification)
+    - [7.4.3 Turn limit and termination](#743-turn-limit-and-termination)
+  - [7.5 LLM-as-Judge Scoring](#75-llm-as-judge-scoring)
+  - [7.6 Test Harness (promptfoo)](#76-test-harness-promptfoo)
+  - [7.7 Output — Completed CSV](#77-output--completed-csv)
+  - [7.8 Output — HTML Report](#78-output--html-report)
+  - [7.9 Configuration](#79-configuration)
+  - [7.10 Failure Modes](#710-failure-modes)
+  - [7.11 Observability (CLI)](#711-observability-cli)
+  - [7.12 Non-Goals](#712-non-goals)
 
 ---
 
@@ -2262,3 +2278,274 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`evalgen.run`, `evalgen.item`, `
 - **Ground-truth curation.** Generated `expected_answer` values are grounded in the KB but are themselves LLM output. Human review of the eval set before use is expected; `evalgen` does not claim editorial correctness.
 - **Adversarial or jailbreak questions.** All questions are strictly grounded in the KB's own content. Prompt-injection probes, safety evals, and out-of-distribution questions are out of scope.
 - **Cross-run diffing or eval-set versioning.** Each invocation writes a fresh CSV. Snapshotting eval sets under version control and diffing successive runs is left to the caller (e.g., commit the CSV alongside the KB revision it was generated from).
+
+---
+
+# Part 7 — The `eval` CLI Tool
+
+## 7.1 Purpose
+
+`eval` executes the question set produced by `evalgen` (Part 6) against a **live** chatbot backend and scores each answer with an LLM-as-judge. It closes the loop that `evalgen` deliberately leaves open (§6.11): where `evalgen` produces `(question, expected_answer)` pairs and stops, `eval` runs the agent, captures `actual_answer`, judges it against `expected_answer`, and writes the completed rubric row.
+
+The tool is symmetric with `evalgen` in scope: `evalgen` is a **generator only**, `eval` is a **runner and scorer only**. Neither reads or mutates the KB directly. Together they form the KB-owner's regression harness: freeze a KB revision, generate an eval set once (§6.6), then re-run `eval` after each agent, prompt, or KB change to detect quality drift.
+
+## 7.2 Input Model
+
+`eval` consumes exactly the CSV `evalgen` emits (§6.7):
+
+| Column | Read | Written |
+|---|---|---|
+| `question_id`     | yes | passed through unchanged |
+| `kind`            | yes | passed through unchanged |
+| `question`        | yes | passed through unchanged |
+| `expected_answer` | yes | passed through unchanged |
+| `actual_answer`   | no  | **populated** — the chatbot's final answer text |
+| `score`           | no  | **populated** — integer `0`–`3` per the rubric (§7.5) |
+| `remark`          | no  | **populated** — one-sentence judge justification |
+
+The first four columns are the eval set's identity; `eval` treats them as read-only and copies them verbatim into the output. The last three columns are `eval`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption.
+
+## 7.3 Invocation
+
+```
+$ eval <input.csv> --backend-url <url> --out <output.csv> --report <report.html> [options]
+```
+
+| Parameter | Required | Description |
+|---|---|---|
+| `<input.csv>` | yes | Path to the CSV produced by `evalgen` (§6.7). |
+| `--backend-url <url>` | yes | Base URL of the chatbot backend. `eval` calls `POST <url>/chat` with each question (§7.4). |
+| `--out <path>` | yes | Path to the completed output CSV. Overwritten if it exists. |
+| `--report <path>` | yes | Path to the HTML report emitted from the promptfoo run (§7.6, §7.8). Overwritten if it exists. |
+| `--max-turns <N>` | no | Max chatbot turns per question before giving up (§7.4.3). Default `5`. |
+| `--concurrency <N>` | no | Number of questions evaluated in parallel. Default `4`. Bounded by backend rate limits. |
+| `--request-timeout <sec>` | no | Per-`/chat` HTTP timeout. Default `60`. |
+| `--session-scope <mode>` | no | `per-question` (default, fresh `session_id` per question) or `per-run` (share one `session_id` across all questions). Fresh sessions isolate scoring; shared sessions stress the multi-turn memory path. |
+| `--kinds <list>` | no | Comma-separated subset of question kinds to run (e.g. `--kinds simple,hard-2`). Default: all five. |
+| `--skip-completed` | no | Skip input rows whose `score` column is already populated. Off by default so re-runs re-score deterministically. |
+| `--seed <int>` | no | Seed for the judge LLM's sampling and any tie-breaking in the clarification generator. Fixed seed → reproducible scoring. |
+| `--config <path>` | no | Path to `eval.toml` (§7.9). Defaults to `./eval.toml` if present. |
+
+Example invocation:
+
+```
+$ eval kb-eval.csv \
+    --backend-url http://localhost:8000 \
+    --out kb-eval-scored.csv \
+    --report kb-eval-report.html \
+    --max-turns 5 --concurrency 4 --seed 42
+```
+
+Runs every question from `kb-eval.csv` against `http://localhost:8000/chat` (the `hcag-server` from Part 5's web widget, or any compatible backend), writes the scored CSV to `kb-eval-scored.csv`, and emits an HTML summary to `kb-eval-report.html`.
+
+## 7.4 Execution Loop
+
+For each input row, `eval` opens a conversation with the backend and drives it until the chatbot returns a scorable answer or the turn limit is hit. The exchange is captured verbatim so the judge (§7.5) and the report (§7.8) can inspect it.
+
+### 7.4.1 Single-turn exchange
+
+The happy path — one request, one answer:
+
+1. `eval` mints a `session_id` per the `--session-scope` policy.
+2. `eval` sends `POST <backend-url>/chat` with:
+   ```json
+   { "session_id": "<sid>", "message": "<row.question>", "history": [] }
+   ```
+3. The backend returns `{ "text": "<answer>", ... }`.
+4. `eval` classifies the response (§7.4.2). If it is an **answer**, the loop ends: `actual_answer` = `<answer>`.
+
+### 7.4.2 Multi-turn clarification
+
+When the chatbot responds with a clarifying question rather than an answer, the LLM judge fills the user role and the conversation continues:
+
+1. `eval` runs a lightweight **response classifier** over the chatbot's reply (a separate small LLM prompt, or a rule when the backend marks clarifications explicitly). Classification categories:
+   - `answer` — a substantive response to `question`. Terminate; assign this text to `actual_answer`.
+   - `clarify` — a follow-up question or request for information. Continue.
+   - `refusal` — an explicit refusal, safety block, or out-of-scope disclaimer. Terminate; assign this text to `actual_answer` (and the judge will score it accordingly).
+2. On `clarify`, `eval` calls the **judge LLM in clarifier mode**, giving it:
+   - The original `question` and `expected_answer` (so the judge knows what facts the user "has").
+   - The full exchange so far.
+   - A directive to answer the chatbot's clarification the way the real user would, using only information available in `expected_answer` or reasonable defaults. The clarifier is instructed to **never leak** `expected_answer` verbatim.
+3. The clarifier's reply is sent as the next user message on the same `session_id`. The full multi-turn transcript is retained for scoring (§7.5) and for the HTML report (§7.8).
+
+The clarifier is the **same LLM** as the judge (§7.9), configured with a distinct prompt. Using one model keeps operator setup minimal and makes clarification style consistent across runs.
+
+### 7.4.3 Turn limit and termination
+
+`--max-turns` bounds the loop (default `5`, counting one user + one assistant as one turn). When the limit is reached without an `answer` classification, the loop ends and `actual_answer` is set to a synthesized string of the form:
+
+```
+[max_turns_exceeded] last_response=<final chatbot reply verbatim>
+```
+
+The `remark` written by the judge then reflects why scoring proceeded on an unresolved exchange (§7.5). This preserves the failure signal — a chatbot that spirals into endless clarifications scores poorly rather than crashing the run.
+
+Additional termination conditions:
+
+| Condition | Behavior |
+|---|---|
+| Backend HTTP error after retries exhausted | `actual_answer = [backend_error] <status> <body>`; judge scores it as `0`. |
+| Backend timeout after retries exhausted | `actual_answer = [backend_timeout]`; judge scores it as `0`. |
+| Response classifier fails to categorize (rare) | Treated as `answer` — captured verbatim and passed to the judge. |
+
+## 7.5 LLM-as-Judge Scoring
+
+Once `actual_answer` is populated, `eval` invokes the judge LLM once per row with:
+
+- `question`
+- `expected_answer`
+- `actual_answer`
+- The full multi-turn transcript when clarification occurred (§7.4.2), so the judge can down-weight answers the chatbot only produced after being led there.
+- The scoring rubric (below), fixed and identical for every row.
+
+Rubric — the judge must return exactly one of these integers:
+
+| Score | Meaning |
+|---|---|
+| `0` | **Wrong and misleading answer.** Factually incorrect, hallucinated, or would mislead the user. Also assigned to hard failures (backend errors, refusals on in-scope questions, `[max_turns_exceeded]`). |
+| `1` | **Partially correct, but missing key points.** Contains no outright errors, but omits information the expected answer identifies as essential. |
+| `2` | **Partially correct, and includes the key points.** Covers the essential information but adds noise, extraneous detail, or minor imprecision. |
+| `3` | **Accurate and comprehensive answer.** Substantively equivalent to `expected_answer`; a reasonable user would consider the question fully answered. |
+
+The judge's structured output is `{ "score": <0|1|2|3>, "remark": "<one-sentence justification>" }`. `eval` writes `score` and `remark` into their columns unchanged. If the judge returns malformed output past the retry cap (§7.9), the row's `score` is left empty and `remark` is set to `[judge_failed] <reason>` — never a fabricated numeric score.
+
+The judge is deliberately **stateless per row**: it never sees another question's answer or score. This keeps scoring order-independent and lets `--concurrency` fan out safely.
+
+## 7.6 Test Harness (promptfoo)
+
+`eval` is implemented on top of [promptfoo](https://www.promptfoo.dev/) — each CSV row becomes one promptfoo test case, and promptfoo drives the parallel execution, retry policy, assertion evaluation, and HTML report generation. This choice buys three things that would otherwise be one-off code: (a) concurrent test execution with a stable, well-tested rate limiter; (b) a mature HTML report renderer with pass/fail visualization and drill-down; (c) a plugin surface for custom assertions — `eval` registers the LLM-judge scorer (§7.5) as a promptfoo `assert` of type `llm-rubric`.
+
+The promptfoo integration is an implementation detail — the CLI surface, input CSV schema, and output CSV schema are stable. The mapping is:
+
+| `eval` concept | promptfoo concept |
+|---|---|
+| Input CSV row | `test` |
+| `question` | rendered into the `prompt` sent to the provider |
+| `POST /chat` conversation loop (§7.4) | a custom promptfoo `provider` that speaks the `{ session_id, message, history[] }` protocol and returns the final `actual_answer` |
+| Multi-turn clarification (§7.4.2) | handled inside the provider before returning — promptfoo sees one prompt → one final response |
+| LLM-as-judge scoring (§7.5) | a `llm-rubric` assertion with the rubric text and structured-output contract from §7.5 |
+| Per-kind breakdown (§7.8) | promptfoo `tags` set to `{ kind: <row.kind> }` |
+| HTML report | `promptfoo view --output <report.html>` invoked by `eval` after the run |
+
+`eval` writes the completed CSV itself (§7.7) rather than deriving it from promptfoo's native output — CSV round-tripping is part of the tool's contract with `evalgen`, and decoupling it from promptfoo's output format shields callers from harness changes.
+
+## 7.7 Output — Completed CSV
+
+`eval` writes a CSV to `--out` with the same 7-column schema as the input (§6.7). Columns `question_id`, `kind`, `question`, and `expected_answer` are copied verbatim from the input row. Columns `actual_answer`, `score`, and `remark` are populated per §7.4 and §7.5.
+
+Row-level rules:
+
+- **Row order is preserved.** Even under `--concurrency > 1`, rows are emitted in input order so `diff` on two run outputs is meaningful.
+- **Same encoding as `evalgen`.** UTF-8, LF line endings, RFC 4180 quoting, header row always present.
+- **Never partial.** `eval` writes the output CSV atomically at the end of the run (temp file + rename). A crash mid-run leaves the previous output untouched; use `--skip-completed` on a fresh output for incremental resumption.
+- **Score column is integer or empty.** Never a string, never a float. Empty means the judge failed for that row (§7.5); `remark` explains why.
+
+Example (header + three rows, one of each outcome shape):
+
+```csv
+question_id,kind,question,expected_answer,actual_answer,score,remark
+q-0001,simple,"How long does a standard refund take to process?","5–7 business days.","Refunds typically clear in 5 to 7 business days.",3,"Answer matches expected timeframe exactly."
+q-0007,medium,"Which document must accompany a partial refund request?","The original signed invoice.","A copy of the invoice is required.",1,"Correct that an invoice is needed but omits the ""original"" and ""signed"" requirements."
+q-0021,hard-2,"According to the refund state machine, which state immediately follows ""pending_review""?","approved","[max_turns_exceeded] last_response=""Could you clarify which state machine you mean?""",0,"Chatbot never produced an answer within the turn limit."
+```
+
+## 7.8 Output — HTML Report
+
+`eval` emits an HTML report to `--report` generated by promptfoo's report renderer, extended with per-kind summary panels. The report includes:
+
+- **Run summary.** Total questions, per-kind counts, overall pass rate (fraction scoring `≥ 2`), mean and median score, wall-clock elapsed, backend URL, seed, model IDs (chatbot + judge).
+- **Per-kind breakdown.** One panel each for `simple`, `medium`, `complex`, `hard-1`, `hard-2` showing count, mean score, score histogram (0/1/2/3 bars), and pass rate. Enables at-a-glance drift detection — a `hard-1` regression tells you retrieval selection broke; a `hard-2` regression tells you multimodal loading broke, mirroring the signal design in §6.4.
+- **Score distribution histogram** across all kinds.
+- **Row-level table** — every question with its score, one-line remark, and expandable transcript. Filterable by kind and by score bucket.
+- **Comparison bar** at the top when `--baseline <prior-output.csv>` is passed: side-by-side per-kind pass rates and a delta column, so regressions vs. a committed baseline are immediately visible.
+- **Regenerable and self-contained.** Single `.html` file — inlined CSS/JS, no external assets, safe to commit or attach to a PR.
+
+The report and the completed CSV are the two deliverables of an `eval` run. Both are always written when the run completes; a crash before completion leaves the previous versions of both untouched (§7.7).
+
+## 7.9 Configuration
+
+`eval` reads an optional `eval.toml`. All values are overridable by CLI flags (§7.3):
+
+```toml
+# Chatbot under test — the backend `eval` calls.
+[backend]
+url             = "http://localhost:8000"
+chat_path       = "/chat"           # POST endpoint under `url`
+request_timeout = 60                # seconds
+retries         = 2                 # per-request retries on 5xx / timeouts
+session_scope   = "per-question"    # per-question | per-run
+
+# Multi-turn loop (§7.4).
+[loop]
+max_turns = 5
+
+# Response classifier — small LLM prompt that decides answer / clarify / refusal.
+[classifier]
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"
+api_key_env = "ANTHROPIC_API_KEY"
+
+# LLM-as-judge (§7.5) and clarifier (§7.4.2) — same provider, distinct prompts.
+[judge]
+provider          = "anthropic"
+model             = "claude-opus-4-7"     # scoring benefits from a strong model
+api_key_env       = "ANTHROPIC_API_KEY"
+max_output_tokens = 512
+retries           = 2                     # on malformed structured output
+
+[judge.prompts]
+score     = "prompts/eval_score.md"       # rubric prompt (§7.5)
+clarify   = "prompts/eval_clarify.md"     # user-side clarification (§7.4.2)
+classify  = "prompts/eval_classify.md"    # answer / clarify / refusal classifier
+
+# Execution.
+[run]
+concurrency = 4
+seed        = 42
+
+# Reporting.
+[report]
+title    = "HCAG eval — <kb-name>"
+baseline = ""                             # optional path to a prior --out CSV
+
+[log]
+file_path = "./eval.log"
+level     = "INFO"
+```
+
+Local model support mirrors `evalgen` (§6.8): `provider = "ollama"` or `"llamacpp"` with a local `endpoint` runs classification, clarification, and scoring without cloud credentials. Judge quality bounds `eval` quality — the same guidance as `evalgen`'s generation-quality note applies.
+
+## 7.10 Failure Modes
+
+| Condition | Behavior |
+|---|---|
+| `<input.csv>` missing or malformed | ERROR at startup — non-zero exit. |
+| Backend URL unreachable at run start (`GET /health` probe fails) | ERROR at startup — non-zero exit, no partial output written. |
+| Backend returns 5xx on a single row past retries | Row's `actual_answer = [backend_error] ...`, judge scores it, run continues. |
+| Backend times out on a single row past retries | Row's `actual_answer = [backend_timeout]`, judge scores it, run continues. |
+| Judge LLM returns malformed structured output past `retries` | Row's `score` left empty, `remark = [judge_failed] <reason>`; run continues. |
+| Clarifier fails past retries | Loop terminates as if `max_turns` reached; row scored per §7.4.3. |
+| `--kinds` filter matches zero rows | ERROR at startup — nothing to run. |
+| `--out` or `--report` path not writable | ERROR at startup — fail fast rather than partial write. |
+| `--baseline` file schema mismatch | ERROR at startup — the report can't render a comparison. |
+
+If any `ERROR`-level event fires, `eval` exits with a non-zero status. Per-row `WARN`s (backend errors, judge failures) do not affect exit status but are surfaced in the end-of-run summary and in the report.
+
+## 7.11 Observability (CLI)
+
+`eval` writes a JSON-lines log to the path in `[log]` config (default `./eval.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), `crawl` (§4.7), and `evalgen` (§6.10):
+
+- `INFO`: run start (input path, row count, per-kind counts, backend URL, resolved model IDs, concurrency, seed), per-row summary (`question_id`, `kind`, turn count, wall-clock elapsed, chatbot tokens, judge tokens, final `score`), run end summary (per-kind mean scores and pass rates, wall-clock elapsed).
+- `DEBUG`: full multi-turn transcripts per row, full judge prompt + response, classifier decisions, clarifier prompts + responses.
+- `WARN`: backend errors, backend timeouts, judge malformed outputs, clarifier failures, `[max_turns_exceeded]` rows, rows filtered out by `--skip-completed`.
+- `ERROR`: startup failures — unreadable input, unwritable output, unreachable backend, empty kind filter.
+
+If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`eval.run`, `eval.row`, `eval.chat_turn`, `eval.judge`, `eval.clarify`) are exported — symmetric with §2.11, §3.9, §4.7, and §6.10.
+
+## 7.12 Non-Goals
+
+- **Generating questions.** `eval` never fabricates test items; the input CSV is the authority. Curation is `evalgen`'s job (Part 6) and human review (§6.11).
+- **Editing the reference answer.** `expected_answer` is treated as ground truth. If it is wrong for a given KB revision, fix the source and re-run `evalgen`; `eval` does not rewrite the column.
+- **Running the KB or the agent directly.** `eval` only speaks to the backend over `POST /chat`. It does not import `AgentRuntime`, does not touch the KB, and does not care whether the backend is `hcag-server` (Part 5's web widget), a mocked stub, a different agent, or a hosted service — the contract is the HTTP endpoint alone. This keeps `eval` usable as a black-box regression harness against any chatbot that speaks the same protocol.
+- **CI orchestration or threshold enforcement.** `eval` reports scores; it does not fail the CI job on a pass-rate drop. Callers wire the exit-code policy they want on top of the completed CSV (e.g., a wrapper script that parses the mean score per kind and gates a PR).
+- **Adversarial or safety evaluation.** Scoring is grounded strictly in `expected_answer`. Prompt-injection tests, jailbreak resistance, and toxicity checks are separate concerns and out of scope.

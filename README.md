@@ -202,6 +202,84 @@ Shortfalls (e.g., requesting more `hard-2` than image-bearing packets available)
 
 Details: [DESIGN.md §6](./DESIGN.md#part-6--the-evalgen-cli-tool).
 
+## Scoring the Agent with the `eval` CLI
+
+`eval` closes the loop `evalgen` opens: it runs the CSV question set against a **live** chatbot backend and scores each answer with an LLM-as-judge. It's built on [promptfoo](https://www.promptfoo.dev/) — you get concurrent execution, retries, and an HTML report for free — and speaks to the chatbot over `POST /chat` (the same endpoint `hcag-server` from the [Web Chat and Voice Widget](#web-chat-and-voice-widget) exposes).
+
+```bash
+# 1. Bring up the backend under test
+hcag-server serve --agent-config ./agent.toml --port 8000
+
+# 2. Score the eval set — writes a completed CSV + an HTML report
+eval kb-eval.csv \
+    --backend-url http://localhost:8000 \
+    --out kb-eval-scored.csv \
+    --report kb-eval-report.html \
+    --max-turns 5 --concurrency 4 --seed 42
+```
+
+For each question:
+
+1. `eval` opens a session and calls `POST /chat` with the question.
+2. If the chatbot answers, capture it into `actual_answer`.
+3. If the chatbot asks a **clarifying question**, the LLM judge plays the user role, supplies a clarification grounded in `expected_answer` (without leaking it verbatim), and the conversation continues on the same `session_id` until an answer arrives or `--max-turns` is hit ([DESIGN.md §7.4](./DESIGN.md#74-execution-loop)).
+4. The full multi-turn transcript is retained for scoring and for the HTML report.
+
+Scoring is a fixed rubric ([DESIGN.md §7.5](./DESIGN.md#75-llm-as-judge-scoring)):
+
+| Score | Meaning |
+|---|---|
+| `0` | Wrong and misleading answer. |
+| `1` | Partially correct, but missing key points. |
+| `2` | Partially correct, and includes the key points. |
+| `3` | Accurate and comprehensive answer. |
+
+The judge writes a one-sentence justification into `remark`. The judge is stateless per row, so scoring is order-independent and `--concurrency` can fan out safely.
+
+**Two outputs, always written together on completion:**
+
+- **Completed CSV** — same 7-column schema as `evalgen` (`question_id, kind, question, expected_answer, actual_answer, score, remark`), with the last three columns populated. Row order preserved so `diff` between runs is meaningful ([DESIGN.md §7.7](./DESIGN.md#77-output--completed-csv)).
+- **HTML report** — run summary, per-kind panels (`simple / medium / complex / hard-1 / hard-2` — each with count, mean score, histogram, pass rate), score distribution across all kinds, row-level table with expandable transcripts, and an optional `--baseline <prior.csv>` comparison bar for regression detection ([DESIGN.md §7.8](./DESIGN.md#78-output--html-report)).
+
+Config lives in `eval.toml` (optional) or via CLI flags. A strong judge model is recommended:
+
+```toml
+[backend]
+url             = "http://localhost:8000"
+request_timeout = 60
+session_scope   = "per-question"    # per-question | per-run
+
+[loop]
+max_turns = 5
+
+[judge]
+provider    = "anthropic"
+model       = "claude-opus-4-7"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[run]
+concurrency = 4
+seed        = 42
+
+[report]
+baseline = ""                       # optional path to a prior --out CSV
+```
+
+End-to-end regression workflow:
+
+```bash
+crawl --depth 3 https://docs.example.com/api/
+hcag preprocess ./kb && hcag aggregate ./kb
+evalgen ./kb --out kb-eval.csv --total 100 --seed 42     # once per KB revision
+hcag-server serve --agent-config ./agent.toml --port 8000 &
+eval kb-eval.csv --backend-url http://localhost:8000 \
+     --out kb-eval-scored.csv --report kb-eval-report.html
+```
+
+Commit `kb-eval.csv` alongside the KB revision it was generated from, and re-run `eval` after each agent, prompt, or KB change to detect quality drift. Pass `--baseline kb-eval-scored.prev.csv` to render side-by-side per-kind pass rates and deltas.
+
+Details: [DESIGN.md §7](./DESIGN.md#part-7--the-eval-cli-tool).
+
 ## Running the Agent
 
 ```python
@@ -322,6 +400,7 @@ Full contents in [DESIGN.md](./DESIGN.md):
 - [The `hcag` CLI Tool](./DESIGN.md#part-3--the-hcag-cli-tool)
 - [The `crawl` CLI Tool](./DESIGN.md#part-4--the-crawl-cli-tool)
 - [The `evalgen` CLI Tool](./DESIGN.md#part-6--the-evalgen-cli-tool)
+- [The `eval` CLI Tool](./DESIGN.md#part-7--the-eval-cli-tool)
 
 ## License
 
