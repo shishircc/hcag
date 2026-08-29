@@ -40,9 +40,16 @@ hcag/
 │   ├── runtime/           # Agent runtime
 │   │   ├── llm.py         # LLM protocol + LiteLLM adapter
 │   │   └── agent.py       # AgentRuntime — bootstrap + tool loop
-│   └── cli/               # `hcag` build tool
-│       ├── preprocess.py  # Bottom-up: assemble packet.md + assets/
-│       ├── aggregate.py   # Top-down: emit root catalog.md
+│   ├── cli/               # `hcag` build tool
+│   │   ├── preprocess.py  # Bottom-up: assemble packet.md + assets/
+│   │   ├── aggregate.py   # Top-down: emit root catalog.md
+│   │   └── main.py        # Typer entry point
+│   └── crawl/             # `crawl` CLI — mirror sites into a raw KB
+│       ├── urls.py        # Normalize, prefix-scope, URL → ./kb path
+│       ├── fetch.py       # httpx wrapper with retries + redirect cap
+│       ├── html_conv.py   # HTML → Markdown, extract links + images
+│       ├── pdf_conv.py    # PDF → Markdown, extract embedded images
+│       ├── core.py        # BFS traversal + structured logging
 │       └── main.py        # Typer entry point
 └── tests/
 ```
@@ -97,6 +104,36 @@ level     = "INFO"
 
 Details: [DESIGN.md §3](./DESIGN.md#part-3--the-hcag-cli-tool).
 
+## Building a Raw KB with the `crawl` CLI
+
+If your source content lives on the web rather than in a local folder, `crawl` mirrors one or more sites into a local Markdown tree that `hcag preprocess` can then consume.
+
+```bash
+# Fetch the seed and everything within its prefix, up to 3 hops
+crawl --depth 3 https://docs.example.com/api/
+
+# Multiple seeds define a union of allowed prefixes
+crawl --depth 2 https://a.example.com/ https://b.example.com/docs/
+```
+
+What it does ([DESIGN.md §4](./DESIGN.md#part-4--the-crawl-cli-tool)):
+
+- **Prefix-scoped BFS.** Each seed URL doubles as the site boundary — links are followed only if they begin with a seed's URL, so the crawl never wanders off to unrelated domains or parent paths.
+- **HTML and PDF.** Both are fetched and converted to Markdown; embedded images are extracted and rewritten to local paths so pages render offline.
+- **Depth-limited.** `--depth N` caps hops from any seed (seed is depth 0). Cycles are broken by a visited-URL set — every in-scope URL is fetched at most once.
+- **Mirrored layout.** Output lands under `./kb/<domain>/<url-path>/…`. Extracted images are prefixed with the source document's basename so identically-named images from different pages don't collide.
+- **Structured logging.** JSON-lines log at `./crawl.log` records every fetch, write, image extraction, and skip decision (out-of-scope / already-visited / depth-cap). Levels: DEBUG · INFO · WARN · ERROR. Any ERROR exits non-zero.
+
+End-to-end with `hcag`:
+
+```bash
+crawl --depth 3 https://docs.example.com/api/
+hcag preprocess ./kb
+hcag aggregate ./kb
+```
+
+Details: [DESIGN.md §4](./DESIGN.md#part-4--the-crawl-cli-tool).
+
 ## Running the Agent
 
 ```python
@@ -143,6 +180,7 @@ Full contents in [DESIGN.md](./DESIGN.md):
 - [Observability](./DESIGN.md#211-observability)
 - [Tech Stack](./DESIGN.md#213-tech-stack)
 - [The `hcag` CLI Tool](./DESIGN.md#part-3--the-hcag-cli-tool)
+- [The `crawl` CLI Tool](./DESIGN.md#part-4--the-crawl-cli-tool)
 
 ## License
 
