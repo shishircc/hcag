@@ -49,6 +49,7 @@ dev = [
 hcag = "hcag.cli.main:app"
 crawl = "hcag.crawl.main:main"
 hcag-voice = "hcag.voice.main:main"
+evalgen = "hcag.evalgen.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["hcag"]

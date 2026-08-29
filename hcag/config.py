@@ -89,6 +89,20 @@ class CliConfig(BaseModel):
     mixed_suffix: str = "_"
 
 
+class EvalGenGenerationConfig(BaseModel):
+    max_retries_per_item: int = 2
+    paragraph_min_chars: int = 120
+    cross_packet_bias: Literal["taxonomy", "uniform"] = "taxonomy"
+
+
+class EvalGenConfig(BaseModel):
+    """`evalgen` CLI configuration (§6.8)."""
+
+    llm: LLMConfig = Field(default_factory=LLMConfig)
+    generation: EvalGenGenerationConfig = Field(default_factory=EvalGenGenerationConfig)
+    log: LogConfig = Field(default_factory=lambda: LogConfig(file_path="./evalgen.log"))
+
+
 def load_toml(path: Path) -> dict:
     with path.open("rb") as f:
         return tomllib.load(f)
@@ -102,3 +116,9 @@ def load_cli_config(path: Path) -> CliConfig:
     if not path.exists():
         return CliConfig()
     return CliConfig.model_validate(load_toml(path))
+
+
+def load_evalgen_config(path: Path) -> EvalGenConfig:
+    if not path.exists():
+        return EvalGenConfig()
+    return EvalGenConfig.model_validate(load_toml(path))
