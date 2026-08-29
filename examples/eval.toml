@@ -1,0 +1,81 @@
+# ==============================================================================
+# HCAG `eval` CLI — sample config (DESIGN §7.9)
+#
+# Score an evalgen-produced CSV against a live chatbot backend. Every field
+# below has a CLI override (see `eval --help`) with precedence:
+#   CLI > env > this file > defaults.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# The chatbot backend under test.
+# `eval` calls POST <url><chat_path> per row using the standard hcag-server
+# contract: { session_id, message, history[] }.
+# ------------------------------------------------------------------------------
+[backend]
+url             = "http://localhost:8000"
+chat_path       = "/chat"
+request_timeout = 60           # seconds
+retries         = 2            # per-request retries on 5xx / timeouts
+session_scope   = "per-question"   # per-question | per-run
+
+# ------------------------------------------------------------------------------
+# Multi-turn conversation loop (§7.4).
+# ------------------------------------------------------------------------------
+[loop]
+max_turns = 5
+
+# ------------------------------------------------------------------------------
+# Small classifier LLM — decides whether a chatbot reply is an answer, a
+# clarifying question, or a refusal. A fast/cheap model is fine here.
+# ------------------------------------------------------------------------------
+[classifier.llm]
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"
+api_key_env = "ANTHROPIC_API_KEY"
+max_tokens  = 64
+temperature = 0.0
+
+# Optional — override the packaged default prompt.
+# classifier.prompt_path = "prompts/classify.md"
+
+# ------------------------------------------------------------------------------
+# LLM-as-judge (§7.5). Also plays the clarifier role (§7.4.2), with distinct
+# prompts. A strong model is recommended for scoring quality.
+# ------------------------------------------------------------------------------
+[judge.llm]
+provider    = "anthropic"
+model       = "claude-opus-4-7"
+api_key_env = "ANTHROPIC_API_KEY"
+max_tokens  = 512
+temperature = 0.0
+
+# On malformed structured output, retry up to N times before leaving score empty.
+[judge]
+retries = 2
+
+# Optional — override the packaged default prompts.
+# [judge.prompts]
+# score    = "prompts/eval_score.md"
+# clarify  = "prompts/eval_clarify.md"
+# classify = "prompts/eval_classify.md"
+
+# ------------------------------------------------------------------------------
+# Execution.
+# ------------------------------------------------------------------------------
+[run]
+concurrency = 4                # parallel test cases (--max-concurrency in promptfoo)
+# seed       = 42              # fixed seed => reproducible clarifier + judge sampling
+
+# ------------------------------------------------------------------------------
+# Reporting.
+# ------------------------------------------------------------------------------
+[report]
+title    = "HCAG eval — work-pass KB"
+baseline = ""                  # path to a prior --out CSV; renders per-kind deltas when set
+
+# ------------------------------------------------------------------------------
+# Local file log — JSON-lines, symmetric with the other CLIs (§7.11).
+# ------------------------------------------------------------------------------
+[log]
+file_path = "./eval.log"
+level     = "INFO"             # DEBUG | INFO | WARN | ERROR
