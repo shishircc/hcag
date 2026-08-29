@@ -147,6 +147,22 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [7.10 Failure Modes](#710-failure-modes)
   - [7.11 Observability (CLI)](#711-observability-cli)
   - [7.12 Non-Goals](#712-non-goals)
+- [Part 8 — The `rag` CLI Tool](#part-8--the-rag-cli-tool)
+  - [8.1 Purpose](#81-purpose)
+  - [8.2 KB Input Model](#82-kb-input-model)
+  - [8.3 Invocation](#83-invocation)
+  - [8.4 Indexing Pipeline](#84-indexing-pipeline)
+    - [8.4.1 Walk and file classification](#841-walk-and-file-classification)
+    - [8.4.2 Text extraction and chunking](#842-text-extraction-and-chunking)
+    - [8.4.3 Image description](#843-image-description)
+    - [8.4.4 Embedding and batching](#844-embedding-and-batching)
+    - [8.4.5 Idempotency and re-indexing](#845-idempotency-and-re-indexing)
+  - [8.5 Index Schema](#85-index-schema)
+  - [8.6 Hybrid Search Semantics](#86-hybrid-search-semantics)
+  - [8.7 Configuration](#87-configuration)
+  - [8.8 Failure Modes](#88-failure-modes)
+  - [8.9 Observability (CLI)](#89-observability-cli)
+  - [8.10 Non-Goals](#810-non-goals)
 
 ---
 
@@ -2549,3 +2565,234 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`eval.run`, `eval.row`, `eval.ch
 - **Running the KB or the agent directly.** `eval` only speaks to the backend over `POST /chat`. It does not import `AgentRuntime`, does not touch the KB, and does not care whether the backend is `hcag-server` (Part 5's web widget), a mocked stub, a different agent, or a hosted service — the contract is the HTTP endpoint alone. This keeps `eval` usable as a black-box regression harness against any chatbot that speaks the same protocol.
 - **CI orchestration or threshold enforcement.** `eval` reports scores; it does not fail the CI job on a pass-rate drop. Callers wire the exit-code policy they want on top of the completed CSV (e.g., a wrapper script that parses the mean score per kind and gates a PR).
 - **Adversarial or safety evaluation.** Scoring is grounded strictly in `expected_answer`. Prompt-injection tests, jailbreak resistance, and toxicity checks are separate concerns and out of scope.
+
+---
+
+# Part 8 — The `rag` CLI Tool
+
+## 8.1 Purpose
+
+`rag` indexes a knowledge-base folder into a local [LanceDB](https://lancedb.github.io/lancedb/) store, producing an on-disk index that supports **hybrid retrieval** — dense vector search over LLM embeddings combined with keyword (BM25-style) search over the same text — from a single query. It is a companion to HCAG, not a replacement for it: the HCAG agent already navigates the taxonomy and loads whole packets, but many workflows also want flat retrieval over the same source material — for eval baselines, ad-hoc grep, or a Flat-RAG fallback (§1.3.3) that the caller composes on top of HCAG (§1.3.5).
+
+The tool is a **one-shot indexer**. It does not serve queries, does not stand up an HTTP endpoint, and is not required at runtime. Downstream code — a notebook, a retriever service, or a comparison harness — opens the resulting LanceDB folder directly and queries it.
+
+## 8.2 KB Input Model
+
+`rag` operates on a **raw** KB folder — the same layout `hcag preprocess` (§3.4) and `crawl` (§4) produce. It intentionally does **not** require the KB to have been normalized: `packet.md` and `catalog.md` files may or may not exist, and the tool works on either shape.
+
+Two exclusion rules govern what gets indexed:
+
+1. **Skip `packet.md` files.** These are HCAG-assembled artifacts (§3.4.3) that concatenate leaf source content into a single file. Indexing them alongside the underlying source would double-count every fact and skew retrieval scores. Root `catalog.md` and per-node `catalog.md` files (§3.5) are HCAG artifacts as well and skipped for the same reason.
+2. **Skip anything inside a packet's `assets/` folder.** Per §2.1 and §3.4.6, an `assets/` directory sits alongside a `packet.md` in each leaf/mixed folder — it is HCAG's home for images the packet references. Those images are already indirectly indexed via the packet body; letting `rag` re-index them would again double-count.
+
+Everything else under `<kb_root>` is a candidate for indexing — the raw `.md`, `.txt`, and `.pdf` files a taxonomy owner authored, plus any images that live **outside** an HCAG `assets/` folder (loose reference material, source screenshots, diagrams the taxonomy author has not yet folded into a packet). Files whose extension is unknown are skipped with a `DEBUG` log line.
+
+## 8.3 Invocation
+
+```
+$ rag --kb <kb_root> [--index <index_dir>] [options]
+```
+
+| Parameter | Required | Description |
+|---|---|---|
+| `--kb <path>` | yes | Path to the KB folder to index. `rag` walks it recursively per §8.4.1. |
+| `--index <path>` | no | Path to the LanceDB folder that holds the index. Default: `./local_lancedb`. Created if it does not exist. |
+| `--config <path>` | no | Path to `rag.toml` (§8.7). Defaults to `<kb_root>/rag.toml` if present. |
+| `--table <name>` | no | LanceDB table name inside the index directory. Default: `kb`. |
+| `--recreate` | no | Drop the existing table before indexing. Without this flag, `rag` upserts by `id` — unchanged files are skipped (§8.4.5). |
+| `--include-images / --no-include-images` | no | Toggle the image-description pipeline (§8.4.3). Default: `--include-images`. |
+| `--log-file <path>` | no | Log file path. Default: `./rag.log`. |
+| `--log-level <lvl>` | no | `DEBUG` \| `INFO` \| `WARN` \| `ERROR`. Default: `INFO`. |
+
+Example invocation:
+
+```
+$ rag --kb ./kb --index ./local_lancedb
+```
+
+Indexes every non-excluded file under `./kb` into a LanceDB table named `kb` inside `./local_lancedb/`. On a second run, only files whose content or path has changed since the last run are re-embedded (§8.4.5).
+
+Equivalent with an explicit table name, a rag.toml, and image indexing disabled:
+
+```
+$ rag --kb ./kb --index ./local_lancedb \
+      --table support-docs --config ./rag.toml --no-include-images
+```
+
+## 8.4 Indexing Pipeline
+
+### 8.4.1 Walk and file classification
+
+`rag` walks `<kb_root>` with a deterministic pre-order traversal (alphabetical within each directory) so a re-run against the same tree produces the same row ordering — this makes `diff`-ing successive index snapshots meaningful.
+
+For each file it classifies against the exclusion rules (§8.2) and the source-kind table:
+
+| Extension | `source_kind` | Handling |
+|---|---|---|
+| `.md`, `.markdown` | `markdown` | Parsed as Markdown; chunked on heading boundaries (§8.4.2). |
+| `.txt` | `text` | Chunked with a fixed sliding window. |
+| `.html`, `.htm` | `html` | Stripped to text via the same converter `crawl` uses (§4.4.1), then chunked. |
+| `.pdf` | `pdf` | Converted to Markdown via the same converter `crawl` uses (§4.4.2), then chunked. |
+| `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | `image` | Sent through the image-description pipeline (§8.4.3). Skipped entirely when `--no-include-images` is set. |
+| anything else | — | Skipped with a `DEBUG` `rag.file.skip_unknown_ext` log line. |
+
+Files that match an exclusion rule (§8.2) are skipped before extension classification and logged at `DEBUG` as `rag.file.skip_packet_md` or `rag.file.skip_hcag_asset` respectively.
+
+### 8.4.2 Text extraction and chunking
+
+For each in-scope textual file, `rag`:
+
+1. Extracts UTF-8 text (via the source-kind-appropriate converter above).
+2. Splits into chunks using a **Markdown-aware windowing strategy**: chunks respect heading boundaries and paragraph breaks where possible, and never split inside a fenced code block. The default target is 500 tokens per chunk with a 60-token overlap between adjacent chunks; both are overridable in `rag.toml` (§8.7). Non-Markdown text uses the same target but with a plain sliding window.
+3. Emits one index row per chunk (§8.5), carrying:
+   - the chunk's byte offset span within the source file,
+   - the innermost heading path (for Markdown) as a `headings` array — useful to reconstruct provenance at query time,
+   - a stable `id` derived from the file's relative path plus the chunk index (§8.4.5).
+
+### 8.4.3 Image description
+
+Images are **indirectly indexed**: `rag` never embeds the raw bytes. Instead, each in-scope image is passed to a multimodal LLM (default: the same provider/model used for the text embeddings' companion LLM, configurable per §8.7) with a fixed description prompt. The prompt asks for:
+
+- a one-sentence caption of the primary subject,
+- a short paragraph enumerating visible entities, labels, and any text content in the image (e.g., diagram labels, chart axis titles, screenshot UI copy),
+- optional structural notes when the image is clearly a diagram, chart, or state machine (e.g., "state-machine diagram with 4 nodes and 5 labeled transitions").
+
+The returned text is the chunk that gets embedded and stored. Each image produces exactly one row (never chunked further) with `source_kind = "image"`, `image_path` set to the image's path relative to `<kb_root>`, and `text` holding the LLM-generated description. Retrieval consumers can dereference `image_path` to fetch the original bytes when they need to show or re-analyze the image.
+
+If the description call fails past the configured retry cap, the image is dropped with a `WARN` (`rag.image.description_failed`) and no row is emitted for it. The rest of the run proceeds.
+
+### 8.4.4 Embedding and batching
+
+After chunk assembly, `rag` batches chunks into groups (default 32) and calls the configured **embedding provider** to produce dense vectors. The provider is LiteLLM-routed for the same reason as the runtime (§2.13.2, §2.13.8) — no direct vendor SDK imports at the call site. The embedding dimension is discovered from the first response and pinned for the whole run; a subsequent chunk whose vector has a different dimension aborts the run with a clear error (misconfiguration between chunk types).
+
+Batches are dispatched sequentially (not concurrently) by default. The chunking + embedding stages are both CPU-cheap and I/O-bound; the bottleneck is the embedding provider's rate limit, which the caller tunes via `[embedding].batch_size` in `rag.toml` rather than by adding parallelism `rag` cannot rate-limit safely.
+
+### 8.4.5 Idempotency and re-indexing
+
+`rag` is idempotent under repeated invocations against a stable KB:
+
+- Each row's `id` is a stable digest of `(<relative_path>, <chunk_index>, <source_content_hash>)`. Content changes flip the `id`, so old rows for a modified file are naturally superseded rather than mutated in place.
+- Without `--recreate`, `rag` **upserts** by `id` and issues a **delete-by-`kb_path`-then-insert** for any file whose current content hash differs from the stored one. Untouched files skip the embed step entirely — the run's cost scales with the size of the diff, not the size of the KB.
+- With `--recreate`, the target table is dropped first and every in-scope file is re-embedded. Useful when embedding model or chunk parameters change (§8.7).
+
+The tool records a `manifest` row per source file containing its content hash, byte size, mtime, and chunk count, so a subsequent run can detect changes without re-reading whole files unnecessarily.
+
+## 8.5 Index Schema
+
+`rag` writes a single LanceDB table (default name `kb`) with a fixed column schema. All chunks — text and image-description — share the same columns; per-kind fields (`image_path`, `headings`) are nullable.
+
+| Column | Type | Description |
+|---|---|---|
+| `id` | `string` (primary key) | Stable digest of `(kb_path, chunk_index, content_hash)`. Upsert key. |
+| `kb_path` | `string` | Path relative to `<kb_root>` (POSIX form). Same file, many chunks. |
+| `chunk_index` | `int32` | 0-based position of the chunk within the source file. Always `0` for images. |
+| `source_kind` | `string` | One of `markdown`, `text`, `html`, `pdf`, `image` (§8.4.1). |
+| `text` | `string` | The chunk text — either the extracted excerpt (for textual chunks) or the LLM-generated description (for images). This is the column embedded into `vector` and FTS-indexed for keyword search (§8.6). |
+| `vector` | `fixed_size_list<float32, D>` | Dense embedding of `text`. `D` is discovered from the embedding provider on the first row (§8.4.4) and pinned per table. |
+| `char_start`, `char_end` | `int64` | Byte offsets of the chunk inside the source file. `null` for images. |
+| `headings` | `list<string>` | Ordered heading path down to the chunk (Markdown/HTML only). e.g. `["Refunds", "Partial refunds"]`. `null` otherwise. |
+| `image_path` | `string?` | Path (relative to `<kb_root>`) of the source image. Populated iff `source_kind = "image"`. |
+| `token_estimate` | `int32` | Approximate token count of `text` (same estimator as the memory module — §2.5). Useful for budget-aware assembly downstream. |
+| `content_hash` | `string` | SHA-256 of the underlying source file's bytes (not the chunk). Used for idempotency (§8.4.5). |
+| `metadata` | `string` | JSON blob for anything provider- or run-specific — the description prompt version for images, the chunking parameters used for text, the embedding model ID. Never queried directly; provenance only. |
+| `indexed_at` | `timestamp` | UTC timestamp of the row's insertion. |
+
+In addition to the primary table, `rag` writes a `manifest` table with one row per source file: `kb_path`, `content_hash`, `bytes`, `mtime`, `chunk_count`, `source_kind`, `indexed_at`. The manifest lets `rag` decide what changed on a subsequent run (§8.4.5) without scanning the chunk table.
+
+**Indexes created after ingestion:**
+
+- **Vector index** on `vector` (IVF-PQ by default; LanceDB picks parameters from the row count). Enables `table.search(vec)` at query time.
+- **FTS (full-text search) index** on `text` (LanceDB's `create_fts_index("text")`). Enables `table.search(query_string).text()` and BM25-style scoring.
+
+Both indexes are refreshed automatically after each `rag` run so downstream queries see a consistent view.
+
+## 8.6 Hybrid Search Semantics
+
+The index is **hybrid-ready** — every row carries both a dense vector and an FTS-indexed text column — but the CLI itself never issues a query; retrieval is a downstream concern. The design is that a consumer opens the LanceDB folder and issues a hybrid search of the form:
+
+```python
+import lancedb
+db  = lancedb.connect("./local_lancedb")
+tbl = db.open_table("kb")
+hits = (
+    tbl.search(query="how do partial refunds work?", query_type="hybrid")
+       .rerank(reranker=lancedb.rerankers.RRFReranker())
+       .limit(10)
+       .to_list()
+)
+```
+
+At query time, LanceDB runs both a k-nearest-neighbour vector search and a BM25 keyword search over the same table, then fuses the two ranked lists with a reranker (RRF by default; any `lancedb.rerankers` subclass is compatible). The columns `id`, `kb_path`, `chunk_index`, `text`, `headings`, and `image_path` are the retrieval consumer's contract — everything else (offsets, hashes, metadata) is provenance.
+
+Hybrid search deliberately outperforms either mode alone on the two failure classes flat RAG suffers from (§1.2): pure-lexical queries lose recall on paraphrased content (which vectors catch); pure-vector queries lose precision on rare tokens like IDs, product SKUs, or policy version numbers (which BM25 catches).
+
+## 8.7 Configuration
+
+`rag` reads an optional `rag.toml` (or per-invocation flags):
+
+```toml
+[embedding]
+provider    = "openai"                       # openai | anthropic | bedrock | ollama
+model       = "text-embedding-3-small"       # any LiteLLM-supported embedding model
+api_key_env = "OPENAI_API_KEY"
+endpoint    = ""                             # for self-hosted / local
+batch_size  = 32
+dimension   = 1536                           # optional pin; validated against first response
+
+[image]
+provider           = "anthropic"             # multimodal LLM for image descriptions
+model              = "claude-haiku-4-5-20251001"
+api_key_env        = "ANTHROPIC_API_KEY"
+prompt_path        = ""                      # override packaged default (§8.4.3)
+max_retries        = 2
+max_output_tokens  = 400
+
+[chunking]
+target_tokens = 500                          # per chunk
+overlap_tokens = 60                          # between adjacent chunks
+respect_headings = true                      # Markdown-aware boundaries
+
+[index]
+table = "kb"                                 # LanceDB table name
+# recreate = false                           # equivalent of the --recreate flag
+
+[log]
+file_path = "./rag.log"
+level     = "INFO"
+```
+
+Local model support mirrors `hcag` (§3.6) and `evalgen` (§6.8): `provider = "ollama"` with a local `endpoint` runs both embeddings and image descriptions without cloud credentials, at the cost of index-build quality.
+
+## 8.8 Failure Modes
+
+| Condition | Behavior |
+|---|---|
+| `<kb_root>` missing or not a directory | ERROR at startup — non-zero exit. |
+| `<kb_root>` contains no in-scope files | ERROR — nothing to index; exit non-zero. |
+| `--index` path exists but is not a LanceDB folder | ERROR — refuse to write into an unrelated directory. |
+| Embedding provider returns a different dimension than the pinned one | ERROR mid-run — pinned dimension is a hard invariant per table (§8.4.4). |
+| Embedding call fails for a single batch past retries | WARN, batch dropped; run continues with the next batch. |
+| Image description fails past retries | WARN, image dropped; row not emitted (§8.4.3). |
+| A single file fails to parse (malformed PDF, unreadable HTML) | WARN, file dropped; run continues. |
+| Index directory is not writable | ERROR at startup. |
+
+If any `ERROR`-level event fires, `rag` exits with a non-zero status. `WARN`-level drops do not affect exit status but are surfaced in the end-of-run summary along with the counts of skipped files, dropped chunks, and dropped images.
+
+## 8.9 Observability (CLI)
+
+`rag` writes a JSON-lines log to the path in `[log]` config (default `./rag.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), `crawl` (§4.7), `evalgen` (§6.10), and `eval` (§7.11):
+
+- `INFO`: run start (kb root, index path, resolved embedding + image models, pinned dimension), per-file summary (`kb_path`, `source_kind`, chunk count, embed tokens, wall-clock elapsed), run end summary (files scanned / indexed / skipped, chunks written, images described, dropped counts, total wall-clock).
+- `DEBUG`: skip decisions with the matched exclusion rule, chunk boundaries and their heading paths, full image-description prompts and responses, embedding batch sizes and per-batch elapsed.
+- `WARN`: failed embed batches, failed image descriptions, unparseable files, files skipped for unknown extension when `--log-level DEBUG` is not set (they still log at DEBUG then).
+- `ERROR`: startup failures, mid-run dimension drift, unwritable index directory.
+
+If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`rag.run`, `rag.file`, `rag.chunk_batch`, `rag.embed`, `rag.image.describe`) are exported — symmetric with §2.11, §3.9, §4.7, §6.10, and §7.11.
+
+## 8.10 Non-Goals
+
+- **Serving queries.** `rag` produces an index; retrieval, ranking, and query APIs live in downstream code. Keeping the CLI one-shot means it composes cleanly into batch jobs, evaluation pipelines (Part 7), and notebooks without a long-lived process.
+- **Replacing HCAG.** `rag` is a **flat** retrieval layer over the same source content HCAG structures into a taxonomy. Use it as a Flat-RAG fallback (§1.3.3) or as a baseline in eval runs, not as a substitute for the taxonomy-driven agent (§1.3.1).
+- **Editing the KB.** `rag` never mutates `<kb_root>`. It only reads. The index directory is the only write target.
+- **Cross-KB indexes.** One `rag` invocation indexes one KB into one table. Building a multi-tenant or multi-KB index (with a `tenant_id` column, for instance) is a downstream concern; run `rag` per KB and union the tables at query time if that's what the caller needs.
+- **Re-embedding on model change without `--recreate`.** If the embedding provider or model changes between runs, existing rows keep their old vectors — `rag` does not silently mix embedding spaces. Pass `--recreate` (or drop the table manually) to rebuild.

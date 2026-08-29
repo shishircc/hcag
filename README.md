@@ -157,6 +157,79 @@ hcag aggregate ./kb
 
 Details: [DESIGN.md §4](./DESIGN.md#part-4--the-crawl-cli-tool).
 
+## Indexing a KB for Flat Hybrid Search with the `rag` CLI
+
+`rag` is a peer to `hcag preprocess` — an **alternative** way to make a KB queryable. Where `hcag` normalizes a taxonomy for the runtime agent to navigate, `rag` builds a flat [LanceDB](https://lancedb.github.io/lancedb/) index over the same source content, supporting **hybrid retrieval** (dense vector + BM25 keyword, fused with a reranker).
+
+```bash
+rag --kb ./kb --index ./local_lancedb
+```
+
+Use it as a **Flat-RAG fallback** the caller composes on top of HCAG ([§1.3.5 combining approaches](./DESIGN.md#135-combining-approaches)), as a **baseline** in `eval` runs, or for ad-hoc grep over the corpus a notebook or retriever service opens directly.
+
+**What gets indexed** ([DESIGN.md §8.2](./DESIGN.md#82-kb-input-model)):
+
+- Every `.md` / `.txt` / `.html` / `.pdf` under `--kb` — chunked with a Markdown-aware windowing strategy that respects heading and paragraph boundaries.
+- Every image that lives **outside** an HCAG `assets/` folder — indirectly: `rag` passes each image to a multimodal LLM, embeds the returned text description, and stores a reference back to the original `image_path` so consumers can dereference on hit.
+
+**What's skipped** — to avoid double-counting HCAG's own artifacts:
+
+- `packet.md` / `catalog.md` — they concatenate source content the raw files already carry.
+- Anything under a packet's `assets/` folder — the packet body has already indirectly referenced it.
+
+**Query pattern** ([DESIGN.md §8.6](./DESIGN.md#86-hybrid-search-semantics)) — the CLI produces the index; downstream code queries it:
+
+```python
+import lancedb
+db  = lancedb.connect("./local_lancedb")
+tbl = db.open_table("kb")
+hits = (
+    tbl.search(query="how do partial refunds work?", query_type="hybrid")
+       .rerank(reranker=lancedb.rerankers.RRFReranker())
+       .limit(10)
+       .to_list()
+)
+# Each hit exposes: id, kb_path, chunk_index, text, headings, image_path.
+```
+
+**Idempotent re-indexing** — `rag` upserts by content-hash-derived `id`s and keeps a `manifest` table of per-file hashes, so a second run against a stable KB is a no-op and a partial edit re-embeds only the touched files. Pass `--recreate` to rebuild from scratch (needed when changing embedding model or chunk parameters).
+
+Config is read from `./rag.toml` (optional) or `--config <path>`. Minimal example:
+
+```toml
+[embedding]
+provider    = "openai"
+model       = "text-embedding-3-small"
+api_key_env = "OPENAI_API_KEY"
+batch_size  = 32
+
+[image]                                # multimodal LLM used to describe images
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"
+api_key_env = "ANTHROPIC_API_KEY"
+
+[chunking]
+target_tokens    = 500
+overlap_tokens   = 60
+respect_headings = true
+
+[index]
+table = "kb"
+```
+
+End-to-end from a crawl:
+
+```bash
+crawl --depth 3 https://docs.example.com/api/
+rag --kb ./kb --index ./local_lancedb
+# … or, alongside the HCAG pipeline for the same KB:
+hcag preprocess ./kb && hcag aggregate ./kb
+```
+
+The two indexes are independent — `hcag preprocess` writes `packet.md` and `catalog.md` alongside the source files; `rag` writes only into `./local_lancedb/`. `rag` deliberately skips both artifacts when it re-scans the tree, so the two can coexist.
+
+Details: [DESIGN.md §8](./DESIGN.md#part-8--the-rag-cli-tool).
+
 ## Generating Eval Sets with the `evalgen` CLI
 
 Once a KB is normalized by `hcag preprocess`, `evalgen` produces a CSV of question / expected-answer pairs grounded in that KB — for measuring retrieval and answer quality against the runtime agent.
@@ -401,6 +474,7 @@ Full contents in [DESIGN.md](./DESIGN.md):
 - [The `crawl` CLI Tool](./DESIGN.md#part-4--the-crawl-cli-tool)
 - [The `evalgen` CLI Tool](./DESIGN.md#part-6--the-evalgen-cli-tool)
 - [The `eval` CLI Tool](./DESIGN.md#part-7--the-eval-cli-tool)
+- [The `rag` CLI Tool](./DESIGN.md#part-8--the-rag-cli-tool)
 
 ## License
 
