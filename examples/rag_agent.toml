@@ -1,0 +1,59 @@
+# ==============================================================================
+# RAG chat agent — sample config (DESIGN §9.6)
+#
+# Serve as an alternative to the HCAG agent behind `hcag-server`:
+#   hcag-server serve --agent rag \
+#       --rag-index ./local_lancedb --rag-config ./rag_agent.toml --port 8000
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Which LanceDB table to query. Must match what `rag` wrote at index time
+# (see the [index] section of rag.toml).
+# ------------------------------------------------------------------------------
+[index]
+path  = "./local_lancedb"
+table = "kb"
+
+# ------------------------------------------------------------------------------
+# Query embedding — MUST match the model the corpus was indexed with (§9.3.1).
+# On mismatch the agent refuses to start unless allow_embed_mismatch = true.
+# ------------------------------------------------------------------------------
+[embedding]
+provider    = "openai"
+model       = "text-embedding-3-small"
+api_key_env = "OPENAI_API_KEY"
+endpoint    = ""
+batch_size  = 1
+
+# ------------------------------------------------------------------------------
+# Generation LLM — writes the final answer.
+# ------------------------------------------------------------------------------
+[llm]
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"
+api_key_env = "ANTHROPIC_API_KEY"
+max_tokens  = 1024
+temperature = 0.0
+
+# ------------------------------------------------------------------------------
+# Retrieval + prompt shaping (§9.3.2, §9.3.3).
+# ------------------------------------------------------------------------------
+[retrieval]
+top_k              = 8            # hits pulled from LanceDB (per side of the fusion)
+reranker           = "rrf"        # rrf | linear | none
+max_context_tokens = 6000         # sum of chunk token_estimates in the CONTEXT block
+merge_adjacent     = true         # collapse consecutive chunks from the same file
+
+# Optional — override the packaged system prompt (§9.3.4).
+# system_prompt_path    = "prompts/rag_agent_system.md"
+
+# Escape hatch (§9.8). Off by default; set true to bypass the manifest
+# embed-model check at startup. Almost always the wrong knob to turn.
+# allow_embed_mismatch = false
+
+# ------------------------------------------------------------------------------
+# Local file log — JSON-lines, symmetric with the other CLIs (§9.8).
+# ------------------------------------------------------------------------------
+[log]
+file_path = "./rag-agent.log"
+level     = "INFO"                # DEBUG | INFO | WARN | ERROR

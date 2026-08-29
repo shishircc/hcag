@@ -1,4 +1,12 @@
-"""FastAPI application factory for the hcag web backend."""
+"""FastAPI application factory for the hcag web backend.
+
+Serves ``POST /chat`` for one of two agent implementations (§9.5):
+
+- ``agent_type="hcag"`` — the taxonomy-navigating HCAG ``AgentRuntime`` (§2).
+- ``agent_type="rag"``  — the flat-RAG ``RagAgent`` competing baseline (§9).
+
+Both agents implement ``run_turn(str) -> str`` so the HTTP route is agent-agnostic.
+"""
 
 from __future__ import annotations
 
@@ -6,14 +14,17 @@ import os
 import threading
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal, Protocol
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
-from ..config import AgentConfig, load_agent_config
-from ..runtime.agent import AgentRuntime
+
+AgentType = Literal["hcag", "rag"]
+
+
+# --- Wire types -------------------------------------------------------------
 
 
 class HistoryTurn(BaseModel):
@@ -43,37 +54,94 @@ class TokenReply(BaseModel):
     room: str
 
 
-class _SessionEntry:
-    __slots__ = ("runtime", "touched")
+class _AgentLike(Protocol):
+    def run_turn(self, user_message: str) -> str: ...
 
-    def __init__(self, runtime: AgentRuntime) -> None:
-        self.runtime = runtime
+
+class _SessionEntry:
+    __slots__ = ("agent", "touched")
+
+    def __init__(self, agent: _AgentLike) -> None:
+        self.agent = agent
         self.touched = time.monotonic()
 
 
-def _load_config(agent_toml: Path | None) -> AgentConfig:
+# --- HCAG agent bootstrap ---------------------------------------------------
+
+
+def _load_hcag_config(agent_toml: Path | None):
+    from ..config import AgentConfig, load_agent_config
+
     if agent_toml is not None and agent_toml.is_file():
         return load_agent_config(agent_toml)
-    # Fall back to a minimal in-memory config so the server can boot even
-    # without a KB — every /chat call will still fail loudly, but /livekit/token
-    # remains usable and startup is diagnosable.
     kb = os.environ.get("HCAG_KB_ROOT", "./kb")
     return AgentConfig(kb_root=kb)
 
 
-def _resolve_livekit(agent_toml: Path | None) -> tuple[str, str, str, str]:
-    """Return (url, api_key, api_secret, room_prefix) for LiveKit token minting.
+def _make_hcag_factory(agent_toml: Path | None):
+    """Return (health_info, session_factory) for --agent hcag."""
+    from ..runtime.agent import AgentRuntime
 
-    Priority: environment > voice.toml > empty. We deliberately DO NOT reuse
-    AgentConfig here because AgentConfig doesn't model livekit; voice.toml does.
+    cfg = _load_hcag_config(agent_toml)
+
+    def _session() -> _AgentLike:
+        runtime = AgentRuntime(cfg=cfg)
+        runtime.bootstrap()
+        return runtime
+
+    info = {"agent": "hcag", "kb_root": cfg.kb_root}
+    return info, _session
+
+
+# --- RAG agent bootstrap ----------------------------------------------------
+
+
+def _load_rag_agent_config(rag_toml: Path | None):
+    from ..rag.agent_config import RagAgentConfig, load_rag_agent_config
+
+    if rag_toml is not None and rag_toml.is_file():
+        return load_rag_agent_config(rag_toml)
+    return RagAgentConfig()
+
+
+def _make_rag_factory(rag_toml: Path | None, rag_index: Path | None):
+    """Return (health_info, session_factory) for --agent rag.
+
+    Bootstraps ``RagAgentDeps`` ONCE at server startup so each session shares
+    the LanceDB connection + embedder + system prompt (§9.5 startup semantics).
+    Startup failure raises ``AgentBootstrapError`` which the caller maps to a
+    process-fatal error.
     """
+    from ..rag.agent import RagAgent, build_deps
+
+    cfg = _load_rag_agent_config(rag_toml)
+    if rag_index is not None:
+        cfg = cfg.model_copy(update={"index": cfg.index.model_copy(update={"path": str(rag_index)})})
+
+    deps = build_deps(cfg)
+
+    def _session() -> _AgentLike:
+        return RagAgent(cfg=cfg, deps=deps)
+
+    info = {
+        "agent": "rag",
+        "index_path": cfg.index.path,
+        "table": cfg.index.table,
+        "embed_model": cfg.embedding.model,
+        "gen_model": cfg.llm.model,
+    }
+    return info, _session
+
+
+# --- LiveKit token minting (unchanged from prior version) -------------------
+
+
+def _resolve_livekit() -> tuple[str, str, str, str]:
     url = os.environ.get("LIVEKIT_URL", "")
     api_key = os.environ.get("LIVEKIT_API_KEY", "")
     api_secret = os.environ.get("LIVEKIT_API_SECRET", "")
     room_prefix = os.environ.get("LIVEKIT_ROOM_PREFIX", "hcag-")
 
-    # Optional: pull url + prefix (but not keys — keys stay in env) from voice.toml
-    # if a path is provided alongside agent.toml.
     voice_toml_env = os.environ.get("HCAG_VOICE_CONFIG")
     if voice_toml_env:
         voice_toml = Path(voice_toml_env)
@@ -87,23 +155,18 @@ def _resolve_livekit(agent_toml: Path | None) -> tuple[str, str, str, str]:
                 api_key = api_key or (vc.livekit.resolved_api_key() or "")
                 api_secret = api_secret or (vc.livekit.resolved_api_secret() or "")
             except Exception:
-                # Non-fatal — /livekit/token will report a clearer error later.
                 pass
 
     return url, api_key, api_secret, room_prefix
 
 
 def _mint_livekit_token(url: str, api_key: str, api_secret: str, room: str, identity: str) -> str:
-    """Mint a LiveKit access token. Isolated so the import cost is paid on demand."""
     try:
         from livekit.api import AccessToken, VideoGrants  # type: ignore
     except ImportError as e:
         raise HTTPException(
             status_code=500,
-            detail=(
-                "livekit-api is not installed. Install with `pip install hcag[web]` "
-                "(which pulls livekit-api)."
-            ),
+            detail="livekit-api is not installed. Install with `pip install hcag[web]`.",
         ) from e
 
     if not (url and api_key and api_secret):
@@ -125,12 +188,28 @@ def _mint_livekit_token(url: str, api_key: str, api_secret: str, room: str, iden
     return at.to_jwt()
 
 
-def create_app(*, agent_toml: Path | None = None, cors_origins: list[str] | None = None) -> FastAPI:
-    cfg = _load_config(agent_toml)
+# --- Factory ---------------------------------------------------------------
+
+
+def create_app(
+    *,
+    agent_type: AgentType = "hcag",
+    agent_toml: Path | None = None,
+    rag_index: Path | None = None,
+    rag_config: Path | None = None,
+    cors_origins: list[str] | None = None,
+) -> FastAPI:
+    if agent_type == "hcag":
+        agent_info, session_factory = _make_hcag_factory(agent_toml)
+    elif agent_type == "rag":
+        agent_info, session_factory = _make_rag_factory(rag_config, rag_index)
+    else:
+        raise ValueError(f"unknown agent_type: {agent_type!r}. Expected 'hcag' or 'rag'.")
+
     sessions: dict[str, _SessionEntry] = {}
     lock = threading.Lock()
 
-    app = FastAPI(title="hcag-server", version="0.1.0")
+    app = FastAPI(title=f"hcag-server ({agent_type})", version="0.1.0")
 
     app.add_middleware(
         CORSMiddleware,
@@ -140,38 +219,33 @@ def create_app(*, agent_toml: Path | None = None, cors_origins: list[str] | None
         allow_headers=["*"],
     )
 
-    def get_runtime(session_id: str) -> AgentRuntime:
+    def get_agent(session_id: str) -> _AgentLike:
         with lock:
             entry = sessions.get(session_id)
             if entry is None:
-                runtime = AgentRuntime(cfg=cfg)
-                runtime.bootstrap()
-                entry = _SessionEntry(runtime)
+                entry = _SessionEntry(session_factory())
                 sessions[session_id] = entry
             entry.touched = time.monotonic()
-            return entry.runtime
+            return entry.agent
 
     @app.get("/health")
     def health() -> dict[str, Any]:
-        return {"ok": True, "kb_root": cfg.kb_root, "sessions": len(sessions)}
+        return {"ok": True, "sessions": len(sessions), **agent_info}
 
     @app.post("/chat", response_model=ChatReply)
     def chat(req: ChatRequest) -> ChatReply:
         try:
-            runtime = get_runtime(req.session_id)
-            text = runtime.run_turn(req.message)
+            agent = get_agent(req.session_id)
+            text = agent.run_turn(req.message)
         except FileNotFoundError as e:
-            raise HTTPException(
-                status_code=500,
-                detail=f"KB not found at {cfg.kb_root}. Point HCAG_AGENT_CONFIG at your agent.toml.",
-            ) from e
+            raise HTTPException(status_code=500, detail=str(e)) from e
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return ChatReply(text=text or "", session_id=req.session_id)
 
     @app.post("/livekit/token", response_model=TokenReply)
     def token(req: TokenRequest) -> TokenReply:
-        url, api_key, api_secret, room_prefix = _resolve_livekit(agent_toml)
+        url, api_key, api_secret, room_prefix = _resolve_livekit()
         room = req.room or f"{room_prefix}{req.identity}"
         jwt = _mint_livekit_token(url, api_key, api_secret, room, req.identity)
         return TokenReply(url=url, token=jwt, room=room)

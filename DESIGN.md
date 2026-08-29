@@ -163,6 +163,21 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [8.8 Failure Modes](#88-failure-modes)
   - [8.9 Observability (CLI)](#89-observability-cli)
   - [8.10 Non-Goals](#810-non-goals)
+- [Part 9 — The RAG Chat Agent (Competing Baseline)](#part-9--the-rag-chat-agent-competing-baseline)
+  - [9.1 Purpose](#91-purpose)
+  - [9.2 Component Boundary](#92-component-boundary)
+  - [9.3 Turn Pipeline](#93-turn-pipeline)
+    - [9.3.1 Query embedding](#931-query-embedding)
+    - [9.3.2 Hybrid retrieval](#932-hybrid-retrieval)
+    - [9.3.3 Chunk assembly](#933-chunk-assembly)
+    - [9.3.4 Prompt composition](#934-prompt-composition)
+    - [9.3.5 Sequence diagram](#935-sequence-diagram)
+  - [9.4 Comparison to HCAG](#94-comparison-to-hcag)
+  - [9.5 Backend Server Integration (`hcag-server --agent`)](#95-backend-server-integration-hcag-server---agent)
+  - [9.6 Configuration](#96-configuration)
+  - [9.7 Failure Modes](#97-failure-modes)
+  - [9.8 Observability](#98-observability)
+  - [9.9 Non-Goals](#99-non-goals)
 
 ---
 
@@ -2796,3 +2811,248 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`rag.run`, `rag.file`, `rag.chun
 - **Editing the KB.** `rag` never mutates `<kb_root>`. It only reads. The index directory is the only write target.
 - **Cross-KB indexes.** One `rag` invocation indexes one KB into one table. Building a multi-tenant or multi-KB index (with a `tenant_id` column, for instance) is a downstream concern; run `rag` per KB and union the tables at query time if that's what the caller needs.
 - **Re-embedding on model change without `--recreate`.** If the embedding provider or model changes between runs, existing rows keep their old vectors — `rag` does not silently mix embedding spaces. Pass `--recreate` (or drop the table manually) to rebuild.
+
+---
+
+# Part 9 — The RAG Chat Agent (Competing Baseline)
+
+## 9.1 Purpose
+
+The **RAG chat agent** is a second, deliberately simpler answering agent that serves the same `POST /chat` contract as the HCAG `AgentRuntime` (§2) — but uses the flat LanceDB hybrid index produced by `rag` (Part 8) as its retrieval backend instead of navigating a taxonomy. It exists for one reason: **so HCAG can be compared against a serious flat-RAG baseline on the same KB, under the same eval set, on the same wire protocol.**
+
+Without a competing agent, HCAG evaluation is either self-referential (score HCAG vs. HCAG on different prompts) or requires the eval harness to know about two different agent shapes. With the RAG agent:
+
+1. Both agents implement the same `run_turn(user_message) -> str` interface (§9.2).
+2. Both agents are served through the same `hcag-server` process (§9.5) — a startup flag picks which one instantiates.
+3. `eval` (Part 7) scores them identically — the same CSV, the same judge, the same rubric. The only variable is the agent under test.
+
+The RAG agent is **not** intended to beat HCAG on knowledge-heavy tasks (that would defeat HCAG's own purpose per §1.3). It is intended to be a **credible** flat-RAG implementation — good enough that a win for HCAG is a real win, and a loss for HCAG is a real loss and worth investigating.
+
+## 9.2 Component Boundary
+
+The RAG agent lives at `hcag/rag/agent.py`, package-cohesive with the index format it queries. It presents the same public surface as `AgentRuntime`:
+
+```python
+class RagAgent:
+    def __init__(self, cfg: RagAgentConfig, ...): ...
+    def bootstrap(self) -> None: ...
+    def run_turn(self, user_message: str) -> str: ...
+```
+
+Both `AgentRuntime.run_turn` and `RagAgent.run_turn` take a plain user string and return a plain assistant string; they hold per-instance conversation history so successive calls compose one session. That interface parity is what lets `hcag-server` swap them behind the same HTTP route (§9.5).
+
+Dependencies used by the RAG agent, all already present for `rag` (Part 8):
+
+- **LanceDB** — opens the index directory and executes the hybrid search.
+- **LiteLLM** — for both the query embedding call and the final answer LLM call. Provider-neutral, symmetric with §2.13.2.
+- **`hcag/rag/schema.py`** — reads the same column contract the indexer writes.
+
+The RAG agent does **not** import anything from `hcag/runtime/` (the HCAG agent) or `hcag/memory/`. The two agents share no per-turn state and no code path beyond the LiteLLM adapter and the logger — this isolation is deliberate so eval comparisons stay clean and a regression in one cannot mask a regression in the other.
+
+## 9.3 Turn Pipeline
+
+Each `run_turn` call is a **stateless retrieval** followed by an LLM generation. Unlike HCAG — which maintains an LRU-ordered active packet set across turns (§2.4) — the RAG agent retrieves fresh chunks for every turn based on the current user message. This is the standard flat-RAG loop and is what a downstream operator would build if they hadn't heard of HCAG.
+
+### 9.3.1 Query embedding
+
+The user message is embedded using the **same embedding provider + model** that indexed the corpus. The RAG agent reads that pair from the LanceDB `manifest` (row's `metadata` blob carries `embed_model`) at bootstrap and hard-fails if the configured `[embedding]` in `rag_agent.toml` disagrees — a query vector from a different space is silently useless, so the mismatch surfaces at startup rather than as a mysterious quality drop.
+
+### 9.3.2 Hybrid retrieval
+
+The agent issues one LanceDB hybrid query per turn (§8.6):
+
+```python
+hits = (
+    tbl.search(query_text, query_type="hybrid", vector_column_name="vector")
+       .rerank(reranker=lancedb.rerankers.RRFReranker())
+       .limit(top_k)
+       .to_list()
+)
+```
+
+The reranker fuses the vector KNN result and the BM25 result via reciprocal-rank fusion. `top_k` defaults to `8` (overridable per §9.6) — enough to cover multi-hop answers without blowing the LLM prompt budget in §9.3.4.
+
+Every hit carries the columns fixed in §8.5: `id`, `kb_path`, `chunk_index`, `text`, `headings`, `image_path`, `token_estimate`.
+
+### 9.3.3 Chunk assembly
+
+Retrieved chunks are assembled into a single **context block** in three steps:
+
+1. **Deduplicate by `kb_path` + adjacent `chunk_index`.** If two hits are consecutive chunks from the same file, merge them into one span so the LLM sees continuous prose instead of two nearly-duplicated fragments.
+2. **Budget-cap by `token_estimate`.** Sum chunk token estimates in rank order; stop when the running total would exceed `max_context_tokens` (default `6000` — leaves room for the user turn, system prompt, and answer within a typical 8k–16k model window). Dropped chunks are logged at `DEBUG`.
+3. **Sort survivors by `(kb_path, chunk_index)`.** Presenting them in source order (not rank order) inside the prompt reads better to the LLM and is what a human would do reading the same material.
+
+The result is a list of `(kb_path, headings_path, chunk_text, image_path?)` tuples with a stable, deterministic ordering.
+
+### 9.3.4 Prompt composition
+
+The RAG agent composes a per-turn prompt of this shape:
+
+```
+system: <RAG-agent system prompt: answer strictly from the CONTEXT below;
+         if the CONTEXT is insufficient, say so; cite kb_path for facts>
+
+user: CONTEXT
+      <for each retrieved chunk in source order:>
+        [source: <kb_path> § <headings>]
+        <chunk_text>
+      ---
+      QUESTION
+      <turn N user_message>
+
+<prior conversation turns interleaved as user/assistant messages, so
+ clarifying questions and previous answers stay visible>
+
+user: <the current user_message>
+```
+
+Two properties worth calling out explicitly:
+
+- **The system prompt is byte-stable across turns of one session** (it never changes), so it caches under the same rules HCAG relies on (§2.12). The **user turn is not** — the retrieved context changes every turn, which is the RAG loop's fundamental cache-hostile shape and one of the axes on which HCAG outperforms it (§9.4).
+- **Image chunks are included as text** (their LLM-generated description from §8.4.3), plus their `image_path` cited alongside `kb_path`. The RAG agent does **not** re-attach image bytes to the LLM call — the whole point of §8.4.3 is that image content is captured as text at index time. Callers who want vision-in-the-loop should use HCAG (which does packet-level multimodal loading per §2.6) or extend the RAG agent to re-attach originals on hit (out of scope here).
+
+### 9.3.5 Sequence diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant S as hcag-server
+    participant A as RagAgent
+    participant E as Embedding LLM
+    participant L as LanceDB (kb table)
+    participant G as Generation LLM
+
+    U->>S: POST /chat {session_id, message}
+    S->>A: run_turn(message)
+    A->>E: embed(message)
+    E-->>A: query_vector
+    A->>L: hybrid_search(query_text, query_vector, top_k)
+    L-->>A: hits[] with (text, headings, kb_path, image_path)
+    A->>A: dedup + budget-cap + source-order sort (§9.3.3)
+    A->>A: compose prompt (§9.3.4) with prior history
+    A->>G: chat(system, user)
+    G-->>A: answer_text
+    A-->>S: answer_text
+    S-->>U: 200 {text, session_id}
+```
+
+## 9.4 Comparison to HCAG
+
+Both agents answer the same wire question and are scored on the same rubric. What differs is *how* they get to the answer. The table below is the mental model the eval-run operator should carry into every score-diff.
+
+| Axis | HCAG (`AgentRuntime`) | RAG Chat Agent (`RagAgent`) |
+|---|---|---|
+| Retrieval unit | Whole packet (`packet.md` + `assets/`) — high-context, coherent | Top-k chunks — smaller, fragmented across sources |
+| Retrieval trigger | LLM decides via `check_and_load_kb` tool once per task branch (§2.3.2) | Retriever runs unconditionally, once per turn |
+| Cross-turn reuse | Active packet set carried in LRU-ordered context; cache-friendly (§2.12) | Fresh retrieval per turn; prompt varies each call — cache-hostile |
+| Selection signal | LLM reasoning over the catalog (semantic + structural) | Embedding similarity + BM25 (surface signal) fused by RRF |
+| Multi-hop reasoning | Whole-packet + explicit-load loop supports chains of retrieval | One-shot retrieval; multi-hop requires all evidence to co-rank in a single query |
+| Multimodal | Images attached as first-class content blocks at load time (§2.6) | Images seen only via their LLM-generated text description (§8.4.3) |
+| Latency | Higher when a load fires; near-zero on cached branches | ~constant per turn (one embed + one hybrid search + one generation) |
+| Prompt tokens per turn | Amortized down by cache hits (§2.12) — dominant cost is the packet(s) once | Full context re-sent every turn; scales with `max_context_tokens` |
+| Failure mode | Wrong classification → wrong packet → wrong answer, easy to spot in logs | Wrong retrieval ranking → chunks missing key context → subtle degradation |
+| KB build cost | `hcag preprocess` + `hcag aggregate` (§3) | `rag` (§8) — usually faster; no taxonomy authoring needed |
+
+The intended narrative when scoring both: **`simple` and `medium`** questions (§6.4.1–2) should be roughly tied — a single well-retrieved packet or a single well-retrieved chunk both suffice. **`complex` and `hard-1`** (§6.4.3–4) should favor HCAG — whole-packet load and the cross-packet loading loop both help. **`hard-2`** (§6.4.5) should strongly favor HCAG — direct image attachment beats text-of-image. A run that contradicts this is a signal worth chasing, not a bug in the eval.
+
+## 9.5 Backend Server Integration (`hcag-server --agent`)
+
+`hcag-server` (the FastAPI backend from `hcag/server/`, exercised by the web widget and by `eval`) chooses which agent to instantiate at startup via a single flag. The wire contract on `POST /chat` is unchanged — clients and `eval` do not know or care which agent is answering.
+
+```
+$ hcag-server serve --agent {hcag|rag} [options]
+```
+
+Precedence for the choice: `--agent` CLI flag > `HCAG_SERVER_AGENT` env var > default (`hcag`).
+
+Per-agent options resolve to different config paths and different startup work:
+
+| Flag | Applies to | Purpose |
+|---|---|---|
+| `--agent hcag` (default) | HCAG runtime | Load `agent.toml` (§2.13), instantiate `AgentRuntime`, bootstrap catalog. |
+| `--agent rag` | RAG chat agent | Load `rag_agent.toml` (§9.6), open the LanceDB index (`--rag-index`, default `./local_lancedb`), instantiate `RagAgent`, run a sanity probe on the `kb` table. |
+| `--agent-config <path>` | HCAG only | Path to `agent.toml`. Ignored when `--agent rag`. |
+| `--rag-index <path>` | RAG only | Path to the LanceDB folder produced by `rag` (Part 8). Ignored when `--agent hcag`. |
+| `--rag-config <path>` | RAG only | Path to `rag_agent.toml`. Ignored when `--agent hcag`. |
+
+Startup is fail-fast for the selected agent only:
+
+- With `--agent hcag`: missing `agent.toml`, missing `kb_root`, or an empty catalog is a startup error.
+- With `--agent rag`: a missing `--rag-index` directory, a missing `kb` table, an empty `kb` table, or a manifest that lists an embedding model different from `[embedding].model` in `rag_agent.toml` is a startup error.
+
+The other agent's config is not touched. Running both agents side by side requires two `hcag-server` processes on two ports — the eval harness already routes by `--backend-url` (§7.3) so this drops in cleanly.
+
+**Session state.** Both agents keep per-`session_id` conversation history in memory (single-node dev server, per §5 of `hcag/web/README.md`). The state is agent-specific: an HCAG session carries the LRU-ordered active packet set; a RAG session carries only the raw turn history (RAG retrieval is stateless). The `session_id` namespace is not shared across the two agents — if the same id shows up under `hcag` and `rag` in separate runs, they are independent conversations. Callers that mix agents (unusual) should mint distinct ids.
+
+## 9.6 Configuration
+
+`rag_agent.toml` layers on top of the settings the `rag` indexer already used, so the same file can drive both index-build and query-time in matched setups. The RAG agent reads only the sections below; unrelated `rag.toml` sections (like `[chunking]`) are ignored.
+
+```toml
+# Which LanceDB table to query (must match the one `rag` wrote — §8.7 [index]).
+[index]
+path  = "./local_lancedb"
+table = "kb"
+
+# Query embedding — MUST match the model the corpus was indexed with (§9.3.1).
+[embedding]
+provider    = "openai"
+model       = "text-embedding-3-small"
+api_key_env = "OPENAI_API_KEY"
+
+# Generation LLM — the model that writes the answer.
+[llm]
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"
+api_key_env = "ANTHROPIC_API_KEY"
+max_tokens  = 1024
+temperature = 0.0
+
+# Retrieval + prompt shaping (§9.3.2, §9.3.3).
+[retrieval]
+top_k               = 8       # hits requested from LanceDB
+reranker            = "rrf"   # rrf | linear | none
+max_context_tokens  = 6000    # sum of chunk token_estimates in the assembled prompt
+merge_adjacent      = true    # collapse consecutive chunks from the same file
+
+# Optional: override the packaged system prompt for the RAG agent.
+# system_prompt_path = "prompts/rag_agent_system.md"
+
+[log]
+file_path = "./rag-agent.log"
+level     = "INFO"
+```
+
+## 9.7 Failure Modes
+
+| Condition | Behavior |
+|---|---|
+| `--agent rag` + `--rag-index` path missing or has no `kb` table | ERROR at startup — non-zero exit; `hcag-server` refuses to bind. |
+| Embedding model in `rag_agent.toml` disagrees with `manifest` metadata | ERROR at startup — refuses to serve a mismatched query space (§9.3.1). |
+| `top_k` returns 0 hits for a turn | Prompt is composed with an empty CONTEXT block; the system prompt instructs the LLM to say "insufficient information." Judge scoring per §7.5 handles the rest. |
+| LanceDB read fails mid-turn (disk error, corruption) | Turn returns a `[retrieval_error] <reason>` string as the assistant message. The session survives; next turn re-attempts. |
+| Embedding call fails past provider retries | Turn returns `[embedding_error] <reason>`. Same session-survives semantics. |
+| Generation call fails past provider retries | Turn returns `[generation_error] <reason>`. Same session-survives semantics. |
+| `max_context_tokens` set below `token_estimate` of even the top hit | Include that one hit anyway, log a `WARN` — refusing the query is worse than crowding the budget. |
+
+`hcag-server`'s HTTP layer maps these to `500` with the error string in the JSON body, so `eval` (§7.4.3) captures them as `[backend_error]` and the judge scores them appropriately.
+
+## 9.8 Observability
+
+The RAG agent writes to the same JSON-lines logger the rest of the stack uses (§2.11.3), namespaced `hcag.rag.agent`:
+
+- `INFO`: agent bootstrap (index path, table name, resolved embed + generation model IDs, top_k, max_context_tokens), per-turn summary (session_id, chunk-hit count, retained-after-cap count, prompt tokens, generation tokens, wall-clock elapsed).
+- `DEBUG`: full hybrid-search result list (id, kb_path, chunk_index, rerank score) before dedup + cap, the final assembled CONTEXT block, the full prompt.
+- `WARN`: zero-hit turns, dropped chunks past the budget, embedding-model manifest mismatches promoted from ERROR when `--allow-embed-mismatch` is set (an escape hatch for experiments — off by default).
+- `ERROR`: startup failures (missing index / table / manifest mismatch), fatal LanceDB corruption.
+
+If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`rag_agent.turn`, `rag_agent.embed`, `rag_agent.search`, `rag_agent.generate`) are exported — symmetric with §2.11.
+
+## 9.9 Non-Goals
+
+- **Replacing HCAG in production.** The RAG agent exists to be a serious baseline for measuring HCAG. If a KB's workload is genuinely a fit for flat RAG (small corpus, short queries, few multi-hop questions per §1.3.3), then RAG is the right choice — but that's an operator decision made on the eval evidence, not a claim this design makes for it.
+- **Tool use / dynamic reload.** The RAG agent does not expose tools to the LLM. There is no equivalent of `check_and_load_kb` (§2.3.2) — retrieval happens once, up front, with no re-issuance mid-turn. Adding tools would make it a different agent design; the point of the baseline is to be a faithful representation of *flat* RAG.
+- **Query rewriting or HyDE.** Retrieval uses the raw user turn as the query. Common flat-RAG add-ons — HyDE-style hypothetical-answer expansion, LLM-based query rewriting, multi-query fanout — are deliberately omitted from the baseline so the eval comparison isolates the *architecture* (taxonomy vs. flat index), not the *tuning*.
+- **Cross-agent state.** An HCAG session and a RAG session never share state. Migrating a conversation between them is out of scope; `eval` fresh-sessions per row anyway (§7.3 `--session-scope`).
+- **Multimodal generation.** Images are consulted only through their §8.4.3 text description. Passing the original image bytes to the generation model at answer time is a future-work item for a "RAG-with-vision" variant; it is not what the baseline models.
