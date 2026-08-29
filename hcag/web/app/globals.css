@@ -1,0 +1,114 @@
+:root {
+  --primary: oklch(0.45 0.13 255);
+  --primary-dark: oklch(0.33 0.11 255);
+  --primary-mid: oklch(0.6 0.14 255);
+  --primary-fill: oklch(0.5 0.14 255);
+  --primary-text: oklch(0.38 0.13 255);
+  --primary-tint: oklch(0.97 0.02 255);
+  --primary-tint-2: oklch(0.94 0.03 255);
+  --primary-tint-3: oklch(0.93 0.03 255);
+  --primary-border: oklch(0.45 0.13 255 / 0.45);
+  --primary-border-soft: oklch(0.45 0.13 255 / 0.35);
+  --focus-ring: oklch(0.55 0.16 255);
+  --success: oklch(0.72 0.17 145);
+  --success-mid: oklch(0.7 0.17 145);
+  --success-dark: oklch(0.5 0.12 150);
+  --danger: oklch(0.55 0.19 25);
+  --ink: #24282c;
+  --ink-2: #3a4046;
+  --ink-3: #4a5157;
+  --muted: #5a6268;
+  --muted-2: #6b737a;
+  --muted-3: #7a8288;
+  --muted-4: #8a9198;
+  --line: #e3e6e9;
+  --line-2: #dfe3e6;
+  --line-3: #cfd5da;
+  --bg: #eef0f2;
+  --bg-2: #f4f6f7;
+  --bg-3: #f6f7f8;
+  --bg-msg-border: #e7eaec;
+  --dark: #14181c;
+  --dark-2: #101418;
+  --dark-3: #1c2229;
+  --dark-4: #2b333b;
+  --dark-text: #b9c1c8;
+  --dark-text-2: #9aa3ab;
+  --dark-text-3: #cfd6dd;
+  --dark-text-4: #dfe4e8;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: "Source Sans 3", "Helvetica Neue", Helvetica, sans-serif;
+  color: var(--ink);
+  background: var(--bg);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+a {
+  color: var(--primary);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+a:hover {
+  color: var(--primary-dark);
+}
+
+input,
+button,
+textarea {
+  font: inherit;
+}
+
+button:focus-visible,
+a:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--focus-ring);
+  outline-offset: 2px;
+}
+
+@keyframes hcag-dot {
+  0%,
+  60%,
+  100% {
+    transform: translateY(0);
+    opacity: 0.35;
+  }
+  30% {
+    transform: translateY(-4px);
+    opacity: 1;
+  }
+}
+
+@keyframes hcag-ring {
+  0% {
+    transform: scale(1);
+    opacity: 0.5;
+  }
+  100% {
+    transform: scale(2.2);
+    opacity: 0;
+  }
+}
+
+@keyframes hcag-rise {
+  from {
+    transform: translateY(10px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}

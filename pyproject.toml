@@ -39,6 +39,11 @@ voice = [
     "livekit-plugins-deepgram>=0.6",
     "livekit-plugins-elevenlabs>=0.7",
 ]
+web = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "livekit-api>=0.7",
+]
 dev = [
     "pytest>=8.0",
     "pytest-mock>=3.12",
@@ -49,10 +54,18 @@ dev = [
 hcag = "hcag.cli.main:app"
 crawl = "hcag.crawl.main:main"
 hcag-voice = "hcag.voice.main:main"
+hcag-server = "hcag.server.main:main"
 evalgen = "hcag.evalgen.main:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["hcag"]
+exclude = [
+    "hcag/web/node_modules",
+    "hcag/web/.next",
+    "hcag/web/out",
+    "hcag/web/build",
+    "hcag/web/dist",
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
