@@ -114,6 +114,23 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [5.9 CLI](#59-cli)
   - [5.10 Observability](#510-observability)
   - [5.11 Non-Goals](#511-non-goals)
+- [Part 6 — The `evalgen` CLI Tool](#part-6--the-evalgen-cli-tool)
+  - [6.1 Purpose](#61-purpose)
+  - [6.2 KB Input Model](#62-kb-input-model)
+  - [6.3 Invocation](#63-invocation)
+  - [6.4 Question Types](#64-question-types)
+    - [6.4.1 `simple`](#641-simple)
+    - [6.4.2 `medium`](#642-medium)
+    - [6.4.3 `complex`](#643-complex)
+    - [6.4.4 `hard-1` (cross-packet)](#644-hard-1-cross-packet)
+    - [6.4.5 `hard-2` (multimodal)](#645-hard-2-multimodal)
+  - [6.5 Quantity Control](#65-quantity-control)
+  - [6.6 Generation Algorithm](#66-generation-algorithm)
+  - [6.7 Output CSV Schema](#67-output-csv-schema)
+  - [6.8 Configuration](#68-configuration)
+  - [6.9 Failure Modes](#69-failure-modes)
+  - [6.10 Observability (CLI)](#610-observability-cli)
+  - [6.11 Non-Goals](#611-non-goals)
 
 ---
 
@@ -2037,3 +2054,211 @@ New OTEL spans:
 - **Persistent conversation memory across sessions.** Each room is a fresh `AgentRuntime`. Long-term user memory is a separate concern.
 - **Voice cloning / custom voices.** Whatever the TTS provider offers is what is available; the voice agent does not build or manage voice models itself.
 - **Failover between STT/TTS providers mid-session.** Provider is fixed at session start (§5.6). Switching mid-session would invalidate the warm cache and audio contracts.
+
+---
+
+# Part 6 — The `evalgen` CLI Tool
+
+## 6.1 Purpose
+
+`evalgen` generates evaluation question / expected-answer pairs from a normalized KB, for use in scoring retrieval quality and answer quality against the runtime agent (Part 2) or the voice agent (Part 5). It gives KB owners a repeatable way to build an eval set that is grounded in the same content the agent will serve at runtime — so regressions in retrieval selection, packet coverage, or multimodal reasoning surface as measurable score drops on a fixed set of questions.
+
+The tool is a **question / expected-answer generator only**. It does not run the agent, score responses, or persist verdicts; those columns are left empty in the CSV output and filled in by a separate evaluation pass (§6.7).
+
+## 6.2 KB Input Model
+
+`evalgen` consumes a KB directory that has already been normalized by `hcag preprocess` (§3.4):
+
+- Each leaf (or mixed) folder contains a `packet.md` with HCAG front-matter (id, title, descriptions, token estimate).
+- Images referenced by a packet live in that packet's `assets/` subfolder.
+- A root `catalog.md` (from `hcag aggregate`, §3.5) is optional for generation but, when present, is used to bias cross-packet pairing toward taxonomically-related packets (§6.4.4).
+
+`evalgen` reads packets as-is; it does not modify the KB. Source `.md` files outside `packet.md` and images outside `assets/` are ignored — the tool operates only on the artifacts the runtime actually serves.
+
+## 6.3 Invocation
+
+```
+$ evalgen <kb_root> --out <output.csv> [--total <N> | --simple <n1> --medium <n2> --complex <n3> --hard-1 <n4> --hard-2 <n5>] [options]
+```
+
+| Parameter | Required | Description |
+|---|---|---|
+| `<kb_root>` | yes | Path to the normalized KB directory (the same directory handed to `hcag aggregate`). |
+| `--out <path>` | yes | Path to the output CSV file. Overwritten if it exists. |
+| `--total <N>` | one-of | Total number of question/answer pairs to generate, split equally across the five types (§6.5). |
+| `--simple <n>` | one-of | Explicit count of `simple` questions to generate. |
+| `--medium <n>` | one-of | Explicit count of `medium` questions to generate. |
+| `--complex <n>` | one-of | Explicit count of `complex` questions to generate. |
+| `--hard-1 <n>` | one-of | Explicit count of `hard-1` (cross-packet) questions to generate. |
+| `--hard-2 <n>` | one-of | Explicit count of `hard-2` (multimodal) questions to generate. |
+| `--seed <int>` | no | Random seed for packet/paragraph selection. Fixed seed → reproducible eval set for a given KB revision. |
+| `--id-prefix <str>` | no | Prefix for `question_id` values (default `q`). Useful when merging multiple eval sets. |
+| `--config <path>` | no | Path to `evalgen.toml` (§6.8). Defaults to `<kb_root>/evalgen.toml` if present. |
+
+**Mutual exclusivity.** `--total` and any of the `--<kind> <n>` flags are mutually exclusive. Pass **either** a single `--total` **or** one-to-five explicit per-type flags; mixing the two forms is a startup error. Per-type flags default to `0` when omitted, so `--simple 20 --hard-2 5` generates exactly 25 questions of only those two kinds.
+
+Example invocation:
+
+```
+$ evalgen kb/ --out kb-eval.csv --total 100 --seed 42
+```
+
+Generates 100 pairs — 20 `simple`, 20 `medium`, 20 `complex`, 20 `hard-1`, 20 `hard-2` — using seed `42`, and writes them to `kb-eval.csv`. Equivalent explicit form:
+
+```
+$ evalgen kb/ --out kb-eval.csv \
+    --simple 20 --medium 20 --complex 20 --hard-1 20 --hard-2 20 --seed 42
+```
+
+## 6.4 Question Types
+
+Each row's `kind` column carries one of five string tags corresponding to how the question was constructed. The tags are stable — the evaluation pass filters and scores by `kind`.
+
+### 6.4.1 `simple`
+
+- **Definition.** Answerable verbatim from a single packet. FAQ-style factual question with no reasoning; the answer text appears literally in the packet body.
+- **Source.** One packet, one contiguous span (typically a sentence or short paragraph).
+- **Expected answer.** A verbatim or near-verbatim quote from the packet — the LLM extracts a self-contained fact; no rewording beyond trimming.
+- **Signal.** Measures whether the agent retrieved and read the correct packet at all. A `simple` failure usually means retrieval, not reasoning, is broken.
+
+### 6.4.2 `medium`
+
+- **Definition.** Requires **reasoning grounded in a single paragraph** of a single packet. The answer is not a verbatim quote — the reader must interpret or combine facts within one paragraph.
+- **Source.** One packet, one paragraph (a contiguous block delimited by blank lines in `packet.md`).
+- **Expected answer.** A short natural-language answer whose supporting facts all appear in the chosen paragraph, but which is not a direct quotation of it.
+- **Signal.** Measures within-passage comprehension once retrieval has succeeded.
+
+### 6.4.3 `complex`
+
+- **Definition.** Requires **significant deduction across at least three distinct concepts, drawn from at least three different paragraphs within a single `packet.md`**.
+- **Source.** One packet; at least three distinct paragraphs, each contributing a different concept the answer depends on.
+- **Expected answer.** A synthesized answer that cannot be produced from any single paragraph in isolation. The generation prompt requires the LLM to identify each paragraph's contribution before composing the answer, so the eval remains auditable.
+- **Signal.** Measures whole-packet reasoning — whether the agent uses everything a loaded packet contains, not just the first hit.
+
+### 6.4.4 `hard-1` (cross-packet)
+
+- **Definition.** Requires **two packets** to answer correctly, drawing on **at least three different paragraphs spread across those two packets** (e.g., 2 + 1, or 1 + 2). Neither packet alone is sufficient.
+- **Source.** A pair of packets. When a root `catalog.md` is present, pairs are biased toward siblings or cousins in the taxonomy (topically adjacent) because those are the pairs the agent is most likely to load together; when no catalog is present, pairs are drawn uniformly at random from the packet set.
+- **Expected answer.** A synthesized answer whose supporting facts are split across the two packets, with at least three distinct paragraphs contributing.
+- **Signal.** Measures the `check_and_load_kb` selection loop (§2.3.2) — specifically whether the agent recognizes it needs a second packet and loads it, rather than answering from only the first.
+
+### 6.4.5 `hard-2` (multimodal)
+
+- **Definition.** Requires an **image from the packet's `assets/` folder to be read together with the packet markdown**. The image must hold information **essential** to the answer, so that the question cannot be answered from the markdown alone and the model must perform multimodal reasoning across text and image.
+- **Source.** One packet whose `assets/` folder contains at least one image. Only packets with images are eligible; packets with no assets are silently skipped for this kind.
+- **Expected answer.** A short answer whose key fact is visually present in the image (a label on a diagram, a value in a chart, a state in a state-machine figure, a component in a screenshot) and only weakly implied — or not implied at all — by the surrounding markdown.
+- **Signal.** Measures the multimodal loading path (§2.6) — whether images are actually attached to the LLM call and whether the model uses them.
+- **Availability.** If the requested `--hard-2` count exceeds the number of image-bearing packets, `evalgen` generates as many as it can and logs a `WARN` indicating the shortfall. It does **not** substitute another kind to reach the requested total.
+
+## 6.5 Quantity Control
+
+`evalgen` accepts the requested question count in exactly one of two forms:
+
+1. **Single total (`--total N`).** `evalgen` divides `N` equally across the five kinds. If `N` is not divisible by 5, the remainder is distributed one at a time in the order `simple, medium, complex, hard-1, hard-2` — so `--total 12` produces `3, 3, 2, 2, 2`.
+2. **Explicit per-type counts (`--simple n1 --medium n2 --complex n3 --hard-1 n4 --hard-2 n5`).** Any subset may be passed; omitted kinds default to `0`. The total emitted is exactly the sum.
+
+If a per-type count exceeds the maximum feasible for that kind (e.g., more `hard-2` than image-bearing packets), `evalgen` emits as many as it can, logs a `WARN` naming the shortfall (`requested=N, generated=M, kind=hard-2, reason=insufficient_image_packets`), and continues with the remaining kinds. The run's exit code is non-zero only for `ERROR`-level events (§6.9), not shortfalls.
+
+## 6.6 Generation Algorithm
+
+Broadly, for each kind, `evalgen`:
+
+1. Selects the required packet(s) and paragraph(s) per the kind's rules (§6.4), using the configured `--seed` for reproducibility.
+2. Sends the selected content — packet markdown plus any required images for `hard-2` — to the configured LLM (§6.8) with a fixed per-kind prompt template. The prompt instructs the model to produce one `question` and one `expected_answer` grounded strictly in the supplied content.
+3. Validates the LLM's response against per-kind constraints (e.g., `complex` must cite at least three paragraphs; `hard-2` must reference at least one image). On validation failure, the item is retried up to a configurable cap (default 2); persistent failures are dropped with a `WARN`.
+4. Assigns a stable `question_id` of the form `<prefix>-<zero-padded-index>` (e.g., `q-0001`) in generation order.
+5. Appends the row to the output CSV with the `actual_answer`, `score`, and `remark` columns left empty (§6.7).
+
+Kinds are generated in the fixed order `simple → medium → complex → hard-1 → hard-2`, so `question_id`s cluster by kind — useful when diff-ing eval runs.
+
+## 6.7 Output CSV Schema
+
+`evalgen` writes a single CSV file with a header row and one row per generated pair. Columns are fixed and ordered:
+
+| Column | Written by `evalgen` | Description |
+|---|---|---|
+| `question_id` | yes | Stable identifier (`<prefix>-<zero-padded-index>`), unique within the file. |
+| `kind` | yes | One of `simple`, `medium`, `complex`, `hard-1`, `hard-2`. |
+| `question` | yes | The generated question text, single-line where possible; multi-line values are quoted per RFC 4180. |
+| `expected_answer` | yes | The reference answer produced against the KB. |
+| `actual_answer` | **empty** | Populated during evaluation by whatever harness runs the agent. |
+| `score` | **empty** | Integer 0–3, populated during evaluation. `0`=wrong, `1`=partially correct, `2`=mostly correct, `3`=fully correct. `evalgen` always writes this empty. |
+| `remark` | **empty** | Free-text notes from the evaluator (missing packet, wrong image, hallucination, etc.). `evalgen` always writes this empty. |
+
+CSV formatting rules:
+
+- UTF-8, LF line endings, RFC 4180 quoting.
+- Header row is always present.
+- The final three columns (`actual_answer`, `score`, `remark`) are always emitted as empty fields — never omitted, so downstream tools can open the file with a fixed 7-column schema.
+
+Example (header + two rows):
+
+```csv
+question_id,kind,question,expected_answer,actual_answer,score,remark
+q-0001,simple,"How long does a standard refund take to process?","5–7 business days.",,,
+q-0021,hard-2,"According to the refund state machine, which state immediately follows ""pending_review""?","approved",,,
+```
+
+## 6.8 Configuration
+
+`evalgen` reads an optional `evalgen.toml` (or per-invocation flags):
+
+```toml
+[llm]
+provider = "anthropic"            # anthropic | openai | bedrock | ollama | llamacpp
+model    = "claude-opus-4-7"      # generation quality benefits from a strong model
+api_key_env = "ANTHROPIC_API_KEY"
+endpoint = ""                     # override for local/self-hosted
+
+[llm.prompts]
+simple  = "prompts/eval_simple.md"
+medium  = "prompts/eval_medium.md"
+complex = "prompts/eval_complex.md"
+hard_1  = "prompts/eval_hard1.md"
+hard_2  = "prompts/eval_hard2.md"
+
+[generation]
+max_retries_per_item = 2          # retry cap on validation failure
+paragraph_min_chars  = 120        # ignore too-short "paragraphs" for medium/complex/hard-1
+cross_packet_bias    = "taxonomy" # taxonomy | uniform — pair selection for hard-1
+
+[log]
+file_path = "./evalgen.log"
+level     = "INFO"
+```
+
+Local model support mirrors `hcag` (§3.6): `provider = "ollama"` or `"llamacpp"` with a local `endpoint` runs the whole generation without cloud credentials. Question quality varies with model choice; `hard-2` in particular requires a multimodal-capable model.
+
+## 6.9 Failure Modes
+
+| Condition | Behavior |
+|---|---|
+| `<kb_root>` has no packets | ERROR — nothing to generate against; exit non-zero. |
+| Both `--total` and any `--<kind>` flag passed | ERROR at startup — mutually exclusive. |
+| No image-bearing packets and `hard-2 > 0` requested | WARN, `hard-2` count reduced to `0`; other kinds proceed. |
+| Requested `hard-2` count exceeds image-bearing packets | WARN, shortfall logged; produce as many as feasible. |
+| LLM call fails for a single item | WARN, item dropped; run continues with next item. |
+| LLM validation fails past `max_retries_per_item` | WARN, item dropped; run continues. |
+| Output CSV path not writable | ERROR at startup — fail fast rather than partial write. |
+| Config references a prompt template that does not exist | ERROR at startup. |
+
+If any `ERROR`-level event fires, `evalgen` exits with a non-zero status. `WARN`-level shortfalls do not affect exit status but are surfaced in the end-of-run summary.
+
+## 6.10 Observability (CLI)
+
+`evalgen` writes a JSON-lines log to the path in `[log]` config (default `./evalgen.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), and `crawl` (§4.7):
+
+- `INFO`: run start (KB path, requested counts, resolved counts after feasibility check), per-item generation summary (`question_id`, `kind`, source packet id(s), token usage), run end summary (per-kind generated/dropped counts, wall-clock elapsed).
+- `DEBUG`: full LLM prompts and responses per item, chosen paragraph offsets, image paths attached for `hard-2`.
+- `WARN`: kind shortfalls, dropped items (with reason), packets skipped for `hard-2` (no images), duplicate question detection (if the same question text is generated twice, the second is dropped).
+- `ERROR`: startup failures, unwritable output path, KB with no packets.
+
+If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`evalgen.run`, `evalgen.item`, `evalgen.llm.call`) are exported — symmetric with §2.11, §3.9, §4.7.
+
+## 6.11 Non-Goals
+
+- **Running the agent.** `evalgen` only produces question / expected-answer pairs. Executing the agent against those questions, filling `actual_answer`, and scoring are separate concerns handled by a downstream eval harness.
+- **Judging answers.** The `score` and `remark` columns are always empty on output; `evalgen` does not implement an LLM-as-judge or any other scoring mechanism.
+- **Ground-truth curation.** Generated `expected_answer` values are grounded in the KB but are themselves LLM output. Human review of the eval set before use is expected; `evalgen` does not claim editorial correctness.
+- **Adversarial or jailbreak questions.** All questions are strictly grounded in the KB's own content. Prompt-injection probes, safety evals, and out-of-distribution questions are out of scope.
+- **Cross-run diffing or eval-set versioning.** Each invocation writes a fresh CSV. Snapshotting eval sets under version control and diffing successive runs is left to the caller (e.g., commit the CSV alongside the KB revision it was generated from).
