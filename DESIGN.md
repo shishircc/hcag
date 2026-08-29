@@ -98,6 +98,20 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [4.6 Relationship to `hcag`](#46-relationship-to-hcag)
   - [4.7 Observability (CLI)](#47-observability-cli)
   - [4.8 Non-Goals](#48-non-goals)
+- [Part 5 — Voice Agent (LiveKit)](#part-5--voice-agent-livekit)
+  - [5.1 Purpose](#51-purpose)
+  - [5.2 Component Boundary](#52-component-boundary)
+  - [5.3 Real-Time Architecture](#53-real-time-architecture)
+  - [5.4 Session Startup](#54-session-startup)
+    - [5.4.1 Warm-start with initial packets](#541-warm-start-with-initial-packets)
+    - [5.4.2 Prompt-cache warm-up call](#542-prompt-cache-warm-up-call)
+  - [5.5 Real-Time Turn Pipeline](#55-real-time-turn-pipeline)
+  - [5.6 STT / TTS Provider Selection](#56-stt--tts-provider-selection)
+  - [5.7 Live Transcription Channel (Web Client Contract)](#57-live-transcription-channel-web-client-contract)
+  - [5.8 Configuration](#58-configuration)
+  - [5.9 CLI](#59-cli)
+  - [5.10 Observability](#510-observability)
+  - [5.11 Non-Goals](#511-non-goals)
 
 ---
 
@@ -1546,3 +1560,301 @@ If any `ERROR`-level event is logged during a run, `crawl` exits with a non-zero
 - **Auth-gated content.** Login flows, cookies, and custom headers beyond a plain fetch are out of scope.
 - **Non-HTML, non-PDF assets.** Videos, archives, and other binary formats are neither followed as links nor mirrored into `./kb/`.
 - **Incremental re-crawl.** Each invocation fetches every in-scope URL once; change detection and freshness re-crawling are not provided.
+
+---
+
+# Part 5 — Voice Agent (LiveKit)
+
+## 5.1 Purpose
+
+A real-time voice interface to the HCAG agent, embeddable on a website. The user speaks; the agent transcribes, reasons over the HCAG active set, and speaks the answer back — with the running transcript and the streaming assistant response rendered live in the browser.
+
+Two properties matter beyond the baseline agent (§1.4):
+
+1. **Fast first-turn latency.** A voice conversation cannot afford a cold-start `check_and_load_kb` round trip on the user's first sentence. The voice session is therefore started with a **configured set of initial packet IDs** that are loaded into the active set before the room opens (§5.4.1), so the very first user turn already has the relevant knowledge in memory.
+2. **Sub-second inter-turn latency.** After the first turn, subsequent LLM calls must ride the prompt cache. The voice session issues a synthetic **cache warm-up call** immediately after packet loading (§5.4.2), so the prefix that all real turns will share is committed to the provider's prompt cache before the user starts talking.
+
+## 5.2 Component Boundary
+
+The voice agent **wraps** the runtime defined in Parts 1–2 rather than replacing it. Everything about the HCAG active-set protocol (§2.4), token budget (§2.5), packet loader (§2.6), and prompt-cache alignment (§2.12) is reused verbatim. The voice layer adds:
+
+- A **LiveKit worker process** that joins a LiveKit room per user session.
+- A **STT adapter** (Deepgram or ElevenLabs) that streams partial and final transcripts from the user's audio track.
+- A **TTS adapter** (ElevenLabs or Deepgram) that streams synthesized audio from assistant text back to the room.
+- A **transcription publisher** that mirrors both sides of the conversation onto a LiveKit text/data channel so the browser can render live captions and streaming assistant text.
+- A **web client** (LiveKit JS SDK) that publishes the mic track, subscribes to the agent's audio track, and renders the transcription channel.
+
+The `AgentRuntime`, `MemoryModule`, and `catalog.md` / `packet.md` artifacts are unchanged. Swapping the voice front-end for a text front-end does not touch the reasoning path.
+
+## 5.3 Real-Time Architecture
+
+```mermaid
+flowchart LR
+    subgraph Browser
+        Mic[Mic Track]
+        Spk[Speaker Track]
+        UI[Transcript UI]
+    end
+    subgraph LiveKit
+        Room[LiveKit Room]
+    end
+    subgraph Worker[Voice Agent Worker]
+        STT[STT Adapter]
+        VA[Voice Session]
+        RT[AgentRuntime]
+        TTS[TTS Adapter]
+        Pub[Transcription Publisher]
+    end
+    subgraph HCAG[HCAG Core]
+        MM[Memory Module]
+        KB[(KB on disk)]
+    end
+    LLM[[LLM provider]]
+
+    Mic -- audio --> Room
+    Room -- audio --> STT
+    STT -- text --> VA
+    VA -- prompt --> RT
+    RT -- turn --> LLM
+    LLM -- streaming text --> RT
+    RT -- reply --> VA
+    VA -- text --> TTS
+    TTS -- audio --> Room
+    Room -- audio --> Spk
+    VA -- partials + finals --> Pub
+    Pub -- data channel --> Room
+    Room -- data channel --> UI
+    RT -- get_catalog --> MM
+    RT -- check_and_load_kb --> MM
+    MM --> KB
+```
+
+**One worker per session.** A new LiveKit room implies a new worker instance holding its own `AgentRuntime`, its own active set, and its own STT/TTS stream handles. Cross-session state is not shared (each user's classification and packet load are independent).
+
+## 5.4 Session Startup
+
+Session startup runs to completion before the browser is allowed to send audio. Its two phases are ordered:
+
+### 5.4.1 Warm-start with initial packets
+
+The voice agent accepts an ordered list of packet IDs — `initial_packet_ids` — via config (§5.8) or CLI (§5.9). Before opening the room to input:
+
+1. Instantiate `AgentRuntime` with the standard bootstrap (§2.7): read `catalog.md`, inject into the system prompt.
+2. For each ID in `initial_packet_ids`, call `memory_module.check_and_load_kb(requested=[id], active=<current>)` and apply the returned delta exactly as an in-turn call would. This produces a byte-identical sequence of tool-result blocks in history — the same shape a normal turn would create — so the cache-alignment rules (§2.12) apply unchanged.
+3. If the union of initial packets exceeds `MAX_ACTIVE_TOKENS`, startup fails with an explicit error (`errors[].reason = "BudgetExceeded"`). Voice sessions do not silently drop preloads — the operator misconfigured the initial set.
+4. Unknown packet IDs are logged as `voice.startup.unknown_packet` WARN entries and skipped; startup continues with the remainder. Rationale: an outdated deploy config should not brick the room.
+
+The initial-packet list is a **classification hint**, not a policy override. Nothing prevents the agent from calling `check_and_load_kb` mid-conversation to load additional branches; the preload only guarantees that the *first* user sentence lands on a warm active set.
+
+### 5.4.2 Prompt-cache warm-up call
+
+After initial packets are loaded, the voice agent issues a synthetic LLM call whose sole purpose is to commit the shared prefix to the provider's prompt cache:
+
+```
+system: <static prefix> + <catalog> + <preload tool-result blocks>
+user:   "Ready. Await user turn."
+```
+
+with `cache_control` breakpoints placed at the end of the system block and after each preload tool-result block (§2.12). The response is discarded. The provider now holds a cache entry keyed on the exact prefix that every real turn in this session will share, so the first real turn incurs a cache hit rather than a full-prefix read.
+
+**Ordering matters.** The warm-up call must run *after* §5.4.1 — the byte-stable prefix is only defined once the initial packets have been folded in. Running it earlier caches a prefix the real turns will never send, wasting the write.
+
+**Cost accounting.** The warm-up call is a full-prefix cache *write*, priced above a cold prompt at most providers. It is paid once per session and amortizes across every subsequent turn. If a session ends before the first real turn, the write is a loss; §5.10 tracks this as `voice.warmup.wasted` for tuning.
+
+## 5.5 Real-Time Turn Pipeline
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant B as Browser
+    participant R as LiveKit Room
+    participant S as STT Adapter
+    participant V as Voice Session
+    participant A as AgentRuntime
+    participant L as LLM
+    participant T as TTS Adapter
+
+    Note over B,T: WARM ROOM — initial packets loaded, cache primed
+
+    B->>R: mic audio frames
+    R->>S: audio stream
+    S-->>V: partial transcript
+    V->>R: publish partial (data channel)
+    R-->>B: render caption
+
+    S-->>V: final transcript
+    V->>R: publish final (data channel)
+    V->>A: user_text = final
+    A->>L: turn (cached prefix + user_text)
+    Note over L: Cache hit on prefix<br/>Streams response tokens
+
+    loop streaming
+        L-->>A: token
+        A-->>V: token
+        V->>R: publish assistant partial (data channel)
+        V->>T: token chunk
+        T-->>R: audio frame
+        R-->>B: play audio
+        R-->>B: render assistant text
+    end
+
+    L-->>A: end of turn
+    A-->>V: final assistant text
+    V->>R: publish assistant final
+```
+
+**Barge-in.** If the STT adapter emits a new final transcript while TTS is still speaking, the voice session cancels the in-flight TTS stream and the in-flight LLM stream, publishes an `assistant.interrupted` marker on the data channel, and starts a new turn. The `AgentRuntime` sees the cancellation as a turn-boundary event and does not persist the truncated assistant message into history.
+
+**Streaming while thinking.** Assistant text is published to the data channel as tokens arrive from the LLM, *before* TTS has finished synthesizing the corresponding audio. This lets the browser render text ahead of audio — perceptually the response feels instantaneous even if audio has a few hundred ms of TTS latency.
+
+## 5.6 STT / TTS Provider Selection
+
+Both STT and TTS are provider-neutral behind a small adapter interface. Two providers are supported out of the box:
+
+| Role | Providers | Selection knob |
+|---|---|---|
+| STT (audio → text) | `deepgram`, `elevenlabs` | `stt.provider` (config) or `--stt-provider` (CLI) |
+| TTS (text → audio) | `elevenlabs`, `deepgram` | `tts.provider` (config) or `--tts-provider` (CLI) |
+
+Each provider block additionally accepts:
+
+- `model` — provider-specific model identifier (e.g. `nova-2-general` for Deepgram STT, `eleven_turbo_v2_5` for ElevenLabs TTS). Overridable at the CLI with `--stt-model` / `--tts-model`.
+- `api_key_env` — env var to read the credential from; the raw key is never written to config.
+- `language` (STT) / `voice_id` (TTS) — optional provider-specific tuning.
+- `endpoint` — override URL for self-hosted or region-pinned endpoints.
+
+**CLI overrides win.** Precedence is `CLI flag > env var > config file > adapter default`. The startup log line records the resolved provider, model, and endpoint for each of STT and TTS (`voice.startup.resolved`) so a mis-set flag is obvious at a glance.
+
+**Provider swap is per session, not per turn.** Changing providers mid-session would invalidate the cache warm-up (system prompt is unaffected, but audio format contracts break). Provider choice is fixed at session start.
+
+## 5.7 Live Transcription Channel (Web Client Contract)
+
+Transcription and streaming text are published on a LiveKit **data channel** named `hcag.transcription`. Payloads are JSON, one message per event, monotonically increasing `seq`:
+
+```json
+{ "seq": 42, "kind": "user.partial",     "text": "how do partial ref",     "turn_id": "t_9" }
+{ "seq": 43, "kind": "user.final",       "text": "how do partial refunds work", "turn_id": "t_9" }
+{ "seq": 44, "kind": "assistant.delta",  "text": "Partial refunds are ", "turn_id": "t_9" }
+{ "seq": 45, "kind": "assistant.delta",  "text": "issued when...",       "turn_id": "t_9" }
+{ "seq": 46, "kind": "assistant.final",  "text": "Partial refunds are issued when...", "turn_id": "t_9" }
+{ "seq": 47, "kind": "assistant.interrupted", "turn_id": "t_9" }
+```
+
+- `kind` values are namespaced (`user.*`, `assistant.*`, `system.*`) so the client can render user captions and assistant text in different UI slots without keyword-matching text content.
+- `turn_id` groups deltas with their finalizing message and lets the client discard stale partials after an `assistant.interrupted`.
+- The `system.*` namespace carries session lifecycle events (`system.ready` once §5.4.2 completes; `system.error` on unrecoverable failure) so the browser can show a "connecting…" state until the room is warm.
+- Audio itself is **not** on the data channel — it flows through the standard LiveKit audio track. The data channel is text-only.
+
+The web client is not otherwise specified here: any application that speaks the LiveKit JS SDK and consumes `hcag.transcription` per the schema above is a valid front-end.
+
+## 5.8 Configuration
+
+Voice agent configuration lives in `voice.toml`, layered on top of the same `AgentConfig` used by the text runtime:
+
+```toml
+kb_root           = "./my-kb"
+max_active_tokens = 32000
+
+# Preloaded packet IDs (§5.4.1). Ordered — earlier IDs take budget first.
+initial_packet_ids = ["billing.refunds", "billing.invoices", "auth.oauth"]
+
+[llm]
+provider = "anthropic"
+model    = "claude-3-5-haiku-20241022"
+
+[livekit]
+url        = "wss://my-app.livekit.cloud"
+api_key_env    = "LIVEKIT_API_KEY"
+api_secret_env = "LIVEKIT_API_SECRET"
+room_prefix    = "hcag-"       # rooms are named "<prefix><session-id>"
+
+[stt]
+provider    = "deepgram"                  # deepgram | elevenlabs
+model       = "nova-2-general"
+api_key_env = "DEEPGRAM_API_KEY"
+language    = "en-US"
+endpoint    = ""                          # optional override
+
+[tts]
+provider    = "elevenlabs"                # elevenlabs | deepgram
+model       = "eleven_turbo_v2_5"
+voice_id    = "21m00Tcm4TlvDq8ikWAM"
+api_key_env = "ELEVENLABS_API_KEY"
+endpoint    = ""
+
+[warmup]
+enabled = true                            # skip only for local dev with cache-less providers
+
+[log]
+file_path = "./hcag-voice.log"
+level     = "INFO"
+```
+
+**Reused blocks.** `[llm]`, `[log]`, and OTEL config follow the same schemas as §2.13 and §3.6 — the voice agent does not fork configuration models for the pieces it shares with the text runtime.
+
+## 5.9 CLI
+
+The voice agent runs as a long-lived worker process:
+
+```
+$ hcag-voice serve --config voice.toml [flags]
+```
+
+Flags override the corresponding `voice.toml` fields:
+
+| Flag | Overrides | Notes |
+|---|---|---|
+| `--kb-root PATH` | `kb_root` | |
+| `--initial-packets id1,id2,...` | `initial_packet_ids` | Comma-separated. Order preserved. |
+| `--stt-provider {deepgram,elevenlabs}` | `stt.provider` | |
+| `--stt-model NAME` | `stt.model` | Any provider-valid model ID. |
+| `--tts-provider {elevenlabs,deepgram}` | `tts.provider` | |
+| `--tts-model NAME` | `tts.model` | |
+| `--tts-voice ID` | `tts.voice_id` | TTS-only. |
+| `--livekit-url URL` | `livekit.url` | |
+| `--no-warmup` | `warmup.enabled = false` | Skip §5.4.2 (dev only). |
+| `--log-file PATH` / `--log-level LEVEL` | `log.file_path` / `log.level` | Same shape as §3.9 / §4.7. |
+
+`serve` blocks in the foreground. It joins the LiveKit dispatcher, accepts room-join events, and spins up one `AgentRuntime + STT + TTS` triple per session. Shutdown on `SIGTERM` drains in-flight sessions (finishes the current TTS utterance, publishes `system.error` with reason `shutdown`, closes the room) before exiting.
+
+A one-shot `hcag-voice dry-run` subcommand runs §5.4.1 and §5.4.2 without joining any room and prints the resolved provider/model/preload summary. Useful in CI to catch a bad initial-packet ID before deploy.
+
+## 5.10 Observability
+
+Reuses the JSON-lines log format (§2.11.3) and OTEL trace model (§2.11.2). Voice-specific events:
+
+- `INFO`:
+  - `voice.startup.resolved` — resolved STT/TTS provider + model + endpoint, and the effective `initial_packet_ids`.
+  - `voice.startup.preload_done` — packet IDs loaded, tokens consumed, wall-clock elapsed.
+  - `voice.warmup.done` — prompt-cache warm-up latency and reported cache write size.
+  - `voice.session.opened` / `voice.session.closed` — room name, session ID, duration, turn count.
+  - `voice.turn.completed` — turn ID, user-final length, assistant-final length, first-token latency, first-audio latency, total turn duration.
+- `DEBUG`:
+  - STT partials/finals with timestamps.
+  - Assistant token deltas.
+  - TTS chunk boundaries.
+  - Barge-in cancellation points.
+- `WARN`:
+  - `voice.startup.unknown_packet` — packet ID in `initial_packet_ids` not present in catalog.
+  - `voice.warmup.wasted` — session closed before any real turn used the primed cache.
+  - STT/TTS transient errors that were retried successfully.
+  - Data-channel publish backpressure.
+- `ERROR`:
+  - `voice.startup.budget_exceeded` — initial packets exceed `MAX_ACTIVE_TOKENS`; startup aborted.
+  - STT/TTS/LiveKit connection failures that terminate the session.
+  - LLM streaming errors that could not be recovered mid-turn (the current turn ends with a `system.error` on the data channel; the session stays alive for the next turn).
+
+New OTEL spans:
+
+- `voice.session` (root, per room) with attributes for STT/TTS provider and model, initial-packet count, warmup latency.
+- `voice.turn` (child) with first-token / first-audio latency attributes.
+- `voice.stt.stream` and `voice.tts.stream` bracket the per-turn STT and TTS work so the audio pipeline is visible alongside the LLM call.
+
+## 5.11 Non-Goals
+
+- **Multi-party audio.** One user, one agent per room. Conference-style N-to-1 or N-to-N sessions are out of scope.
+- **Speaker diarization.** Single-speaker input assumed. Distinguishing multiple speakers on the mic track is a provider-level feature and not exposed here.
+- **Client-side reasoning.** The browser is a thin transport for audio in, audio out, and transcript rendering. No inference runs in the browser.
+- **Persistent conversation memory across sessions.** Each room is a fresh `AgentRuntime`. Long-term user memory is a separate concern.
+- **Voice cloning / custom voices.** Whatever the TTS provider offers is what is available; the voice agent does not build or manage voice models itself.
+- **Failover between STT/TTS providers mid-session.** Provider is fixed at session start (§5.6). Switching mid-session would invalidate the warm cache and audio contracts.
