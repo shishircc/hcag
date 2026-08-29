@@ -51,12 +51,28 @@ hcag/
 │   │   ├── pdf_conv.py    # PDF → Markdown, extract embedded images
 │   │   ├── core.py        # BFS traversal + structured logging
 │   │   └── main.py        # Typer entry point
-│   └── evalgen/           # `evalgen` CLI — generate eval Q/A from a KB
-│       ├── kb_scan.py     # Scan packets, paragraphs, image assets
-│       ├── generators.py  # Per-kind LLM generators + validators
-│       ├── csv_writer.py  # Fixed 7-column CSV output
-│       ├── runner.py      # Orchestrate scan → generate → write
-│       └── main.py        # Typer entry point
+│   ├── evalgen/           # `evalgen` CLI — generate eval Q/A from a KB
+│   │   ├── kb_scan.py     # Scan packets, paragraphs, image assets
+│   │   ├── generators.py  # Per-kind LLM generators + validators
+│   │   ├── csv_writer.py  # Fixed 7-column CSV output
+│   │   ├── runner.py      # Orchestrate scan → generate → write
+│   │   └── main.py        # Typer entry point
+│   ├── voice/             # `hcag-voice` — LiveKit voice worker
+│   │   ├── config.py      # voice.toml schema (LiveKit + STT + TTS)
+│   │   ├── worker.py      # LiveKit room worker + livekit-agents bridge
+│   │   ├── session.py     # Per-room VoiceSession orchestrator
+│   │   ├── adapters.py    # STT/TTS provider adapters
+│   │   ├── startup.py     # Preload initial packets + cache warm-up
+│   │   ├── transcription.py
+│   │   └── main.py        # Typer entry point
+│   ├── server/            # `hcag-server` — FastAPI backend for the web widget
+│   │   ├── app.py         # POST /chat, POST /livekit/token, GET /health
+│   │   └── main.py        # Typer + uvicorn entry point
+│   └── web/               # Next.js chat + voice web widget
+│       ├── app/           # App Router pages + /api/{chat,livekit/token} proxies
+│       ├── components/    # Host page + chat widget (launcher, panel, voice overlay)
+│       ├── lib/           # chat-client, voice-client (LiveKit Room hook)
+│       └── README.md      # Frontend + backend run instructions
 └── tests/
 ```
 
@@ -65,7 +81,8 @@ hcag/
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"          # add [otel] for tracing, [image] for MIME detection
+pip install -e ".[dev]"          # add [otel] for tracing, [image] for MIME detection,
+                                 # [voice] for the LiveKit voice worker, [web] for the FastAPI backend
 ```
 
 Requires Python 3.11+.
@@ -202,6 +219,78 @@ print(reply)
 ```
 
 The agent auto-injects the catalog into its system prompt at bootstrap, then the LLM decides — via the `check_and_load_kb` tool — when to load additional packets. See [DESIGN.md §2.10](./DESIGN.md#210-sequence-diagrams) for the turn-by-turn sequence diagrams.
+
+## Web Chat and Voice Widget
+
+A drop-in web widget that exposes the HCAG agent as a self-service support chatbot with an optional voice mode. Ported from a Claude Design handoff and shipped as a demo Next.js app plus a thin FastAPI backend that wraps `AgentRuntime` and mints LiveKit tokens.
+
+**Layout:**
+
+- `hcag/web/`     — Next.js 14 + React + TypeScript frontend (App Router).
+- `hcag/server/`  — FastAPI backend (`hcag-server` CLI).
+- Voice ties into the existing `hcag-voice` LiveKit worker — no fork.
+
+**What's in the widget:**
+
+- Minimised **launcher** with an optional "need help?" nudge popover.
+- **Docked panel** (400×620) — bot/user bubbles, "Best match" answer card with source citations, escalate-to-officer card, thumbs-up/down feedback, transcript download.
+- **Focus mode** — expands to near-fullscreen with a dimmed backdrop.
+- **Mobile mode** (412×844 phone frame) with the same panel adapted.
+- **Voice overlay** — animated pulse rings, live listening/speaking captions, mute / switch-to-typing / end. Joins a LiveKit room the `hcag-voice` worker is publishing on.
+
+**Run — mock mode (no backend):**
+
+```bash
+cd hcag/web
+npm install
+npm run dev          # http://localhost:3000
+```
+
+The chat runs the prototype's scripted 4-turn flow so the UI is immediately explorable. No API keys, no KB, no LiveKit.
+
+**Run — with the real HCAG agent:**
+
+```bash
+# Install the backend extras
+pip install -e ".[web,voice,dev]"
+
+# Terminal 1 — FastAPI backend
+ANTHROPIC_API_KEY=... hcag-server serve \
+    --agent-config ./examples/agent.toml \
+    --port 8000
+
+# Terminal 2 — Next.js frontend
+cd hcag/web
+echo 'NEXT_PUBLIC_USE_API=1' >> .env.local
+echo 'HCAG_API_URL=http://localhost:8000' >> .env.local
+npm run dev
+```
+
+`hcag-server` reuses one `AgentRuntime` per `session_id` so the KB catalog and active packet set stay warm across turns — no re-bootstrap per HTTP call.
+
+**Run — with voice enabled (adds LiveKit):**
+
+```bash
+# Terminal 3 — LiveKit voice worker (from a previous commit)
+export LIVEKIT_URL=wss://your-livekit.livekit.cloud
+export LIVEKIT_API_KEY=...
+export LIVEKIT_API_SECRET=...
+hcag-voice serve --config ./voice.toml
+```
+
+When the user opens voice mode the browser calls `POST /api/livekit/token`, connects to the returned LiveKit URL + room (by convention `hcag-<sessionId>`), publishes its microphone, and subscribes to the agent's audio. The `hcag-voice` worker joins the same room and drives the STT → HCAG → TTS loop; the overlay reflects `ActiveSpeakersChanged` and shows transcriptions if the worker publishes them.
+
+**Backend endpoints (`hcag-server`):**
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /chat` | `{ session_id, message, history[] }` → `{ text, session_id }`. Runs one `AgentRuntime.run_turn`. |
+| `POST /livekit/token` | `{ identity, room? }` → `{ url, token, room }`. Mints a LiveKit access token via `livekit-api`. |
+| `GET /health` | Sanity probe — returns `kb_root` and live session count. |
+
+**Wheel packaging:** `hcag/web/{node_modules,.next,out,build,dist}` are excluded from the Python wheel in `pyproject.toml`. The frontend source lives under `hcag/web/` to keep the repo cohesive; the Python backend is a proper submodule at `hcag/server/`.
+
+Full setup + env vars: [`hcag/web/README.md`](./hcag/web/README.md).
 
 ## Observability
 
