@@ -1564,6 +1564,7 @@ $ crawl --depth <N> <seed_url> [<seed_url> ...]
 - `--depth <N>` — maximum link-following depth from any seed. `N=0` fetches only the seed documents themselves; `N=1` also fetches documents reachable in one hop from a seed; and so on.
 - `--boilerplate-threshold <fraction>` — fraction of pages a block must appear in (at the top or bottom) to be treated as site chrome and stripped (§4.4.4). Default `0.7`. Range `0.0` (strip nothing, equivalent to `--no-boilerplate`) to `1.0` (strip only blocks that appear on *every* page).
 - `--no-boilerplate` — disable boilerplate detection entirely. Every fetched page's Markdown is written verbatim.
+- `--min-image-bytes <N>` — skip images whose fetched byte size is below `N` (§4.4.3). Default `10240` (10 KB). Set to `0` to keep every image regardless of size. This filters out logos, favicons, decorative rules, and social-share icons — chrome that reappears on every page and carries no content the KB needs.
 
 Output is written under `./kb/` in the current working directory (§4.5).
 
@@ -1601,6 +1602,15 @@ Linked `.pdf` documents are treated as first-class pages: fetched, converted to 
 Images embedded in HTML pages (`<img src>`) and images embedded inside PDF documents are extracted and saved as separate files alongside the Markdown output (§4.5). Every image reference in the generated Markdown is rewritten to point at the local saved file rather than the original remote URL, so the Markdown renders correctly offline.
 
 Images are content of their containing document, not link targets: they are neither depth-counted nor prefix-checked.
+
+**Size filter.** After the bytes are in hand (fetched over HTTP for HTML `<img>` targets, or extracted from the PDF stream for embedded images), images below `--min-image-bytes` (default `10240` = 10 KB) are dropped. Two things happen for a dropped image:
+
+- The image bytes are **not written** to `./kb/`.
+- The Markdown reference `![alt](local_name.ext)` is **removed** from the page's body **before** it lands on disk — no dangling links.
+
+Rationale: at any commonly-crawled site, a large majority of images by count are logos, favicons, "share this" icons, arrow glyphs, and other chrome that recurs on every page. Keeping them inflates the on-disk KB, the downstream RAG index, and the HCAG agent's multimodal context (§2.6) with content-free bytes. 10 KB is a conservative default — it lets through typical diagrams, charts, screenshots, and photographs while catching most decorative icons. Set `--min-image-bytes 0` to disable the filter for corpora where every image matters (e.g., an icon-set reference).
+
+The filter is applied uniformly to HTML-embedded images and PDF-embedded images; nothing about the source medium is a special case. Reference removal happens on the buffered/pre-write Markdown so the on-disk `.md` is always internally consistent.
 
 ### 4.4.4 Boilerplate detection
 
@@ -1671,10 +1681,11 @@ $ hcag preprocess kb/
   - Crawl start line with the resolved seed list, `--depth`, and the output root.
   - One line per fetched document: URL, depth, content type, byte size, elapsed fetch time, and the (planned) output Markdown path.
   - One line per extracted image: source document URL, remote image URL, and the local file path written under `./kb/`.
+  - `crawl.image.skipped_small` per dropped image (§4.4.3): source document URL, remote image URL (or embedded index for PDFs), fetched byte size, threshold.
   - `crawl.boilerplate.identified` at the end of the identification phase: `pages_scanned`, `header_fingerprints`, `footer_fingerprints`, `threshold`, `window`.
   - `crawl.boilerplate.stripped` once per page written: `url`, `header_blocks_removed`, `footer_blocks_removed`, `total_blocks_before`, `total_blocks_after`.
   - `crawl.boilerplate.skipped` when detection is disabled or the corpus is too small: `reason ∈ {disabled, min_corpus}`.
-  - Crawl end summary: totals for pages fetched, pages converted, images extracted, links skipped (out-of-scope / already-visited), boilerplate blocks stripped, wall-clock elapsed, and log-level counts.
+  - Crawl end summary: totals for pages fetched, pages converted, images extracted, images skipped for size, links skipped (out-of-scope / already-visited), boilerplate blocks stripped, wall-clock elapsed, and log-level counts.
 - `DEBUG`:
   - HTTP request/response headers, redirect chains, and retry attempts.
   - Markdown-conversion internals (heading count, link count, image count per document) and PDF-extraction internals (page count, image count).
@@ -1744,19 +1755,30 @@ sequenceDiagram
                 Note over CLI: WARN, skip
             else content-type = text/html
                 CLI->>CLI: convert_html → markdown + links + image srcs
-                CLI->>CLI: split markdown into blocks (blank-line-separated)
+                loop for each image src
+                    CLI->>HTTP: GET image
+                    HTTP-->>CLI: bytes
+                    alt bytes < --min-image-bytes
+                        Note over CLI: INFO crawl.image.skipped_small,<br/>remove Markdown reference to this image
+                    else bytes ≥ threshold
+                        CLI->>FS: write ./kb/<domain>/<path>/<doc-basename>-<img>.ext
+                    end
+                end
+                CLI->>CLI: split (possibly image-trimmed) markdown into blocks
                 CLI->>Buf: store (url, blocks)
                 loop for each block at position p (0-indexed)
                     CLI->>Idx: record (fingerprint, url, p, reverse_p)
                 end
             else content-type = application/pdf
                 CLI->>CLI: convert_pdf → markdown + embedded images
-                CLI->>Buf: store (url, blocks) — PDFs skip fingerprinting (§4.4.4)
-            end
-            loop for each extracted image
-                CLI->>HTTP: GET image (or use embedded bytes for PDF)
-                HTTP-->>CLI: bytes
-                CLI->>FS: write ./kb/<domain>/<path>/<doc-basename>-<img>.ext
+                loop for each embedded image
+                    alt bytes < --min-image-bytes
+                        Note over CLI: INFO crawl.image.skipped_small,<br/>remove Markdown reference to this image
+                    else bytes ≥ threshold
+                        CLI->>FS: write embedded image alongside pdf.md
+                    end
+                end
+                CLI->>FS: write ./kb/<domain>/<path>.md (PDFs write eagerly, skip fingerprinting)
             end
             loop for each outbound link at depth < max
                 CLI->>Q: enqueue (link, depth+1)
@@ -1785,7 +1807,7 @@ sequenceDiagram
             CLI->>FS: write finalized ./kb/<domain>/<path>.md
         end
     end
-    CLI-->>U: crawl complete (files written, images extracted, boilerplate blocks stripped)
+    CLI-->>U: crawl complete (files written, images extracted, images skipped for size, boilerplate blocks stripped)
 ```
 
 # Part 5 — Voice Agent (LiveKit)

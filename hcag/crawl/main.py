@@ -54,6 +54,15 @@ def _cli(
         False, "--no-boilerplate",
         help="Disable boilerplate detection entirely — write every fetched page verbatim.",
     ),
+    min_image_bytes: int = typer.Option(
+        10240, "--min-image-bytes",
+        min=0,
+        help=(
+            "Skip images whose fetched byte size is below this threshold and remove "
+            "their Markdown references (§4.4.3). Default 10240 (10 KB). Set to 0 to "
+            "keep every image regardless of size."
+        ),
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
         help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
@@ -75,6 +84,7 @@ def _cli(
         logger=logger,
         boilerplate_threshold=boilerplate_threshold,
         no_boilerplate=no_boilerplate,
+        min_image_bytes=min_image_bytes,
     )
 
     typer.echo(

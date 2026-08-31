@@ -146,7 +146,12 @@ def test_image_extracted_and_written_next_to_markdown(tmp_path: Path) -> None:
     }
     fetcher = FakeFetcher(pages)
     kb = tmp_path / "kb"
-    stats = crawl([seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=fetcher)
+    # Bypass the 10 KB size filter — this test verifies the extraction path,
+    # not the size gate.
+    stats = crawl(
+        [seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=fetcher,
+        min_image_bytes=0,
+    )
 
     assert stats.images_extracted == 1
     img_path = kb / "ex.com" / "page-apple.jpg"
@@ -291,3 +296,120 @@ def test_boilerplate_skipped_when_corpus_below_min(tmp_path: Path) -> None:
         if e["event"] == "crawl.boilerplate.skipped"
     ]
     assert "min_corpus" in reasons
+
+
+# ---------------------------------------------------------------------------
+# --min-image-bytes filter (§4.4.3)
+# ---------------------------------------------------------------------------
+
+
+def test_remove_image_reference_strips_various_shapes() -> None:
+    from hcag.crawl.core import _remove_image_reference
+
+    md = (
+        "Intro paragraph with ![inline](p-foo.jpg) inside.\n"
+        "\n"
+        "![](p-bar.png)\n"
+        "\n"
+        '![Alt "quoted"](p-baz.gif "title text")\n'
+        "\n"
+        "Trailing paragraph."
+    )
+    md = _remove_image_reference(md, "p-foo.jpg")
+    md = _remove_image_reference(md, "p-bar.png")
+    md = _remove_image_reference(md, "p-baz.gif")
+    assert "p-foo.jpg" not in md
+    assert "p-bar.png" not in md
+    assert "p-baz.gif" not in md
+    # Two spaces because the ref sat between two spaces and only the ref itself
+    # is stripped — surrounding whitespace is left alone.
+    assert "Intro paragraph with  inside." in md
+    assert "Trailing paragraph." in md
+
+
+def test_small_image_is_dropped_by_default(tmp_path: Path) -> None:
+    """Tiny image (< 10 KB default) → not written; Markdown reference removed."""
+    seed = "https://ex.com/page.html"
+    small_img = b"\x89PNG\r\n\x1a\n" + b"tiny"  # 12 bytes
+    pages = {
+        seed: _Canned(b'<html><body><img src="/logo.png" /></body></html>'),
+        "https://ex.com/logo.png": _Canned(small_img, content_type="image/png"),
+    }
+    kb = tmp_path / "kb"
+    stats = crawl(
+        [seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
+    )
+    assert stats.images_extracted == 0
+    assert stats.images_skipped_small == 1
+    assert not (kb / "ex.com" / "page-logo.png").exists()
+    md = (kb / "ex.com" / "page.md").read_text()
+    assert "page-logo.png" not in md
+    # Log line surfaces the skip with size + threshold.
+    skips = [e for e in _read_log(tmp_path) if e["event"] == "crawl.image.skipped_small"]
+    assert len(skips) == 1
+    assert skips[0]["byte_size"] == 12
+    assert skips[0]["threshold"] == 10240
+
+
+def test_large_image_is_kept_at_default_threshold(tmp_path: Path) -> None:
+    """Image ≥ 10 KB → written; Markdown reference preserved."""
+    seed = "https://ex.com/page.html"
+    big_img = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20_000
+    pages = {
+        seed: _Canned(b'<html><body><img src="/chart.png" /></body></html>'),
+        "https://ex.com/chart.png": _Canned(big_img, content_type="image/png"),
+    }
+    kb = tmp_path / "kb"
+    stats = crawl(
+        [seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
+    )
+    assert stats.images_extracted == 1
+    assert stats.images_skipped_small == 0
+    assert (kb / "ex.com" / "page-chart.png").is_file()
+    md = (kb / "ex.com" / "page.md").read_text()
+    assert "page-chart.png" in md
+
+
+def test_min_image_bytes_zero_disables_filter(tmp_path: Path) -> None:
+    """--min-image-bytes 0 → every image kept regardless of size."""
+    seed = "https://ex.com/page.html"
+    tiny = b"\x89PNG\r\n\x1a\n"  # 8 bytes
+    pages = {
+        seed: _Canned(b'<html><body><img src="/ico.png" /></body></html>'),
+        "https://ex.com/ico.png": _Canned(tiny, content_type="image/png"),
+    }
+    kb = tmp_path / "kb"
+    stats = crawl(
+        [seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
+        min_image_bytes=0,
+    )
+    assert stats.images_extracted == 1
+    assert stats.images_skipped_small == 0
+    assert (kb / "ex.com" / "page-ico.png").is_file()
+
+
+def test_size_filter_removes_ref_for_html_but_keeps_other_images(tmp_path: Path) -> None:
+    """A page with one small + one large image keeps only the large one and its ref."""
+    seed = "https://ex.com/page.html"
+    small = b"\x89PNG\r\n\x1a\n" + b"tiny"
+    large = b"\x89PNG\r\n\x1a\n" + b"\x00" * 15_000
+    pages = {
+        seed: _Canned(
+            b'<html><body>'
+            b'<img src="/icon.png" /><img src="/diagram.png" />'
+            b'</body></html>'
+        ),
+        "https://ex.com/icon.png": _Canned(small, content_type="image/png"),
+        "https://ex.com/diagram.png": _Canned(large, content_type="image/png"),
+    }
+    kb = tmp_path / "kb"
+    stats = crawl(
+        [seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
+    )
+    assert stats.images_extracted == 1
+    assert stats.images_skipped_small == 1
+    assert not (kb / "ex.com" / "page-icon.png").exists()
+    assert (kb / "ex.com" / "page-diagram.png").is_file()
+    md = (kb / "ex.com" / "page.md").read_text()
+    assert "page-icon.png" not in md
+    assert "page-diagram.png" in md

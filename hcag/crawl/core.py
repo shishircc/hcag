@@ -16,6 +16,7 @@ All events are structured-logged via the shared ``HcagLogger``.
 
 from __future__ import annotations
 
+import re
 from collections import deque
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -41,12 +42,35 @@ from .urls import normalize_url, url_to_output_paths
 HTML_TYPES = {"text/html", "application/xhtml+xml"}
 PDF_TYPES = {"application/pdf", "application/x-pdf"}
 
+DEFAULT_MIN_IMAGE_BYTES = 10_240  # §4.4.3 — 10 KB catches logos/favicons/glyphs
+
+# Image outcomes returned by ``_process_html_image``. The caller uses these
+# to decide whether to strip the corresponding Markdown reference (§4.4.3).
+IMG_KEPT = "kept"
+IMG_SIZE_SKIP = "size_skip"
+IMG_FAILED = "failed"
+
+
+_IMG_REF_TEMPLATE = r"!\[[^\]]*\]\({name}(?:\s+\"[^\"]*\")?\)"
+
+
+def _remove_image_reference(markdown: str, local_name: str) -> str:
+    """Strip every ``![alt](<local_name>)`` occurrence from ``markdown``.
+
+    Only the reference itself is removed; surrounding whitespace is left
+    alone. For an image-only line the reference removal leaves the line
+    blank, and the block splitter (§4.4.4) absorbs the surrounding blanks.
+    """
+    pattern = _IMG_REF_TEMPLATE.format(name=re.escape(local_name))
+    return re.sub(pattern, "", markdown)
+
 
 @dataclass
 class CrawlStats:
     pages_fetched: int = 0
     pages_written: int = 0
     images_extracted: int = 0
+    images_skipped_small: int = 0  # dropped by --min-image-bytes (§4.4.3)
     links_skipped_scope: int = 0
     links_skipped_visited: int = 0
     links_skipped_depth: int = 0
@@ -92,6 +116,7 @@ def crawl(
     boilerplate_window: int = DEFAULT_WINDOW,
     min_corpus_for_boilerplate: int = DEFAULT_MIN_CORPUS,
     no_boilerplate: bool = False,
+    min_image_bytes: int = DEFAULT_MIN_IMAGE_BYTES,
 ) -> CrawlStats:
     stats = CrawlStats()
 
@@ -122,6 +147,7 @@ def crawl(
         boilerplate_threshold=boilerplate_threshold,
         boilerplate_window=boilerplate_window,
         no_boilerplate=no_boilerplate,
+        min_image_bytes=min_image_bytes,
     )
 
     owns_fetcher = fetcher is None
@@ -155,6 +181,7 @@ def crawl(
                 logger,
                 stats,
                 buffer,
+                min_image_bytes=min_image_bytes,
             )
 
         # -------- Phase 2: identify boilerplate, strip, write ------------
@@ -173,6 +200,7 @@ def crawl(
             pages_fetched=stats.pages_fetched,
             pages_written=stats.pages_written,
             images_extracted=stats.images_extracted,
+            images_skipped_small=stats.images_skipped_small,
             skipped_scope=stats.links_skipped_scope,
             skipped_visited=stats.links_skipped_visited,
             skipped_depth=stats.links_skipped_depth,
@@ -204,6 +232,8 @@ def _process(
     logger: HcagLogger,
     stats: CrawlStats,
     buffer: _Buffer,
+    *,
+    min_image_bytes: int,
 ) -> None:
     try:
         result = fetcher.get(url)
@@ -229,7 +259,24 @@ def _process(
             stats.errors += 1
             return
 
-        blocks = split_blocks(converted.markdown)
+        # Fetch + size-filter images BEFORE splitting/fingerprinting so buffered
+        # blocks reflect the trimmed Markdown (§4.4.3, §4.9).
+        markdown = converted.markdown
+        for remote_url, local_name in converted.images:
+            outcome = _process_html_image(
+                remote_url,
+                local_name,
+                md_path.parent,
+                fetcher,
+                logger,
+                stats,
+                source_doc=url,
+                min_image_bytes=min_image_bytes,
+            )
+            if outcome == IMG_SIZE_SKIP:
+                markdown = _remove_image_reference(markdown, local_name)
+
+        blocks = split_blocks(markdown)
         buffer.index.add_page(page_id=url, blocks=blocks)
         buffer.pages.append(
             _BufferedHtmlPage(
@@ -253,9 +300,6 @@ def _process(
             blocks=len(blocks),
         )
 
-        for remote_url, local_name in converted.images:
-            _download_image(remote_url, md_path.parent / local_name, fetcher, logger, stats, source_doc=url)
-
         for link in converted.links:
             _consider_link(link, cur_depth, max_depth, normalized_seeds, visited, queue, logger, stats, source_doc=url)
 
@@ -267,13 +311,32 @@ def _process(
             stats.errors += 1
             return
 
+        # Size-filter embedded images BEFORE writing Markdown so no dangling
+        # references land on disk (§4.4.3).
+        markdown = converted_pdf.markdown
+        kept_images = []
+        for image in converted_pdf.images:
+            if min_image_bytes > 0 and len(image.data) < min_image_bytes:
+                stats.images_skipped_small += 1
+                logger.info(
+                    "crawl.image.skipped_small",
+                    source=url,
+                    local_filename=image.local_filename,
+                    byte_size=len(image.data),
+                    threshold=min_image_bytes,
+                    embedded_in="pdf",
+                )
+                markdown = _remove_image_reference(markdown, image.local_filename)
+                continue
+            kept_images.append(image)
+
         _write_markdown(
-            md_path, converted_pdf.markdown, logger, stats,
+            md_path, markdown, logger, stats,
             url=url, depth=cur_depth, content_type=result.content_type or "application/pdf",
             byte_size=len(result.content), elapsed_ms=result.elapsed_ms,
         )
 
-        for image in converted_pdf.images:
+        for image in kept_images:
             target = md_path.parent / image.local_filename
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
@@ -414,21 +477,30 @@ def _write_markdown(
     )
 
 
-def _download_image(
+def _process_html_image(
     remote_url: str,
-    target: Path,
+    local_name: str,
+    doc_dir: Path,
     fetcher: FetcherProtocol,
     logger: HcagLogger,
     stats: CrawlStats,
     *,
     source_doc: str,
-) -> None:
+    min_image_bytes: int,
+) -> str:
+    """Fetch an HTML-referenced image, size-check it, write on success.
+
+    Returns one of ``IMG_KEPT`` (written to disk), ``IMG_SIZE_SKIP`` (dropped
+    by the ``--min-image-bytes`` filter — caller should strip its Markdown
+    reference), or ``IMG_FAILED`` (fetch/status/write failed — reference is
+    left alone per pre-existing behavior; a WARN is logged).
+    """
     try:
         result = fetcher.get(remote_url)
     except Exception as e:
         logger.warn("crawl.image.download_failed", source=source_doc, remote_url=remote_url, error=str(e))
         stats.warnings += 1
-        return
+        return IMG_FAILED
 
     if result.status_code >= 400:
         logger.warn(
@@ -438,8 +510,21 @@ def _download_image(
             status=result.status_code,
         )
         stats.warnings += 1
-        return
+        return IMG_FAILED
 
+    if min_image_bytes > 0 and len(result.content) < min_image_bytes:
+        stats.images_skipped_small += 1
+        logger.info(
+            "crawl.image.skipped_small",
+            source=source_doc,
+            remote_url=remote_url,
+            local_filename=local_name,
+            byte_size=len(result.content),
+            threshold=min_image_bytes,
+        )
+        return IMG_SIZE_SKIP
+
+    target = doc_dir / local_name
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(result.content)
@@ -452,7 +537,7 @@ def _download_image(
             error=str(e),
         )
         stats.warnings += 1
-        return
+        return IMG_FAILED
 
     stats.images_extracted += 1
     logger.info(
@@ -461,6 +546,7 @@ def _download_image(
         remote_url=remote_url,
         local_path=str(target),
     )
+    return IMG_KEPT
 
 
 def _consider_link(
