@@ -1514,7 +1514,7 @@ sequenceDiagram
     CLI->>FS: scan billing/refunds<br/>(policy.md, states.md, edges.md, state_machine.png)
     CLI->>FS: read each source .md in lex order
     FS-->>CLI: markdown bodies
-    CLI->>CLI: rewrite image refs → assets/<basename>;<br/>concatenate bodies into `own_content`<br/>(each preceded by `<!-- source: name -->`)
+    CLI->>CLI: rewrite image refs to assets/basename,<br/>concatenate bodies into own_content<br/>(each preceded by an HTML source marker)
     CLI->>FS: copy state_machine.png → billing/refunds/assets/
     CLI->>LLM: generate_folder_metadata(own_content, children=[])
     LLM-->>CLI: {title, short, long}
@@ -1523,7 +1523,7 @@ sequenceDiagram
 
     Note over CLI,FS: — descend into billing (mixed folder) —
     CLI->>FS: scan billing (overview.md + glossary.md + billing_ecosystem.png)
-    CLI->>FS: read + concat billing's own .md → own_content;<br/>copy images → billing/assets/
+    CLI->>FS: read + concat billing's own .md into own_content,<br/>copy images into billing/assets/
     CLI->>LLM: generate_folder_metadata(own_content, children=[billing.refunds])
     LLM-->>CLI: {title, short, long}
     CLI->>FS: write billing/compiled.md<br/>(## Sub-topics from child summaries + ## Content from own_content)
@@ -3084,7 +3084,7 @@ sequenceDiagram
                 IMG-->>CLI: text description (§8.4.3)
                 CLI->>CLI: build 1 chunk (image_path retained)
             else markdown / text / html / pdf
-                CLI->>CLI: extract text; Markdown-aware chunk<br/>(target + overlap, heading path per chunk)
+                CLI->>CLI: extract text, then Markdown-aware chunk<br/>(target + overlap, heading path per chunk)
             end
             alt kb table not yet open
                 CLI->>EMB: embed one probe chunk
