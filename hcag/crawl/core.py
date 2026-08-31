@@ -1,29 +1,38 @@
-"""Crawl orchestration (§4.3, §4.7).
+"""Crawl orchestration (§4.3, §4.4.4, §4.7).
 
-`crawl(...)` runs a breadth-first traversal from a set of seed URLs. At each
-step it:
+Two-phase execution:
 
-1. Fetches the document via a `Fetcher` (retries and redirects handled there).
-2. Dispatches on content-type: HTML → `convert_html`, PDF → `convert_pdf`.
-3. Writes the produced Markdown under `./kb/` mirroring the URL layout.
-4. Writes extracted images alongside the Markdown, rewriting refs to local.
-5. For HTML, considers each discovered `<a href>` against three gates —
-   depth cap, seed prefix scope, visited set — and enqueues the survivors.
+- **Phase 1 (BFS + fingerprint accumulation).** Fetch → convert → for HTML
+  pages, split the produced Markdown into blocks, add fingerprints to the
+  cross-page index, and buffer the parsed blocks in memory. PDFs and images
+  are written eagerly (they don't participate in boilerplate detection).
+- **Phase 2 (identify + strip + write).** After BFS ends, classify each
+  fingerprint as header, footer, or content per §4.4.4; strip each buffered
+  HTML page's leading + trailing boilerplate run (bounded by the 50%-cap
+  guard); write the finalized Markdown to disk.
 
-All events (fetches, writes, image extractions, per-link skip decisions,
-warnings and errors) are structured-logged per §4.7 through the shared
-`HcagLogger`. The final `CrawlStats` mirrors the end-of-run summary line so
-callers can also inspect it programmatically.
+All events are structured-logged via the shared ``HcagLogger``.
 """
 
 from __future__ import annotations
 
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from ..logger import HcagLogger
-from .fetch import FetcherProtocol, Fetcher
+from .boilerplate import (
+    DEFAULT_MIN_CORPUS,
+    DEFAULT_THRESHOLD,
+    DEFAULT_WINDOW,
+    BoilerplateSets,
+    FingerprintIndex,
+    blocks_to_markdown,
+    identify_boilerplate,
+    split_blocks,
+    strip_page,
+)
+from .fetch import Fetcher, FetcherProtocol
 from .html_conv import convert_html
 from .pdf_conv import convert_pdf
 from .urls import normalize_url, url_to_output_paths
@@ -43,6 +52,33 @@ class CrawlStats:
     links_skipped_depth: int = 0
     warnings: int = 0
     errors: int = 0
+    # Boilerplate accounting (§4.4.4). All zeros when detection is disabled
+    # or the corpus is below the minimum.
+    boilerplate_pages_scanned: int = 0
+    boilerplate_headers_detected: int = 0
+    boilerplate_footers_detected: int = 0
+    boilerplate_header_blocks_stripped: int = 0
+    boilerplate_footer_blocks_stripped: int = 0
+    boilerplate_page_guard_hits: int = 0
+
+
+@dataclass
+class _BufferedHtmlPage:
+    url: str
+    md_path: Path
+    blocks: list[str]
+    content_type: str
+    byte_size: int
+    elapsed_ms: int
+    depth: int
+
+
+@dataclass
+class _Buffer:
+    """In-memory state that survives from Phase 1 into Phase 2."""
+
+    pages: list[_BufferedHtmlPage] = field(default_factory=list)
+    index: FingerprintIndex = field(default_factory=FingerprintIndex)
 
 
 def crawl(
@@ -51,6 +87,11 @@ def crawl(
     kb_root: Path,
     logger: HcagLogger,
     fetcher: FetcherProtocol | None = None,
+    *,
+    boilerplate_threshold: float = DEFAULT_THRESHOLD,
+    boilerplate_window: int = DEFAULT_WINDOW,
+    min_corpus_for_boilerplate: int = DEFAULT_MIN_CORPUS,
+    no_boilerplate: bool = False,
 ) -> CrawlStats:
     stats = CrawlStats()
 
@@ -62,7 +103,12 @@ def crawl(
     try:
         kb_root.mkdir(parents=True, exist_ok=True)
     except OSError as e:
-        logger.error("crawl.start.failed", reason="output_root_not_writable", path=str(kb_root), error=str(e))
+        logger.error(
+            "crawl.start.failed",
+            reason="output_root_not_writable",
+            path=str(kb_root),
+            error=str(e),
+        )
         stats.errors += 1
         return stats
 
@@ -73,11 +119,16 @@ def crawl(
         seeds=list(seeds),
         depth=depth,
         output_root=str(kb_root),
+        boilerplate_threshold=boilerplate_threshold,
+        boilerplate_window=boilerplate_window,
+        no_boilerplate=no_boilerplate,
     )
 
     owns_fetcher = fetcher is None
     if fetcher is None:
         fetcher = Fetcher()
+
+    buffer = _Buffer()
 
     try:
         visited: set[str] = set()
@@ -89,9 +140,33 @@ def crawl(
             visited.add(n)
             queue.append((seed, 0))
 
+        # -------- Phase 1: BFS + fingerprint accumulation ----------------
         while queue:
             url, cur_depth = queue.popleft()
-            _process(url, cur_depth, depth, normalized_seeds, visited, queue, kb_root, fetcher, logger, stats)
+            _process(
+                url,
+                cur_depth,
+                depth,
+                normalized_seeds,
+                visited,
+                queue,
+                kb_root,
+                fetcher,
+                logger,
+                stats,
+                buffer,
+            )
+
+        # -------- Phase 2: identify boilerplate, strip, write ------------
+        _phase2_finalize(
+            buffer,
+            logger,
+            stats,
+            threshold=boilerplate_threshold,
+            window=boilerplate_window,
+            min_corpus=min_corpus_for_boilerplate,
+            no_boilerplate=no_boilerplate,
+        )
 
         logger.info(
             "crawl.done",
@@ -101,6 +176,13 @@ def crawl(
             skipped_scope=stats.links_skipped_scope,
             skipped_visited=stats.links_skipped_visited,
             skipped_depth=stats.links_skipped_depth,
+            boilerplate_pages_scanned=stats.boilerplate_pages_scanned,
+            boilerplate_headers_detected=stats.boilerplate_headers_detected,
+            boilerplate_footers_detected=stats.boilerplate_footers_detected,
+            boilerplate_blocks_stripped=(
+                stats.boilerplate_header_blocks_stripped
+                + stats.boilerplate_footer_blocks_stripped
+            ),
             warnings=stats.warnings,
             errors=stats.errors,
         )
@@ -121,6 +203,7 @@ def _process(
     fetcher: FetcherProtocol,
     logger: HcagLogger,
     stats: CrawlStats,
+    buffer: _Buffer,
 ) -> None:
     try:
         result = fetcher.get(url)
@@ -146,10 +229,28 @@ def _process(
             stats.errors += 1
             return
 
-        _write_markdown(
-            md_path, converted.markdown, logger, stats,
-            url=url, depth=cur_depth, content_type=result.content_type,
-            byte_size=len(result.content), elapsed_ms=result.elapsed_ms,
+        blocks = split_blocks(converted.markdown)
+        buffer.index.add_page(page_id=url, blocks=blocks)
+        buffer.pages.append(
+            _BufferedHtmlPage(
+                url=url,
+                md_path=md_path,
+                blocks=blocks,
+                content_type=result.content_type,
+                byte_size=len(result.content),
+                elapsed_ms=result.elapsed_ms,
+                depth=cur_depth,
+            )
+        )
+        logger.info(
+            "crawl.page.fetched",
+            url=url,
+            depth=cur_depth,
+            content_type=result.content_type,
+            byte_size=len(result.content),
+            elapsed_ms=result.elapsed_ms,
+            planned_output_path=str(md_path),
+            blocks=len(blocks),
         )
 
         for remote_url, local_name in converted.images:
@@ -195,6 +296,91 @@ def _process(
             content_type=result.content_type or "(missing)",
         )
         stats.warnings += 1
+
+
+# --- Phase 2 --------------------------------------------------------------
+
+
+def _phase2_finalize(
+    buffer: _Buffer,
+    logger: HcagLogger,
+    stats: CrawlStats,
+    *,
+    threshold: float,
+    window: int,
+    min_corpus: int,
+    no_boilerplate: bool,
+) -> None:
+    stats.boilerplate_pages_scanned = buffer.index.page_count()
+
+    if not buffer.pages:
+        logger.info("crawl.boilerplate.skipped", reason="no_html_pages")
+        return
+
+    if no_boilerplate:
+        logger.info("crawl.boilerplate.skipped", reason="disabled", pages=len(buffer.pages))
+        _flush_verbatim(buffer, logger, stats)
+        return
+
+    if stats.boilerplate_pages_scanned < min_corpus:
+        logger.info(
+            "crawl.boilerplate.skipped",
+            reason="min_corpus",
+            pages=stats.boilerplate_pages_scanned,
+            min_corpus=min_corpus,
+        )
+        _flush_verbatim(buffer, logger, stats)
+        return
+
+    sets = identify_boilerplate(buffer.index, threshold=threshold, window=window)
+    stats.boilerplate_headers_detected = len(sets.headers)
+    stats.boilerplate_footers_detected = len(sets.footers)
+    logger.info(
+        "crawl.boilerplate.identified",
+        pages_scanned=stats.boilerplate_pages_scanned,
+        header_fingerprints=stats.boilerplate_headers_detected,
+        footer_fingerprints=stats.boilerplate_footers_detected,
+        threshold=threshold,
+        window=window,
+    )
+
+    for page in buffer.pages:
+        result = strip_page(page.blocks, sets)
+        if result.guard_tripped:
+            stats.boilerplate_page_guard_hits += 1
+            logger.warn(
+                "crawl.boilerplate.page_guard",
+                url=page.url,
+                blocks=len(page.blocks),
+                would_remove=len(page.blocks) - len(result.blocks) if result.blocks else 0,
+            )
+        content = blocks_to_markdown(result.blocks)
+        _write_markdown(
+            page.md_path, content, logger, stats,
+            url=page.url, depth=page.depth, content_type=page.content_type,
+            byte_size=page.byte_size, elapsed_ms=page.elapsed_ms,
+        )
+        stats.boilerplate_header_blocks_stripped += result.header_removed
+        stats.boilerplate_footer_blocks_stripped += result.footer_removed
+        logger.info(
+            "crawl.boilerplate.stripped",
+            url=page.url,
+            header_blocks_removed=result.header_removed,
+            footer_blocks_removed=result.footer_removed,
+            total_blocks_before=len(page.blocks),
+            total_blocks_after=len(result.blocks),
+        )
+
+
+def _flush_verbatim(buffer: _Buffer, logger: HcagLogger, stats: CrawlStats) -> None:
+    """Write every buffered page as-is — no boilerplate stripping."""
+    for page in buffer.pages:
+        content = blocks_to_markdown(page.blocks)
+        _write_markdown(
+            page.md_path, content, logger, stats,
+            url=page.url, depth=page.depth, content_type=page.content_type,
+            byte_size=page.byte_size, elapsed_ms=page.elapsed_ms,
+        )
 
 
 def _write_markdown(

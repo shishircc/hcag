@@ -91,6 +91,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [4.4.1 HTML](#441-html)
     - [4.4.2 PDF](#442-pdf)
     - [4.4.3 Images](#443-images)
+    - [4.4.4 Boilerplate detection](#444-boilerplate-detection)
   - [4.5 Output Layout](#45-output-layout)
   - [4.6 Relationship to `hcag`](#46-relationship-to-hcag)
   - [4.7 Observability (CLI)](#47-observability-cli)
@@ -1510,17 +1511,22 @@ sequenceDiagram
     Note over CLI: DFS: recurse into children first
 
     Note over CLI,FS: — descend into billing/refunds (leaf) —
-    CLI->>FS: scan billing/refunds
+    CLI->>FS: scan billing/refunds<br/>(policy.md, states.md, edges.md, state_machine.png)
+    CLI->>FS: read each source .md in lex order
+    FS-->>CLI: markdown bodies
+    CLI->>CLI: rewrite image refs → assets/<basename>;<br/>concatenate bodies into `own_content`<br/>(each preceded by `<!-- source: name -->`)
+    CLI->>FS: copy state_machine.png → billing/refunds/assets/
     CLI->>LLM: generate_folder_metadata(own_content, children=[])
     LLM-->>CLI: {title, short, long}
-    CLI->>FS: copy images → assets/, write billing/refunds/compiled.md
+    CLI->>FS: write billing/refunds/compiled.md<br/>(front-matter · # title · short · ## Content = own_content)
     Note right of CLI: return FolderSummary(billing.refunds)
 
     Note over CLI,FS: — descend into billing (mixed folder) —
-    CLI->>FS: scan billing
+    CLI->>FS: scan billing (overview.md + glossary.md + billing_ecosystem.png)
+    CLI->>FS: read + concat billing's own .md → own_content;<br/>copy images → billing/assets/
     CLI->>LLM: generate_folder_metadata(own_content, children=[billing.refunds])
     LLM-->>CLI: {title, short, long}
-    CLI->>FS: write billing/compiled.md<br/>(## Sub-topics from child summary + ## Content)
+    CLI->>FS: write billing/compiled.md<br/>(## Sub-topics from child summaries + ## Content from own_content)
     Note right of CLI: return FolderSummary(billing)
 
     Note over CLI,FS: — descend into auth (pure taxonomy node) —
@@ -1546,6 +1552,8 @@ sequenceDiagram
 
 `crawl` takes a set of seed URLs and builds a local Markdown knowledge base from the pages they lead to. Each seed is fetched, converted to Markdown, and its outbound links are followed recursively — staying within the site regions defined by the seed URL prefixes. The output is a local `./kb/` tree whose directory shape mirrors the domains and URL paths of the crawled sites, ready to hand to `hcag preprocess` (Part 3) as raw KB input.
 
+Site chrome that repeats across pages — top navigation, breadcrumbs, link-heavy footers — is stripped from every page's Markdown before it hits disk, using cross-page positional voting (§4.4.4). Downstream indexers therefore see the content authors wrote, not the template around it.
+
 ## 4.2 Invocation
 
 ```
@@ -1554,6 +1562,8 @@ $ crawl --depth <N> <seed_url> [<seed_url> ...]
 
 - `<seed_url>` — one or more starting URLs. Each seed defines both a starting point and a prefix scope (§4.3.1). At least one seed is required.
 - `--depth <N>` — maximum link-following depth from any seed. `N=0` fetches only the seed documents themselves; `N=1` also fetches documents reachable in one hop from a seed; and so on.
+- `--boilerplate-threshold <fraction>` — fraction of pages a block must appear in (at the top or bottom) to be treated as site chrome and stripped (§4.4.4). Default `0.7`. Range `0.0` (strip nothing, equivalent to `--no-boilerplate`) to `1.0` (strip only blocks that appear on *every* page).
+- `--no-boilerplate` — disable boilerplate detection entirely. Every fetched page's Markdown is written verbatim.
 
 Output is written under `./kb/` in the current working directory (§4.5).
 
@@ -1592,6 +1602,38 @@ Images embedded in HTML pages (`<img src>`) and images embedded inside PDF docum
 
 Images are content of their containing document, not link targets: they are neither depth-counted nor prefix-checked.
 
+### 4.4.4 Boilerplate detection
+
+Marketing headers, top navigation, breadcrumbs, cookie banners, and link-heavy footers repeat verbatim across most pages of a well-templated site. They are low-signal noise for an HCAG or RAG index — indexing the same 30-line footer once per page inflates every retrieval score and drowns out the actual content authors wrote. `crawl` strips this boilerplate from every page's Markdown using **cross-page positional voting**: a block that appears at (nearly) the same position in the majority of pages is boilerplate; every other block is content.
+
+The tool never inspects a single page's DOM to guess at conventions (`<header>`, `<footer>`, `<nav>`, sidebar `id`s). That's brittle and duplicates work. Cross-page voting sidesteps it entirely: if a block is genuinely repeated site chrome, it will show up on many pages at similar positions regardless of how the HTML labels it. The trade-off is that a single-page crawl gets no benefit — hence the `min_corpus_for_boilerplate` guard below.
+
+**Algorithm.** Detection is two-phase — fingerprint accumulation during BFS, then identification + strip after BFS ends. Pages are held in memory as their parsed block list (small — typically a few KB per page) so no page is written to disk until the boilerplate decision is final; there are no intermediate `.raw.md` files.
+
+1. **Fingerprint every block during fetch.** As each HTML-derived Markdown page is produced (§4.4.1), split its body into **blocks** — runs of non-blank lines separated by blank lines (fenced code blocks are treated as one atomic block). For each block, compute a normalized fingerprint: lowercase the text, collapse consecutive whitespace to a single space, drop trailing punctuation. Record `(fingerprint, page_id, position_from_top, position_from_bottom)` in an in-memory index.
+
+2. **Identify boilerplate after BFS ends.** For each fingerprint, count how many distinct pages contain it. A fingerprint is classified as a:
+   - **Header block** if it appears in ≥ `--boilerplate-threshold` (default 0.7) of pages AND its `position_from_top` is within the first `boilerplate_window` blocks (default 5) in the majority of those appearances.
+   - **Footer block** if it meets the same page-share threshold AND its `position_from_bottom` is within the last `boilerplate_window` blocks.
+
+   A single fingerprint can qualify as both (rare — usually a page-name breadcrumb that some templates repeat at the top and bottom). Both classifications enable both strip directions.
+
+3. **Strip per page.** For each buffered page:
+   - Starting from the top, remove the **maximal contiguous run** of header blocks. Stop the strip as soon as a non-boilerplate block is encountered — a nav item sandwiched between two content paragraphs stays; it's the reader's problem, not ours.
+   - Starting from the bottom, remove the **maximal contiguous run** of footer blocks. Same stop rule.
+
+4. **Write finalized Markdown.** The remaining blocks are joined with blank-line separators and written to `./kb/<domain>/<path>.md` per §4.5. This is the only disk write for the crawled pages.
+
+**Sanity guards** — three cases where the naive algorithm would do the wrong thing:
+
+- **50%-cap.** Never strip more than half of a page's blocks. A page that is almost entirely navigation (a site's `/sitemap` or an index-of-links page) would otherwise vanish. If the guard trips, the page is written verbatim and a `WARN` (`crawl.boilerplate.page_guard`) is logged.
+- **Minimum corpus.** Detection is skipped entirely when fewer than `min_corpus_for_boilerplate` pages (default 3) were successfully fetched. Nothing to compare against; detection would be all noise. An `INFO` (`crawl.boilerplate.skipped`) is logged with the reason.
+- **`--no-boilerplate`.** Operator opt-out. Detection is skipped and every page is written verbatim. Useful when the target site has no template (e.g., a single long spec document broken into pages) or when the operator wants to inspect raw output before deciding.
+
+**PDF and image handling.** Boilerplate detection runs on HTML-derived Markdown only. PDFs (§4.4.2) have per-document layout — the "header" of a PDF is usually its title page, which is content, not chrome. Image extraction (§4.4.3) is unaffected; images are written eagerly as pages are fetched and never buffered.
+
+**Why not LLM classification?** An LLM could probably classify header/footer better than positional voting on ambiguous pages, but it would add per-page latency, per-page cost, and a hard LLM dependency to a tool whose whole point is being a mechanical mirror (§4.8). The positional heuristic is deterministic, offline, and — on any site with more than a handful of pages — accurate enough that upgrading to an LLM classifier isn't worth its price.
+
 ## 4.5 Output Layout
 
 Output is rooted at `./kb/`, with the domain as the first path segment and the URL path preserved below it. For a page at `https://webdomain/topic-domain/topic/subtopic/something.html`:
@@ -1621,19 +1663,23 @@ $ hcag preprocess kb/
 
 `crawl` emits a log line for every meaningful event during a crawl — each URL fetched, each Markdown document written, each image extracted, and each candidate link that was skipped — using the same JSON-lines format as the rest of the toolchain (§2.11.3, §3.9). This makes a completed crawl auditable after the fact: given the log, an operator can reconstruct exactly which URLs were visited, which were skipped and why, and which files ended up in `./kb/`.
 
-**Configuration.** The log path defaults to `./crawl.log` and can be overridden with `--log-file <path>`. Level is controlled with `--log-level {debug,info,warn,error}` (default `info`). If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`crawl.fetch`, `crawl.convert`, `crawl.image.extract`) are also exported, matching the observability model used by the runtime (§2.11) and by `hcag` (§3.9).
+**Configuration.** The log path defaults to `./crawl.log` and can be overridden with `--log-file <path>`. Level is controlled with `--log-level {debug,info,warn,error}` (default `info`). If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`crawl.fetch`, `crawl.convert`, `crawl.image.extract`, `crawl.boilerplate.identify`) are also exported, matching the observability model used by the runtime (§2.11) and by `hcag` (§3.9).
 
 **Levels.**
 
 - `INFO`:
   - Crawl start line with the resolved seed list, `--depth`, and the output root.
-  - One line per fetched document: URL, depth, content type, byte size, elapsed fetch time, and the output Markdown path.
+  - One line per fetched document: URL, depth, content type, byte size, elapsed fetch time, and the (planned) output Markdown path.
   - One line per extracted image: source document URL, remote image URL, and the local file path written under `./kb/`.
-  - Crawl end summary: totals for pages fetched, pages converted, images extracted, links skipped (out-of-scope / already-visited), wall-clock elapsed, and log-level counts.
+  - `crawl.boilerplate.identified` at the end of the identification phase: `pages_scanned`, `header_fingerprints`, `footer_fingerprints`, `threshold`, `window`.
+  - `crawl.boilerplate.stripped` once per page written: `url`, `header_blocks_removed`, `footer_blocks_removed`, `total_blocks_before`, `total_blocks_after`.
+  - `crawl.boilerplate.skipped` when detection is disabled or the corpus is too small: `reason ∈ {disabled, min_corpus}`.
+  - Crawl end summary: totals for pages fetched, pages converted, images extracted, links skipped (out-of-scope / already-visited), boilerplate blocks stripped, wall-clock elapsed, and log-level counts.
 - `DEBUG`:
   - HTTP request/response headers, redirect chains, and retry attempts.
   - Markdown-conversion internals (heading count, link count, image count per document) and PDF-extraction internals (page count, image count).
   - For each page, the full list of `<a href>` values discovered, each tagged with its disposition: `queued`, `skipped:out-of-scope`, `skipped:visited`, or `skipped:depth-cap`.
+  - Per-fingerprint boilerplate decisions: fingerprint hash, page count, top/bottom position histogram, classification (`header`, `footer`, `both`, `content`).
 - `WARN`:
   - Fetch returned a non-2xx status for an in-scope URL (URL is dropped, siblings continue).
   - Fetched content type is neither HTML nor PDF (URL is dropped).
@@ -1641,6 +1687,7 @@ $ hcag preprocess kb/
   - `href` value could not be parsed or resolved against the base URL.
   - Redirect chain exceeded the safety cap and was terminated.
   - Output path collision detected and resolved by disambiguation (e.g., two URLs mapping to the same local filename).
+  - `crawl.boilerplate.page_guard` — the 50%-cap guard tripped for a specific page; the page is written verbatim.
 - `ERROR`:
   - Crawl cannot start: no valid seeds, seed URL malformed, or `./kb/` not writable.
   - Fetch aborted after retries due to network failure or timeout.
@@ -1655,10 +1702,11 @@ If any `ERROR`-level event is logged during a run, `crawl` exits with a non-zero
 - **Auth-gated content.** Login flows, cookies, and custom headers beyond a plain fetch are out of scope.
 - **Non-HTML, non-PDF assets.** Videos, archives, and other binary formats are neither followed as links nor mirrored into `./kb/`.
 - **Incremental re-crawl.** Each invocation fetches every in-scope URL once; change detection and freshness re-crawling are not provided.
+- **Semantic content extraction (Readability-style).** Boilerplate detection is positional cross-page voting only (§4.4.4). Single-page inference from DOM/CSS conventions is out of scope; it's brittle and duplicates what modern site-scale crawling can determine mechanically. LLM-based boilerplate classification is also out of scope for the same reason `crawl` avoids LLMs everywhere else — it's a mechanical mirror, not an interpreter.
 
 ## 4.9 Sequence Diagram
 
-Prefix-scoped BFS starting from one seed. Every popped URL is filtered through three skip decisions (visited-dedup, depth-cap, out-of-scope) before a fetch; every fetched page contributes both a Markdown file and zero-or-more extracted images to `./kb/`, plus any in-scope outbound links back to the queue.
+Prefix-scoped BFS during Phase 1 filters every popped URL through three skip decisions (visited-dedup, depth-cap, out-of-scope) before a fetch. HTML-derived Markdown is **buffered in memory** rather than written eagerly, and its blocks are fingerprinted into a global index so Phase 2 can identify site chrome. Images are written eagerly — they don't participate in boilerplate detection. Phase 2 runs after BFS ends: classify fingerprints as header / footer / content, strip each buffered page's leading + trailing boilerplate runs, then write the finalized Markdown.
 
 ```mermaid
 sequenceDiagram
@@ -1669,12 +1717,15 @@ sequenceDiagram
     participant V as visited set
     participant HTTP as httpx
     participant Site as Remote site
+    participant Buf as page buffer (in-memory)
+    participant Idx as fingerprint index
     participant FS as ./kb/
 
     U->>CLI: crawl --depth 3 https://docs.example.com/api/
     CLI->>Q: enqueue (seed, depth=0)
     Note over CLI,Q: prefix scope = https://docs.example.com/api/
 
+    Note over CLI,FS: ── Phase 1: BFS + fingerprint accumulation ──
     loop until queue is empty
         Q-->>CLI: pop (url, depth)
         alt url ∈ visited
@@ -1693,10 +1744,15 @@ sequenceDiagram
                 Note over CLI: WARN, skip
             else content-type = text/html
                 CLI->>CLI: convert_html → markdown + links + image srcs
+                CLI->>CLI: split markdown into blocks (blank-line-separated)
+                CLI->>Buf: store (url, blocks)
+                loop for each block at position p (0-indexed)
+                    CLI->>Idx: record (fingerprint, url, p, reverse_p)
+                end
             else content-type = application/pdf
                 CLI->>CLI: convert_pdf → markdown + embedded images
+                CLI->>Buf: store (url, blocks) — PDFs skip fingerprinting (§4.4.4)
             end
-            CLI->>FS: write ./kb/<domain>/<path>.md
             loop for each extracted image
                 CLI->>HTTP: GET image (or use embedded bytes for PDF)
                 HTTP-->>CLI: bytes
@@ -1707,7 +1763,29 @@ sequenceDiagram
             end
         end
     end
-    CLI-->>U: crawl complete (files written, images extracted, skips by reason)
+
+    Note over CLI,FS: ── Phase 2: boilerplate identification + write ──
+    alt --no-boilerplate OR fewer than min_corpus pages
+        Note over CLI,Idx: INFO crawl.boilerplate.skipped
+        loop for each buffered page
+            Buf-->>CLI: (url, blocks)
+            CLI->>FS: write ./kb/<domain>/<path>.md verbatim
+        end
+    else detection enabled
+        CLI->>Idx: for each fingerprint, count pages + summarize positions
+        Idx-->>CLI: header set + footer set (per §4.4.4 rules)
+        Note over CLI,Idx: INFO crawl.boilerplate.identified<br/>(header_fingerprints, footer_fingerprints)
+        loop for each buffered page
+            Buf-->>CLI: (url, blocks)
+            CLI->>CLI: strip leading run of header blocks
+            CLI->>CLI: strip trailing run of footer blocks
+            alt >50% of blocks would be stripped
+                Note over CLI: WARN page_guard, keep verbatim
+            end
+            CLI->>FS: write finalized ./kb/<domain>/<path>.md
+        end
+    end
+    CLI-->>U: crawl complete (files written, images extracted, boilerplate blocks stripped)
 ```
 
 # Part 5 — Voice Agent (LiveKit)

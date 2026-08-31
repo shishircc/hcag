@@ -206,3 +206,88 @@ def test_log_records_skip_disposition(tmp_path: Path) -> None:
     events = _read_log(tmp_path)
     skip = [e for e in events if e["event"] == "crawl.link.skipped"]
     assert any(e.get("disposition") == "skipped:out-of-scope" for e in skip)
+
+
+# ---------------------------------------------------------------------------
+# Boilerplate detection (§4.4.4) — end-to-end
+# ---------------------------------------------------------------------------
+
+
+def _templated_page(unique_body: str) -> bytes:
+    """Small HTML page with the same nav header + footer around unique body."""
+    return (
+        b"<html><body>"
+        b"<nav>Nav | Home | Docs | About</nav>"
+        b"<h1>" + unique_body.encode() + b"</h1>"
+        b"<p>Details about " + unique_body.encode() + b".</p>"
+        b"<footer>Copyright 2026 Widgets Inc.</footer>"
+        b"</body></html>"
+    )
+
+
+def test_boilerplate_strips_shared_nav_and_footer(tmp_path: Path) -> None:
+    seeds = ["https://docs.ex.com/a", "https://docs.ex.com/b", "https://docs.ex.com/c"]
+    pages = {
+        seeds[0]: _Canned(_templated_page("Alpha")),
+        seeds[1]: _Canned(_templated_page("Beta")),
+        seeds[2]: _Canned(_templated_page("Gamma")),
+    }
+    kb = tmp_path / "kb"
+    stats = crawl(
+        seeds, depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
+    )
+    assert stats.pages_written == 3
+    assert stats.boilerplate_pages_scanned == 3
+    # Nav should be stripped from every page's Markdown, footer likewise.
+    for name in ("a", "b", "c"):
+        md = (kb / "docs.ex.com" / f"{name}.md").read_text()
+        assert "Home | Docs | About" not in md
+        assert "Copyright 2026 Widgets Inc" not in md
+    # Unique body survives in each page.
+    assert "Alpha" in (kb / "docs.ex.com" / "a.md").read_text()
+    assert "Beta" in (kb / "docs.ex.com" / "b.md").read_text()
+    assert "Gamma" in (kb / "docs.ex.com" / "c.md").read_text()
+    # Header + footer accounting.
+    assert stats.boilerplate_header_blocks_stripped >= 3
+    assert stats.boilerplate_footer_blocks_stripped >= 3
+
+
+def test_boilerplate_disabled_writes_verbatim(tmp_path: Path) -> None:
+    seeds = ["https://docs.ex.com/a", "https://docs.ex.com/b", "https://docs.ex.com/c"]
+    pages = {u: _Canned(_templated_page(u.rsplit("/", 1)[1])) for u in seeds}
+    kb = tmp_path / "kb"
+    stats = crawl(
+        seeds, depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
+        no_boilerplate=True,
+    )
+    assert stats.pages_written == 3
+    md = (kb / "docs.ex.com" / "a.md").read_text()
+    # Nav and footer are still present because detection was disabled.
+    assert "Home | Docs | About" in md
+    assert "Copyright 2026 Widgets Inc" in md
+    assert stats.boilerplate_headers_detected == 0
+    assert stats.boilerplate_footers_detected == 0
+    # Log carries the "disabled" reason.
+    reasons = [
+        e.get("reason") for e in _read_log(tmp_path)
+        if e["event"] == "crawl.boilerplate.skipped"
+    ]
+    assert "disabled" in reasons
+
+
+def test_boilerplate_skipped_when_corpus_below_min(tmp_path: Path) -> None:
+    seed = "https://docs.ex.com/only"
+    pages = {seed: _Canned(_templated_page("Only"))}
+    kb = tmp_path / "kb"
+    stats = crawl(
+        [seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
+    )
+    assert stats.pages_written == 1
+    md = (kb / "docs.ex.com" / "only.md").read_text()
+    # Only one page — detection can't run, so verbatim.
+    assert "Home | Docs | About" in md
+    reasons = [
+        e.get("reason") for e in _read_log(tmp_path)
+        if e["event"] == "crawl.boilerplate.skipped"
+    ]
+    assert "min_corpus" in reasons

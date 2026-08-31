@@ -41,6 +41,19 @@ def _cli(
         "INFO", "--log-level",
         help="Log level: DEBUG | INFO | WARN | ERROR.",
     ),
+    boilerplate_threshold: float = typer.Option(
+        0.7, "--boilerplate-threshold",
+        min=0.0, max=1.0,
+        help=(
+            "Fraction of pages a block must appear in (at the top or bottom) to be "
+            "stripped as site chrome (§4.4.4). 0.0 disables detection (same as "
+            "--no-boilerplate); 1.0 strips only blocks present on every page."
+        ),
+    ),
+    no_boilerplate: bool = typer.Option(
+        False, "--no-boilerplate",
+        help="Disable boilerplate detection entirely — write every fetched page verbatim.",
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
         help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
@@ -55,7 +68,14 @@ def _cli(
     log_cfg = LogConfig(file_path=str(log_file), level=level)  # type: ignore[arg-type]
     logger = build_logger(log_cfg, name="crawl", console=verbose)
 
-    stats = crawl(seeds=seeds, depth=depth, kb_root=output, logger=logger)
+    stats = crawl(
+        seeds=seeds,
+        depth=depth,
+        kb_root=output,
+        logger=logger,
+        boilerplate_threshold=boilerplate_threshold,
+        no_boilerplate=no_boilerplate,
+    )
 
     typer.echo(
         f"crawl complete: {stats.pages_written} page(s), "
