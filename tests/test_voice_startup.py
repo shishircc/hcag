@@ -12,21 +12,35 @@ from hcag.runtime.llm import LLMResponse, Message
 from hcag.voice.startup import preload_initial_packets, warmup_prompt_cache
 
 
-CATALOG = """<!-- HCAG:ROOT_CATALOG -->
+ROOT_COMPILED = """<!-- HCAG:COMPILED id=_root -->
+---
+id: ""
+title: Root
+short_description: KB root
+long_description: KB root
+token_size_estimate: 50
+kind: node
+source_files: []
+children:
+- billing.refunds
+- billing.invoices
+---
 
-# Knowledge Catalog
+# Root
 
-## Packets
+KB root
+
+## Sub-topics
 
 ### `billing.refunds`
-- **path**: `billing/refunds/`
+- **path**: `billing/refunds`
 - **title**: Refund Processing
 - **short**: How refunds are issued.
 - **long**: Full lifecycle.
 - **tokens**: 100
 
 ### `billing.invoices`
-- **path**: `billing/invoices/`
+- **path**: `billing/invoices`
 - **title**: Invoices
 - **short**: How invoices work.
 - **long**: Invoice generation.
@@ -34,15 +48,32 @@ CATALOG = """<!-- HCAG:ROOT_CATALOG -->
 """
 
 
+def _leaf(pid: str, title: str, body: str) -> str:
+    return (
+        f"<!-- HCAG:COMPILED id={pid} -->\n"
+        "---\n"
+        f"id: {pid}\n"
+        f"title: {title}\n"
+        "short_description: short\n"
+        "long_description: long\n"
+        "token_size_estimate: 100\n"
+        "kind: leaf\n"
+        "source_files: [main.md]\n"
+        "children: []\n"
+        "---\n\n"
+        f"# {title}\n\n## Content\n\n{body}\n"
+    )
+
+
 def _setup_kb(tmp_path: Path) -> Path:
-    (tmp_path / "catalog.md").write_text(CATALOG, encoding="utf-8")
+    (tmp_path / "compiled.md").write_text(ROOT_COMPILED, encoding="utf-8")
     (tmp_path / "billing" / "refunds").mkdir(parents=True)
-    (tmp_path / "billing" / "refunds" / "packet.md").write_text(
-        "# Refunds\n\nDetails.\n", encoding="utf-8"
+    (tmp_path / "billing" / "refunds" / "compiled.md").write_text(
+        _leaf("billing.refunds", "Refunds", "Details."), encoding="utf-8"
     )
     (tmp_path / "billing" / "invoices").mkdir(parents=True)
-    (tmp_path / "billing" / "invoices" / "packet.md").write_text(
-        "# Invoices\n\nDetails.\n", encoding="utf-8"
+    (tmp_path / "billing" / "invoices" / "compiled.md").write_text(
+        _leaf("billing.invoices", "Invoices", "Details."), encoding="utf-8"
     )
     return tmp_path
 

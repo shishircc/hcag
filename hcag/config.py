@@ -86,7 +86,7 @@ class CliConfig(BaseModel):
     llm: LLMConfig = Field(default_factory=LLMConfig)
     tokenizer: TokenizerConfig = Field(default_factory=TokenizerConfig)
     log: LogConfig = Field(default_factory=lambda: LogConfig(file_path="./hcag-build.log"))
-    mixed_suffix: str = "_"
+    root_id: str = ""  # id used for the root folder; empty string is fine and matches §3.4.5
 
 
 class EvalGenGenerationConfig(BaseModel):

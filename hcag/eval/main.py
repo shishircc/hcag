@@ -109,6 +109,10 @@ def run(
     ),
     log_file: str = typer.Option(None, "--log-file", help="Log file path."),
     log_level: str = typer.Option(None, "--log-level", help="DEBUG|INFO|WARN|ERROR."),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
+    ),
 ) -> None:
     """Score an eval set against a chatbot backend."""
     if session_scope is not None and session_scope not in ("per-question", "per-run"):
@@ -132,7 +136,7 @@ def run(
         log_level=log_level,
     )
 
-    logger = build_logger(cfg.log, name="hcag.eval")
+    logger = build_logger(cfg.log, name="hcag.eval", console=verbose)
 
     resolved = ResolvedRun(
         input_path=input_csv,

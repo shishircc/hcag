@@ -64,7 +64,7 @@ def preload_initial_packets(
     - Known IDs are batched into ONE `check_and_load_kb` call so the delta
       lands as a single tool-result block — this matches the shape of a real
       turn's classification-then-load, and keeps the cache prefix compact.
-    - If the batched load fails with BudgetExceeded, the session cannot
+    - If the batched load fails with `budget_exceeded`, the session cannot
       start; the result records `budget_exceeded=True` and callers must
       abort startup.
     """
@@ -135,7 +135,11 @@ def preload_initial_packets(
 
     result.loaded_ids = [p.id for p in delta.loaded]
     result.errors = list(delta.errors)
-    result.budget_exceeded = any(e.reason == "BudgetExceeded" for e in delta.errors)
+    # Eviction emits `budget_exceeded: <detail>` per §2.8. Detect by prefix so
+    # the trailing explanation can evolve without silently breaking this flag.
+    result.budget_exceeded = any(
+        (e.reason or "").split(":", 1)[0] == "budget_exceeded" for e in delta.errors
+    )
     result.tokens_used = runtime.memory.budget.sum_estimate(delta.active_after, catalog)
     result.elapsed_ms = int((time.perf_counter() - start) * 1000)
 

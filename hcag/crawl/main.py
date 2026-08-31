@@ -41,6 +41,10 @@ def _cli(
         "INFO", "--log-level",
         help="Log level: DEBUG | INFO | WARN | ERROR.",
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
+    ),
 ) -> None:
     """Crawl seed URLs and mirror them into a local Markdown knowledge base."""
     level = log_level.upper()
@@ -49,7 +53,7 @@ def _cli(
         raise typer.Exit(code=2)
 
     log_cfg = LogConfig(file_path=str(log_file), level=level)  # type: ignore[arg-type]
-    logger = build_logger(log_cfg, name="crawl")
+    logger = build_logger(log_cfg, name="crawl", console=verbose)
 
     stats = crawl(seeds=seeds, depth=depth, kb_root=output, logger=logger)
 

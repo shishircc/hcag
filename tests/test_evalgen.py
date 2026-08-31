@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from hcag.cli.catalog_io import PacketFrontMatter, write_packet_md
+from hcag.compiled_io import CompiledFrontMatter, write_compiled_md
 from hcag.config import EvalGenConfig
 from hcag.evalgen.csv_writer import COLUMNS, question_id, write_csv
 from hcag.evalgen.generators import GeneratedItem
@@ -56,21 +56,18 @@ def test_taxonomy_prefix() -> None:
 
 def _write_packet(folder: Path, packet_id: str, source_texts: list[tuple[str, str]], with_image: bool = False) -> None:
     folder.mkdir(parents=True, exist_ok=True)
-    body = ""
-    for i, (name, content) in enumerate(source_texts):
-        if i > 0:
-            body += "\n\n---\n\n"
-        body += content
-    fm = PacketFrontMatter(
+    fm = CompiledFrontMatter(
         id=packet_id,
         title=f"Title for {packet_id}",
         short_description=f"Short for {packet_id}",
         long_description=f"Long description for {packet_id}.",
         token_size_estimate=1000,
+        kind="leaf",
         source_files=[name for name, _ in source_texts],
+        children=[],
     )
     body_sections = [(name, content) for name, content in source_texts]
-    write_packet_md(folder / "packet.md", fm, body_sections)
+    write_compiled_md(folder / "compiled.md", fm, children=[], own_sections=body_sections)
     if with_image:
         assets = folder / "assets"
         assets.mkdir(exist_ok=True)

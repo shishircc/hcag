@@ -38,6 +38,10 @@ def _cli(
         None, "--config",
         help="Path to evalgen.toml. Defaults to <kb_root>/evalgen.toml if present.",
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
+    ),
 ) -> None:
     """Generate evaluation questions/answers from a normalized KB."""
     if not kb_root.is_dir():
@@ -80,7 +84,7 @@ def _cli(
     cfg_path = config if config is not None else (kb_root / "evalgen.toml")
     cfg = load_evalgen_config(cfg_path)
 
-    logger = build_logger(cfg.log, name="evalgen")
+    logger = build_logger(cfg.log, name="evalgen", console=verbose)
 
     request = EvalGenRequest(
         kb_root=kb_root,

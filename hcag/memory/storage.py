@@ -1,6 +1,13 @@
-"""KB backing-store abstraction. LocalFsStorage is the default; substitute for
-S3, GitVersionedStorage, RemoteHttpStorage, etc. without touching anything else
-(see §2.9.2 extension points).
+"""KB backing-store abstraction (§2.1, §2.9.2).
+
+Substitutes for LocalFsStorage (S3, GitVersionedStorage, RemoteHttpStorage,
+etc.) plug in without touching the memory module — only this file speaks the
+on-disk contract.
+
+The KB layout (§2.1) is one ``compiled.md`` per folder, optionally alongside
+an ``assets/`` subdirectory of images. The root folder's ``compiled.md`` is
+what the memory module injects at bootstrap; deeper folders' ``compiled.md``
+files are read on demand as the agent drills down.
 """
 
 from __future__ import annotations
@@ -10,13 +17,14 @@ from typing import Protocol
 
 
 class KBStorage(Protocol):
-    def read_catalog(self) -> str: ...
-    def read_packet_markdown(self, path: str) -> str: ...
+    def read_compiled(self, path: str) -> str: ...
+    def has_compiled(self, path: str) -> bool: ...
     def list_assets(self, path: str) -> list[str]: ...
     def read_asset(self, path: str) -> bytes: ...
 
 
 _IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
+_COMPILED_NAME = "compiled.md"
 
 
 class LocalFsStorage:
@@ -25,20 +33,23 @@ class LocalFsStorage:
         if not self.kb_root.is_dir():
             raise FileNotFoundError(f"KB root does not exist: {self.kb_root}")
 
-    def read_catalog(self) -> str:
-        catalog = self.kb_root / "catalog.md"
-        if not catalog.is_file():
-            raise FileNotFoundError(f"catalog.md missing at KB root: {catalog}")
-        return catalog.read_text(encoding="utf-8")
+    def _resolve(self, path: str) -> Path:
+        """Resolve a KB-relative path (POSIX, empty = root) to an absolute Path."""
+        p = (path or "").strip("/")
+        return self.kb_root if not p else self.kb_root / p
 
-    def read_packet_markdown(self, path: str) -> str:
-        packet_md = self.kb_root / path / "packet.md"
-        if not packet_md.is_file():
-            raise FileNotFoundError(f"packet.md missing: {packet_md}")
-        return packet_md.read_text(encoding="utf-8")
+    def read_compiled(self, path: str = "") -> str:
+        """Read a folder's ``compiled.md``. ``path=""`` is the root."""
+        target = self._resolve(path) / _COMPILED_NAME
+        if not target.is_file():
+            raise FileNotFoundError(f"compiled.md missing: {target}")
+        return target.read_text(encoding="utf-8")
+
+    def has_compiled(self, path: str = "") -> bool:
+        return (self._resolve(path) / _COMPILED_NAME).is_file()
 
     def list_assets(self, path: str) -> list[str]:
-        assets_dir = self.kb_root / path / "assets"
+        assets_dir = self._resolve(path) / "assets"
         if not assets_dir.is_dir():
             return []
         entries = sorted(

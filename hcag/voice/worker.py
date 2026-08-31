@@ -93,7 +93,7 @@ class _LiveKitPublishSink:
             await result
 
 
-async def serve(cfg: VoiceAgentConfig) -> None:
+async def serve(cfg: VoiceAgentConfig, *, verbose: bool = False) -> None:
     """Run the LiveKit worker. Blocks until SIGTERM / SIGINT.
 
     This function imports `livekit.agents` lazily so environments without
@@ -107,7 +107,7 @@ async def serve(cfg: VoiceAgentConfig) -> None:
             "livekit-agents is not installed. Install with `pip install hcag[voice]`."
         ) from e
 
-    logger = build_logger(cfg.observability.log, name="hcag.voice")
+    logger = build_logger(cfg.observability.log, name="hcag.voice", console=verbose)
 
     async def entrypoint(ctx: "JobContext") -> None:  # noqa: UP037
         await ctx.connect()

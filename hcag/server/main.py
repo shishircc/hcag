@@ -59,6 +59,10 @@ def serve(
         "--cors-origins",
         help="Comma-separated CORS origins. Default: '*'.",
     ),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
+    ),
 ) -> None:
     """Run the FastAPI server."""
     try:
@@ -84,6 +88,7 @@ def serve(
                 agent_type="hcag",
                 agent_toml=agent_config if agent_config.exists() else None,
                 cors_origins=origins,
+                verbose=verbose,
             )
         else:
             from ..rag.agent import AgentBootstrapError
@@ -94,6 +99,7 @@ def serve(
                     rag_index=rag_index,
                     rag_config=rag_config if rag_config.exists() else None,
                     cors_origins=origins,
+                    verbose=verbose,
                 )
             except AgentBootstrapError as e:
                 typer.echo(f"rag agent startup failed: {e}", err=True)

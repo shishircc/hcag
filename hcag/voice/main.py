@@ -79,6 +79,10 @@ _LIVEKIT_URL_OPT = typer.Option(None, "--livekit-url", help="LiveKit server URL.
 _NO_WARMUP_OPT = typer.Option(False, "--no-warmup", help="Skip the prompt-cache warm-up call (§5.4.2).")
 _LOG_FILE_OPT = typer.Option(None, "--log-file", help="Log file path.")
 _LOG_LEVEL_OPT = typer.Option(None, "--log-level", help="Log level (DEBUG|INFO|WARN|ERROR).")
+_VERBOSE_OPT = typer.Option(
+    False, "--verbose", "-v",
+    help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
+)
 
 
 @app.command()
@@ -95,6 +99,7 @@ def serve(
     no_warmup: bool = _NO_WARMUP_OPT,
     log_file: str = _LOG_FILE_OPT,
     log_level: str = _LOG_LEVEL_OPT,
+    verbose: bool = _VERBOSE_OPT,
 ) -> None:
     """Run the LiveKit voice worker (long-lived)."""
     cfg = _load(
@@ -103,7 +108,7 @@ def serve(
         log_file, log_level,
     )
     from .worker import serve as run_serve
-    asyncio.run(run_serve(cfg))
+    asyncio.run(run_serve(cfg, verbose=verbose))
 
 
 @app.command("dry-run")
@@ -120,6 +125,7 @@ def dry_run(
     no_warmup: bool = _NO_WARMUP_OPT,
     log_file: str = _LOG_FILE_OPT,
     log_level: str = _LOG_LEVEL_OPT,
+    verbose: bool = _VERBOSE_OPT,
 ) -> None:
     """Bootstrap + preload + warm-up without joining a room. Prints the resolved plan."""
     cfg = _load(
@@ -127,7 +133,7 @@ def dry_run(
         tts_provider, tts_model, tts_voice, livekit_url, no_warmup,
         log_file, log_level,
     )
-    logger = build_logger(cfg.observability.log, name="hcag.voice.dry_run")
+    logger = build_logger(cfg.observability.log, name="hcag.voice.dry_run", console=verbose)
 
     from .worker import prepare_runtime
     try:

@@ -1,10 +1,11 @@
 """File discovery + exclusion rules + per-format text extraction (§8.2, §8.4.1).
 
 Two exclusion rules per §8.2:
-  1. Skip ``packet.md`` and ``catalog.md`` (HCAG artifacts).
+  1. Skip ``compiled.md`` (HCAG artifacts — every folder has one after
+     ``hcag preprocess``).
   2. Skip any file inside an ``assets/`` folder that sits alongside a
-     ``packet.md`` — those are packet assets, indirectly indexed via the
-     packet body.
+     ``compiled.md`` — those are folder assets, indirectly indexed via the
+     folder body.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ _HTML_EXTS = {".html", ".htm"}
 _PDF_EXTS = {".pdf"}
 _IMG_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
 
-_HCAG_ARTIFACT_NAMES = {"packet.md", "catalog.md"}
+_HCAG_ARTIFACT_NAMES = {"compiled.md"}
 
 
 @dataclass
@@ -58,10 +59,10 @@ def classify_extension(ext: str) -> SourceKind | None:
 
 def _is_hcag_asset_dir(dir_path: Path) -> bool:
     """A directory named ``assets`` counts as an HCAG asset dir iff its parent
-    also contains a ``packet.md``. That's the layout §2.1 pins."""
+    also contains a ``compiled.md``. That's the layout §2.1 pins."""
     if dir_path.name != "assets":
         return False
-    return (dir_path.parent / "packet.md").is_file()
+    return (dir_path.parent / "compiled.md").is_file()
 
 
 def walk(
@@ -100,7 +101,7 @@ def walk(
             rel = fp.relative_to(kb_root).as_posix()
 
             if name in _HCAG_ARTIFACT_NAMES:
-                yield SkipReason(kb_path=rel, reason="packet_md" if name == "packet.md" else "catalog_md")
+                yield SkipReason(kb_path=rel, reason="compiled_md")
                 continue
 
             kind = classify_extension(fp.suffix)

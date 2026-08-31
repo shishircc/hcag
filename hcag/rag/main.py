@@ -61,6 +61,10 @@ def index(
     ),
     log_file: str = typer.Option(None, "--log-file", help="Log file path."),
     log_level: str = typer.Option(None, "--log-level", help="DEBUG|INFO|WARN|ERROR."),
+    verbose: bool = typer.Option(
+        False, "--verbose", "-v",
+        help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
+    ),
 ) -> None:
     """Index a KB folder into LanceDB."""
     # Resolve config path: explicit --config wins, then <kb>/rag.toml.
@@ -78,7 +82,7 @@ def index(
         log_level=log_level,
     )
 
-    logger = build_logger(cfg.log, name="hcag.rag")
+    logger = build_logger(cfg.log, name="hcag.rag", console=verbose)
 
     try:
         summary = run_rag(kb, index_dir, cfg, logger, recreate=recreate)

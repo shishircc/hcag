@@ -10,7 +10,7 @@ kb_root = "./kb"
 # Token budget for the active packet set. When adding new packets would exceed
 # this, the memory module evicts LRU packets to make room. Excludes system
 # prompt, conversation history, and LLM output — this is packet-content only.
-max_active_tokens = 100000
+max_active_tokens = 100000000
 
 # Optional: override the system-prompt prefix. The catalog is auto-appended
 # after this text at bootstrap.
@@ -56,7 +56,7 @@ temperature = 0.0
 # JSON-lines file log (always on).
 [observability.log]
 file_path        = "./hcag-agent.log"
-level            = "INFO"      # DEBUG | INFO | WARN | ERROR
+level            = "DEBUG"      # DEBUG | INFO | WARN | ERROR
 rotation_size_mb = 50
 rotation_keep    = 5
 
@@ -64,6 +64,10 @@ rotation_keep    = 5
 # Point at Langfuse, AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb,
 # or any OTLP-compatible receiver.
 [observability.otel]
+  endpoint     = "https://localhost:3000/api/public/otel"
+  protocol     = "http/protobuf"
+  service_name = "hcag-agent"
+
 # endpoint     = "https://cloud.langfuse.com/api/public/otel"
 # protocol     = "http/protobuf"                       # or "grpc"
 # service_name = "hcag-agent"
@@ -74,3 +78,4 @@ rotation_keep    = 5
 # endpoint     = "http://localhost:4318"
 # protocol     = "http/protobuf"
 # service_name = "hcag-agent"
+

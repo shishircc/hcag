@@ -78,14 +78,18 @@ def _load_hcag_config(agent_toml: Path | None):
     return AgentConfig(kb_root=kb)
 
 
-def _make_hcag_factory(agent_toml: Path | None):
+def _make_hcag_factory(agent_toml: Path | None, *, verbose: bool = False):
     """Return (health_info, session_factory) for --agent hcag."""
+    from ..logger import build_logger
     from ..runtime.agent import AgentRuntime
 
     cfg = _load_hcag_config(agent_toml)
+    # Build the runtime's logger once so the stderr console handler (if any)
+    # is attached exactly once and every per-session AgentRuntime shares it.
+    shared_logger = build_logger(cfg.observability.log, name="hcag.runtime", console=verbose)
 
     def _session() -> _AgentLike:
-        runtime = AgentRuntime(cfg=cfg)
+        runtime = AgentRuntime(cfg=cfg, logger=shared_logger)
         runtime.bootstrap()
         return runtime
 
@@ -104,7 +108,7 @@ def _load_rag_agent_config(rag_toml: Path | None):
     return RagAgentConfig()
 
 
-def _make_rag_factory(rag_toml: Path | None, rag_index: Path | None):
+def _make_rag_factory(rag_toml: Path | None, rag_index: Path | None, *, verbose: bool = False):
     """Return (health_info, session_factory) for --agent rag.
 
     Bootstraps ``RagAgentDeps`` ONCE at server startup so each session shares
@@ -112,16 +116,18 @@ def _make_rag_factory(rag_toml: Path | None, rag_index: Path | None):
     Startup failure raises ``AgentBootstrapError`` which the caller maps to a
     process-fatal error.
     """
+    from ..logger import build_logger
     from ..rag.agent import RagAgent, build_deps
 
     cfg = _load_rag_agent_config(rag_toml)
     if rag_index is not None:
         cfg = cfg.model_copy(update={"index": cfg.index.model_copy(update={"path": str(rag_index)})})
 
-    deps = build_deps(cfg)
+    shared_logger = build_logger(cfg.log, name="hcag.rag.agent", console=verbose)
+    deps = build_deps(cfg, logger=shared_logger)
 
     def _session() -> _AgentLike:
-        return RagAgent(cfg=cfg, deps=deps)
+        return RagAgent(cfg=cfg, deps=deps, logger=shared_logger)
 
     info = {
         "agent": "rag",
@@ -198,11 +204,12 @@ def create_app(
     rag_index: Path | None = None,
     rag_config: Path | None = None,
     cors_origins: list[str] | None = None,
+    verbose: bool = False,
 ) -> FastAPI:
     if agent_type == "hcag":
-        agent_info, session_factory = _make_hcag_factory(agent_toml)
+        agent_info, session_factory = _make_hcag_factory(agent_toml, verbose=verbose)
     elif agent_type == "rag":
-        agent_info, session_factory = _make_rag_factory(rag_config, rag_index)
+        agent_info, session_factory = _make_rag_factory(rag_config, rag_index, verbose=verbose)
     else:
         raise ValueError(f"unknown agent_type: {agent_type!r}. Expected 'hcag' or 'rag'.")
 

@@ -28,7 +28,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [1.11 Out of Scope](#111-out-of-scope)
 - [Part 2 — Detailed Design](#part-2--detailed-design)
   - [2.1 KB Layout](#21-kb-layout)
-  - [2.2 `catalog.md` Schema](#22-catalogmd-schema)
+  - [2.2 `compiled.md` Schema](#22-compiledmd-schema)
   - [2.3 Tool Contracts](#23-tool-contracts)
     - [2.3.1 `get_catalog`](#231-get_catalog)
     - [2.3.2 `check_and_load_kb`](#232-check_and_load_kb)
@@ -65,24 +65,21 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [3.2 KB Input Model](#32-kb-input-model)
   - [3.3 CLI Overview](#33-cli-overview)
   - [3.4 `hcag preprocess` — Detailed Semantics](#34-hcag-preprocess--detailed-semantics)
-    - [3.4.1 Traversal order](#341-traversal-order)
+    - [3.4.1 DFS traversal](#341-dfs-traversal)
     - [3.4.2 Per-folder classification](#342-per-folder-classification)
-    - [3.4.3 Packet generation (leaf and mixed folders)](#343-packet-generation-leaf-and-mixed-folders)
-    - [3.4.4 Catalog generation (taxonomy node and mixed folders)](#344-catalog-generation-taxonomy-node-and-mixed-folders)
-    - [3.4.5 Packet ID scheme](#345-packet-id-scheme-d34)
+    - [3.4.3 `compiled.md` assembly](#343-compiledmd-assembly)
+    - [3.4.4 Catalog section content](#344-catalog-section-content)
+    - [3.4.5 Packet ID scheme](#345-packet-id-scheme)
     - [3.4.6 Asset policy](#346-asset-policy)
-    - [3.4.7 Overwrite policy](#347-overwrite-policy-d-cli-1)
+    - [3.4.7 Overwrite policy](#347-overwrite-policy)
     - [3.4.8 Failure modes](#348-failure-modes)
-  - [3.5 `hcag aggregate` — Detailed Semantics](#35-hcag-aggregate--detailed-semantics)
-    - [3.5.1 Input](#351-input)
-    - [3.5.2 Algorithm](#352-algorithm)
-    - [3.5.3 Root `catalog.md` output shape](#353-root-catalogmd-output-shape)
-    - [3.5.4 Failure modes](#354-failure-modes)
+  - [3.5 Aggregation (folded into `preprocess`)](#35-aggregation-folded-into-preprocess)
   - [3.6 Configuration](#36-configuration)
-  - [3.7 Generated File Formats — Summary](#37-generated-file-formats--summary)
+  - [3.7 Generated File Format — Summary](#37-generated-file-format--summary)
   - [3.8 End-to-End Workflow](#38-end-to-end-workflow)
   - [3.9 Observability (CLI)](#39-observability-cli)
   - [3.10 Non-Goals for the CLI](#310-non-goals-for-the-cli)
+  - [3.11 Sequence Diagram](#311-sequence-diagram)
 - [Part 4 — The `crawl` CLI Tool](#part-4--the-crawl-cli-tool)
   - [4.1 Purpose](#41-purpose)
   - [4.2 Invocation](#42-invocation)
@@ -98,6 +95,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [4.6 Relationship to `hcag`](#46-relationship-to-hcag)
   - [4.7 Observability (CLI)](#47-observability-cli)
   - [4.8 Non-Goals](#48-non-goals)
+  - [4.9 Sequence Diagram](#49-sequence-diagram)
 - [Part 5 — Voice Agent (LiveKit)](#part-5--voice-agent-livekit)
   - [5.1 Purpose](#51-purpose)
   - [5.2 Component Boundary](#52-component-boundary)
@@ -131,6 +129,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [6.9 Failure Modes](#69-failure-modes)
   - [6.10 Observability (CLI)](#610-observability-cli)
   - [6.11 Non-Goals](#611-non-goals)
+  - [6.12 Sequence Diagram](#612-sequence-diagram)
 - [Part 7 — The `eval` CLI Tool](#part-7--the-eval-cli-tool)
   - [7.1 Purpose](#71-purpose)
   - [7.2 Input Model](#72-input-model)
@@ -147,6 +146,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [7.10 Failure Modes](#710-failure-modes)
   - [7.11 Observability (CLI)](#711-observability-cli)
   - [7.12 Non-Goals](#712-non-goals)
+  - [7.13 Sequence Diagram](#713-sequence-diagram)
 - [Part 8 — The `rag` CLI Tool](#part-8--the-rag-cli-tool)
   - [8.1 Purpose](#81-purpose)
   - [8.2 KB Input Model](#82-kb-input-model)
@@ -163,6 +163,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [8.8 Failure Modes](#88-failure-modes)
   - [8.9 Observability (CLI)](#89-observability-cli)
   - [8.10 Non-Goals](#810-non-goals)
+  - [8.11 Sequence Diagram](#811-sequence-diagram)
 - [Part 9 — The RAG Chat Agent (Competing Baseline)](#part-9--the-rag-chat-agent-competing-baseline)
   - [9.1 Purpose](#91-purpose)
   - [9.2 Component Boundary](#92-component-boundary)
@@ -174,6 +175,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [9.3.5 Sequence diagram](#935-sequence-diagram)
   - [9.4 Comparison to HCAG](#94-comparison-to-hcag)
   - [9.5 Backend Server Integration (`hcag-server --agent`)](#95-backend-server-integration-hcag-server---agent)
+    - [9.5.1 Sequence diagram — HCAG agent path](#951-sequence-diagram--hcag-agent-path)
   - [9.6 Configuration](#96-configuration)
   - [9.7 Failure Modes](#97-failure-modes)
   - [9.8 Observability](#98-observability)
@@ -305,7 +307,7 @@ To realize the three properties above, the agent:
 2. Loads specific **knowledge packets** (folders of markdown + images = whole leaf documents) on demand.
 3. **Classifies the task's branch once** and persists that active set across turns rather than re-selecting each turn.
 4. Reloads **only when the agent itself decides** its current knowledge is insufficient.
-5. Handles **multimodal** content (packet.md + associated images) as first-class.
+5. Handles **multimodal** content (a folder's `compiled.md` + its `assets/` images) as first-class.
 
 ## 1.5 Design Goals
 
@@ -322,7 +324,7 @@ To realize the three properties above, the agent:
 
 ## 1.6 Non-Goals
 
-- ~~Catalog generation~~ — **in scope**, covered by the `hcag` CLI in Part 3. The runtime agent still assumes a valid `catalog.md` already exists at query time; the CLI is what produces it.
+- ~~Catalog generation~~ — **in scope**, covered by the `hcag` CLI in Part 3. The runtime agent still assumes a valid root `compiled.md` (with its `## Sub-topics` catalog section populated) already exists at query time; the CLI is what produces it.
 - **Semantic embedding retrieval.** No vector store, no similarity search. Selection is LLM-driven, informed by catalog metadata.
 - **Multi-user / concurrent-session** orchestration. Single conversation, single agent instance.
 - **Write-back / KB mutation** from the agent. The KB is read-only from the agent's perspective.
@@ -332,9 +334,9 @@ To realize the three properties above, the agent:
 
 | Term | Definition |
 |---|---|
-| **Knowledge Base (KB)** | A file-system tree of packet folders rooted at a KB directory, plus a single `catalog.md` at the root. |
-| **Packet** | A folder containing exactly one `packet.md` and an optional `assets/` subdirectory of images. The atomic loadable unit. |
-| **Catalog** | A single `catalog.md` at KB root that enumerates every packet with metadata (id, path, title, short + long description, token size estimate). |
+| **Knowledge Base (KB)** | A file-system tree of taxonomy folders rooted at a KB directory. Every folder — leaf, taxonomy node, mixed, and root — carries one `compiled.md`. |
+| **Packet** | A folder containing a `compiled.md` and an optional `assets/` subdirectory of images. Every folder is a packet in the runtime sense — leaves, taxonomy nodes, and the root alike are loadable via `check_and_load_kb`. |
+| **Catalog** | The `## Sub-topics` section inside every folder's `compiled.md`, listing its immediate children with metadata (id, path, title, short + long description, token size estimate). The root's catalog section — the top-level branches — is what the runtime injects at bootstrap. |
 | **Active Set** | The set of packets currently loaded into the agent's working context in the current conversation. |
 | **Delta** | The pair `(loaded, evicted)` returned when the active set changes — only new packet content is transmitted; only evicted IDs are named. |
 | **Token Budget** | A hard upper bound on the total tokens the active set may occupy. Enforced by the memory module via LRU eviction. |
@@ -346,14 +348,14 @@ Each decision below is a choice made deliberately over specific alternatives.
 ### D1. Hierarchy = file-system tree
 The KB is a nested directory tree. Hierarchy is physical (folders), not conceptual (taxonomy) or temporal (memory tiers). **Rationale:** Simplest mental model; the directory is the source of truth; no separate taxonomy to keep in sync.
 
-### D2. Packet = folder (`packet.md` + `assets/`)
-Each packet folder has exactly one `packet.md` for text content and an optional `assets/` subdirectory for images. Subfolders that themselves contain `packet.md` are independent packets. **Rationale:** Physical boundaries; images travel with their text; no need for manifest files or section-parsing.
+### D2. Every folder = one `compiled.md` (+ optional `assets/`)
+Each folder — leaf, taxonomy node, mixed, or root — has exactly one `compiled.md` that carries this level's own content and a catalog section listing its immediate children. Images live in an optional `assets/` subdirectory alongside. Subfolders are independently loadable folders in their own right. **Rationale:** One file kind at every level means one code path in the memory module and one unit of retrieval throughout the system; images travel with the text they belong to; no distinction between "leaf" and "node" artifacts.
 
-### D3. Catalog = single `catalog.md` at KB root
-One file at the root, generated by the `hcag` CLI (Part 3) via a two-pass build: (a) `hcag preprocess` writes per-level catalog.md files and per-leaf packet.md files, (b) `hcag aggregate` merges the per-level catalog.md files into the root catalog.md that the runtime consumes. Manually re-triggered when the KB changes. **Rationale:** One place to look at query time; no distributed index to reconcile at runtime; a standardized offline pipeline lets KB authors focus on extracting raw markdown from source documents.
+### D3. Catalog = the `## Sub-topics` section of every `compiled.md`
+No standalone catalog file. Each folder's `compiled.md` includes a `## Sub-topics` section that lists its immediate children with metadata; loading a folder therefore exposes both its own content and the next-level catalog to the LLM in one step. The **root**'s `compiled.md` is what the runtime auto-injects at bootstrap — its catalog section describes the top-level branches. Deeper catalogs are seen only when the agent loads that deeper folder (§2.7). **Rationale:** One place to look at each level; no separate global index to reconcile at runtime; a standardized single-pass DFS build (Part 3) lets KB authors focus on extracting raw markdown from source documents.
 
 ### D4. Catalog auto-injected into system prompt (fetched via memory module)
-At conversation start, the agent runtime calls `memory_module.get_catalog()` and injects the returned catalog into the system prompt. The agent always "knows" what exists. `get_catalog` remains available as a tool for re-inspection mid-session, but the common path is a single bootstrap call. **Rationale:** Removes an entire round-trip class from the per-turn common path; agent can decide from the outset whether loading is needed.
+At conversation start, the agent runtime calls `memory_module.get_catalog()` — which returns the `## Sub-topics` section of the root `compiled.md`, i.e., the top-level branches with metadata — and injects it into the system prompt. The agent always "knows" the top-level shape of the KB. Deeper catalogs are revealed on demand: loading a taxonomy node's `compiled.md` via `check_and_load_kb` exposes that node's own `## Sub-topics` section as part of the tool result, so the agent can then decide which of its children to drill into. `get_catalog` remains available as a tool for re-inspection mid-session, but the common path is a single bootstrap call. **Rationale:** Removes an entire round-trip class from the per-turn common path; agent can decide from the outset which branch to enter; deeper structure is loaded only when a branch is actually opened.
 
 ### D4a. Memory module is the sole KB accessor
 Neither the agent runtime nor the LLM ever reads the KB file system directly — not for the catalog, not for packets, not for images. Every byte of KB content is fetched via the memory module's tools (`get_catalog`, `check_and_load_kb`). **Rationale:** The KB backing store is an implementation detail of the memory module. Today it is a local file tree; tomorrow it can become an object store, a versioned KV, or a remote service — with zero change to the agent contract. This isolation is enforced at the layering boundary: the runtime has no KB path, no reader, no direct dependency on the file system for KB content.
@@ -371,7 +373,7 @@ The memory module is **stateless across calls**. The agent LLM tracks currently-
 The module enforces a hard token budget. If new loads would exceed budget, the module evicts least-recently-used packets from the caller-supplied active set to make room, and reports the eviction in the delta. **Rationale:** Predictable context growth; the agent never has to reason about tokens itself.
 
 ### D9. Multimodal loading is first-class
-Images under a packet's `assets/` directory are loaded as multimodal content blocks alongside the packet's markdown. Not text descriptions, not deferred loads. **Rationale:** The agent should see what the packet contains, in full fidelity, from the moment it is loaded.
+Images under a folder's `assets/` directory are loaded as multimodal content blocks alongside its `compiled.md`. Not text descriptions, not deferred loads. **Rationale:** The agent should see what the folder contains, in full fidelity, from the moment it is loaded.
 
 ### D10. Framework-agnostic contracts
 The design specifies interfaces (tool schemas, return shapes, active-set protocol) but not a specific SDK, language, or LLM binding. **Rationale:** Portable across Claude Agent SDK (Python/TS), raw Anthropic SDK, or any other agent runtime.
@@ -403,9 +405,9 @@ The design specifies interfaces (tool schemas, return shapes, active-set protoco
                    │ reads (private to module)
         ┌──────────▼──────────┐
         │  KB (backing store) │
-        │  catalog.md         │
-        │  <packet>/packet.md │
-        │  <packet>/assets/*  │
+        │  compiled.md        │  (root)
+        │  <folder>/compiled.md
+        │  <folder>/assets/*  │
         └─────────────────────┘
 ```
 
@@ -437,22 +439,26 @@ Two tools are exposed to the agent:
 
 ```
 <kb_root>/
-├── catalog.md                        # Root catalog, offline-generated
+├── compiled.md                       # Root artifact — its `## Sub-topics` section is the catalog
 ├── billing/
+│   ├── compiled.md                   # Mixed: own overview content + catalog of refunds/invoices
+│   ├── assets/
+│   │   └── billing_ecosystem.png
 │   ├── refunds/
-│   │   ├── packet.md
+│   │   ├── compiled.md               # Leaf: content only
 │   │   └── assets/
 │   │       ├── refund_flow.png
 │   │       └── refund_states.png
 │   └── invoices/
-│       ├── packet.md
+│       ├── compiled.md               # Leaf: content only
 │       └── assets/
 │           └── invoice_layout.png
 ├── auth/
+│   ├── compiled.md                   # Node: catalog only (auth has no own-level .md)
 │   ├── oauth/
-│   │   └── packet.md                 # No images
+│   │   └── compiled.md               # Leaf, no images
 │   └── sso/
-│       ├── packet.md
+│       ├── compiled.md
 │       └── assets/
 │           └── sso_sequence.png
 └── ...
@@ -460,30 +466,45 @@ Two tools are exposed to the agent:
 
 **Rules:**
 
-- A directory is a **packet** iff it contains `packet.md` at its immediate level.
-- A packet's `assets/` directory is optional and, if present, contains images referenced by the packet.
-- Non-packet directories serve only as organizational intermediates.
-- Packet IDs are assigned by the catalog generator (stable, opaque strings). They are **not** derived from paths at runtime by the memory module — the module reads IDs from the catalog.
+- Every directory that qualifies as a leaf, taxonomy node, or mixed folder has exactly one `compiled.md` at its immediate level (§3.4.2). This includes the root.
+- A folder's `assets/` directory is optional and, if present, contains images referenced by that folder's own content section.
+- Packet IDs are the dotted path from the KB root (§3.4.5). The memory module reads them from `compiled.md` front-matter — path derivation at runtime is never required.
+- The root's `compiled.md` is what the memory module auto-injects at bootstrap (§2.7); every other folder's `compiled.md` is loadable on demand via `check_and_load_kb`.
 
-## 2.2 `catalog.md` Schema
+## 2.2 `compiled.md` Schema
 
-`catalog.md` is a human-readable + machine-parseable markdown document. Each catalog entry is a section with a YAML front-matter-style block or a table row (choice is left to the generator; the module only requires that the following fields be recoverable per entry):
+`compiled.md` is a human-readable + machine-parseable markdown document. Every folder produces one, and the same schema applies to leaves, taxonomy nodes, mixed folders, and the root. Each file has YAML front-matter carrying the folder's own summary metadata, plus two optional body sections — the `## Sub-topics` catalog (present when the folder has children) and the `## Content` block (present when the folder has its own source markdown).
+
+**Front-matter fields** (readable per folder):
 
 | Field | Type | Description |
 |---|---|---|
-| `id` | string | Stable, opaque packet identifier. |
-| `path` | string | Relative path (from KB root) to the packet folder. |
-| `title` | string | Human-readable title. |
-| `short_description` | string | One-line summary — shown in catalog listings. |
-| `long_description` | string | Multi-sentence description — used by the LLM to decide relevance. |
-| `token_size_estimate` | integer | Precomputed total token count for `packet.md` + image blocks. Used by the module for budgeting **without** loading. |
+| `id` | string | Dotted-path packet identifier for this folder (§3.4.5). |
+| `title` | string | Human-readable title (LLM-generated). |
+| `short_description` | string | One-line summary — shown in the parent's `## Sub-topics` listing. |
+| `long_description` | string | Multi-sentence description — used by the LLM when deciding whether to load this folder. |
+| `token_size_estimate` | integer | Precomputed total token count for the assembled `compiled.md` + image blocks. Used for budgeting **without** loading. |
+| `kind` | enum | `leaf` \| `node` \| `mixed`. |
+| `source_files` | list<string> | Source `.md` filenames concatenated into `## Content`. Empty for pure taxonomy nodes. |
+| `children` | list<string> | IDs of immediate child folders. Empty for pure leaves. |
 
-**Illustrative rendering** (one entry):
+**Sub-topics entry fields** (one entry per immediate child, when children exist):
+
+| Field | Type | Description |
+|---|---|---|
+| `id` | string | The child's packet ID. |
+| `path` | string | Relative path from this folder to the child. |
+| `title` | string | Child's title. |
+| `short` | string | Child's short_description. |
+| `long` | string | Child's long_description. |
+| `tokens` | integer | Child's `token_size_estimate` — lets the LLM budget-check before requesting a load. |
+
+**Illustrative rendering** (one child entry inside a parent's `## Sub-topics`):
 
 ```markdown
-### `bill.refunds`
+### `billing.refunds`
 
-- **path**: `billing/refunds/`
+- **path**: `refunds/`
 - **title**: Refund Processing
 - **short**: How refunds are issued, states, and edge cases.
 - **long**: Covers the full refund lifecycle: eligibility rules, state machine
@@ -498,7 +519,7 @@ Two tools are exposed to the agent:
 
 **Input:** none.
 
-**Output:** the current `catalog.md` content (string). Equivalent to what is auto-injected at conversation start; provided in case the agent wants to re-examine.
+**Output:** the current KB's root-level catalog (string) — the `## Sub-topics` section of `<kb_root>/compiled.md`, formatted per §2.2. Equivalent to what is auto-injected at conversation start; provided in case the agent wants to re-examine. Deeper levels' `## Sub-topics` sections are seen by the agent only via `check_and_load_kb` (§2.3.2) when it loads that folder's `compiled.md`.
 
 ### 2.3.2 `check_and_load_kb`
 
@@ -519,19 +540,19 @@ Two tools are exposed to the agent:
 | `active_after` | list<string> | The authoritative active-set IDs after this call, in LRU order (most-recently-used last). Serves as a reconciliation aid. |
 | `errors` | list<Error> | Per-packet errors (e.g., unknown ID, load failure). Non-fatal — the call still returns whatever succeeded. |
 
-**Packet content shape (per loaded packet):**
+**Packet content shape (per loaded folder — one `compiled.md`):**
 
 ```
 [
-  { "type": "text",  "text": "--- packet: bill.refunds ---\nTitle: Refund Processing\n..." },
-  { "type": "text",  "text": "<contents of packet.md>" },
+  { "type": "text",  "text": "--- packet: billing.refunds ---\nTitle: Refund Processing\n..." },
+  { "type": "text",  "text": "<contents of compiled.md — front-matter stripped, sub-topics + content sections included>" },
   { "type": "image", "source": {...} },   # for each image under assets/
   { "type": "image", "source": {...} },
   ...
 ]
 ```
 
-A textual **metadata header** precedes each packet so the LLM can always identify what it is looking at from context alone. Images follow the markdown.
+A textual **metadata header** precedes each folder's content so the LLM can always identify what it is looking at from context alone. When the loaded folder has a `## Sub-topics` section (a taxonomy node or mixed folder), the agent gains visibility into that folder's children and can request them in a subsequent `check_and_load_kb` call. Images from the folder's own `assets/` follow the markdown.
 
 ### 2.3.3 Selection semantics
 
@@ -591,48 +612,50 @@ Return { loaded, evicted, active_after: ordered }
 
 ## 2.6 Packet Loading (Multimodal Assembly)
 
-Given a packet ID, the module:
+Given a packet ID (any folder in the KB, from the root down to a leaf), the module:
 
-1. Looks up `path` from the catalog.
-2. Reads `<kb_root>/<path>/packet.md` as UTF-8.
+1. Resolves `<kb_root>/<path>/compiled.md` using the dotted-path ID (§3.4.5). The root has an empty ID and resolves to `<kb_root>/compiled.md`.
+2. Reads `compiled.md` as UTF-8. Front-matter is parsed out; the body — `## Sub-topics` and/or `## Content` sections, whichever are present — is what's shipped to the agent.
 3. Enumerates `<kb_root>/<path>/assets/*` (if the folder exists) for image files.
 4. Emits, in order:
-   - A text metadata header block (packet ID, title, short description).
-   - The raw markdown text of `packet.md`.
-   - One image content block per file under `assets/`, in a stable order (e.g., lexicographic filename).
+   - A text metadata header block (packet ID, title, short description, `kind`).
+   - The raw markdown body of `compiled.md` (post-frontmatter).
+   - One image content block per file under `assets/`, in a stable order (lexicographic filename).
 
 Images are read from disk and passed as multimodal image content blocks to the agent runtime (encoding — base64, URL, file reference — is chosen by the runtime binding; the module contract is "multimodal content block").
 
 ## 2.7 System Prompt Composition (Bootstrap)
 
-The agent runtime **never** reads the KB directly. At conversation start it obtains the catalog by calling `memory_module.get_catalog()` and injects the returned string into the system prompt:
+The agent runtime **never** reads the KB directly. At conversation start it obtains the root-level catalog by calling `memory_module.get_catalog()` — which returns the `## Sub-topics` section of `<kb_root>/compiled.md` (top-level branches only) — and injects the returned string into the system prompt:
 
 ```
 <static agent instructions>
 <usage guidance for get_catalog and check_and_load_kb>
 
---- KNOWLEDGE CATALOG ---
+--- KNOWLEDGE CATALOG (top-level branches) ---
 <catalog returned by memory_module.get_catalog()>
 --- END CATALOG ---
 ```
 
+Because only the root's immediate children are visible at bootstrap, the agent navigates the taxonomy progressively: loading a taxonomy node's `compiled.md` reveals that node's own children (its `## Sub-topics` section becomes visible in the tool result), and the agent can then request one of those children in a subsequent `check_and_load_kb` call. Leaves have no `## Sub-topics` section, so loading a leaf terminates that branch of navigation and delivers its `## Content` for reasoning.
+
 The agent is instructed to:
 
-- Consult the catalog before answering domain questions.
-- Call `check_and_load_kb` **only when** its currently-loaded packets are insufficient.
+- Consult the top-level catalog in the system prompt when planning a task.
+- Call `check_and_load_kb` **only when** its currently-loaded folders are insufficient — either to drill deeper (load a child of an already-loaded taxonomy node) or to jump to a sibling branch (load a top-level branch listed in the root catalog).
 - Pass its currently-known active IDs and its requested IDs.
 - Trust `active_after` from the tool result as authoritative.
-- Never assume it can read the KB directly — every packet must be obtained via `check_and_load_kb`.
+- Never assume it can read the KB directly — every folder's `compiled.md` must be obtained via `check_and_load_kb`.
 
 ## 2.8 Error Handling
 
 | Condition | Behavior |
 |---|---|
 | Unknown packet ID in `requested_packet_ids` | Skip; add an entry to `errors[]`; other loads proceed. |
-| `packet.md` missing on disk | Add to `errors[]`; do not add packet to active set. |
+| `compiled.md` missing on disk at a resolved path | Add to `errors[]`; do not add packet to active set. |
 | Image under `assets/` unreadable | Include the packet with a placeholder text block noting the missing image; add to `errors[]`. |
-| Single requested packet exceeds `MAX_ACTIVE_TOKENS` | Return `errors[]` entry with reason `BudgetExceeded`; do not load; active set unchanged. |
-| Catalog file missing at startup | Startup failure — the agent cannot function without a catalog. |
+| Single requested packet exceeds `MAX_ACTIVE_TOKENS` | Return `errors[]` entry with reason prefixed `budget_exceeded:` (followed by a short detail); do not load; active set unchanged. |
+| Root `compiled.md` missing at startup | Startup failure — the agent cannot function without a catalog. |
 
 ## 2.9 Component Class Diagram
 
@@ -837,7 +860,7 @@ sequenceDiagram
 
     Note over R,K: BOOTSTRAP
     R->>M: get_catalog
-    M->>K: read catalog.md
+    M->>K: read root compiled.md (## Sub-topics section)
     K-->>M: catalog contents
     M-->>R: catalog
     R->>L: init system prompt with catalog
@@ -848,7 +871,7 @@ sequenceDiagram
     Note over L: Consults catalog<br/>Needs bill.refunds<br/>active is empty
     L->>M: check_and_load_kb
     Note over L,M: requested = bill.refunds<br/>active = empty
-    M->>K: read billing/refunds/packet.md
+    M->>K: read billing/refunds/compiled.md
     M->>K: read billing/refunds/assets
     K-->>M: text and images
     M-->>L: delta
@@ -897,7 +920,7 @@ sequenceDiagram
     L->>M: check_and_load_kb
     Note over L,M: requested = bill.invoices<br/>active = bill.refunds
     Note over M: LRU order becomes<br/>bill.refunds then bill.invoices<br/>Sum under budget<br/>No eviction
-    M->>K: read billing/invoices/packet.md and assets
+    M->>K: read billing/invoices/compiled.md and assets
     K-->>M: text and images
     M-->>L: delta
     Note over L,M: loaded = bill.invoices<br/>evicted = empty<br/>active_after = bill.refunds then bill.invoices
@@ -925,7 +948,7 @@ sequenceDiagram
     Note over L,M: requested = auth.sso<br/>active = bill.refunds then bill.invoices then auth.oauth
     Note over M: LRU candidate order<br/>bill.refunds bill.invoices auth.oauth auth.sso<br/>Sum over budget so evict head
     Note over M: Evict bill.refunds<br/>Still over budget<br/>Evict bill.invoices<br/>Now within budget
-    M->>K: read auth/sso/packet.md and assets
+    M->>K: read auth/sso/compiled.md and assets
     K-->>M: text and images
     M-->>L: delta
     Note over L,M: loaded = auth.sso<br/>evicted = bill.refunds and bill.invoices<br/>active_after = auth.oauth then auth.sso
@@ -1093,8 +1116,8 @@ The runtime's `LLM` interface (§2.9) is bound to LiteLLM by a single thin adapt
 |---|---|---|
 | Config schema and validation | **Pydantic v2** | `hcag.toml` (CLI) and `agent.toml` (runtime) are loaded into typed models |
 | TOML parsing | **`tomllib`** (stdlib) | Python 3.11+ |
-| YAML front-matter in `packet.md` / `catalog.md` | **python-frontmatter** + **PyYAML** | Reading and writing |
-| CLI framework | **Typer** (built on Click) | Typed subcommands (`hcag preprocess`, `hcag aggregate`) |
+| YAML front-matter in `compiled.md` | **python-frontmatter** + **PyYAML** | Reading and writing |
+| CLI framework | **Typer** (built on Click) | Typed subcommands (`hcag preprocess`) |
 | Tokenization (build-time estimates) | **tiktoken** (default, `cl100k_base` proxy) | Runtime never re-tokenizes; the design's `token_size_estimate` is read from catalog |
 | Image MIME detection (CLI, optional) | **Pillow** | Runtime uses file extension only |
 
@@ -1123,7 +1146,7 @@ Required (runtime + CLI):
   litellm                                        # LLM provider abstraction
   pydantic>=2                                    # Config validation
   typer                                          # CLI
-  python-frontmatter                             # packet.md / catalog.md front-matter
+  python-frontmatter                             # compiled.md front-matter
   pyyaml                                         # YAML
   tiktoken                                       # Token estimation
 
@@ -1175,23 +1198,23 @@ The implementation does **not** import these libraries, and the design forbids a
 
 `hcag` is a command-line tool that transforms a **raw KB folder tree** — where subject-matter experts have dropped `.md` files and images according to a taxonomy of their choosing — into a **normalized KB** that the runtime memory module (Part 2) can serve directly. It standardizes:
 
-- The **format** of `packet.md` and `catalog.md`.
+- The **format** of `compiled.md` — the single per-folder artifact that carries both this level's own content and a catalog of its immediate children.
 - The **metadata schema** each catalog entry must carry (id, path, title, short/long description, token estimate).
-- The **layout** of leaf packet folders (`packet.md` + `assets/`).
+- The **layout** of every folder's assets (`compiled.md` + `assets/`).
 
 This lets KB teams focus on the one thing that requires human judgment — extracting well-organized markdown from source documents — and delegates everything else (layout normalization, image relocation, metadata generation, catalog assembly) to the tool.
 
 ## 3.2 KB Input Model
 
-Before `hcag` runs, the tree looks like whatever the KB team produced. Only two rules apply on input:
+Before `hcag` runs, the tree looks like whatever the KB team produced. Only three rules apply on input:
 
 1. **Only markdown files (`.md`) and recognized image types** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`) contribute to the KB. Any other file encountered during preprocessing is **silently ignored** (a `WARN` is logged for observability). This lets teams keep incidental artifacts — `.DS_Store`, editor lock files, source documents like `.docx` / `.pdf` kept alongside extracted markdown, `README` notes, etc. — inside the KB tree without breaking the build.
-2. **`packet.md` and `catalog.md` are HCAG-owned output artifacts, never input.** If they exist in a folder from a prior run, they are ignored for input-classification purposes — their contents are never treated as source markdown to be merged. Preprocessing either regenerates them from the true sources or skips per the overwrite policy (§3.4.7); it does not concatenate them into a new packet.
+2. **`compiled.md` is an HCAG-owned output artifact, never input.** If it exists in a folder from a prior run, it is ignored for input-classification purposes — its contents are never treated as source markdown to be merged. Preprocessing either regenerates it from the true sources or skips per the overwrite policy (§3.4.7); it does not concatenate it into a new artifact.
 3. **The folder structure encodes the taxonomy.** Depth is unrestricted; there is no required schema for folder names beyond being valid filesystem names.
 
-A **leaf** in taxonomy terms is a folder that contains at least one `.md` file — regardless of whether it also has subfolders (see §3.3). A **taxonomy node** is a folder that contains at least one subfolder.
+A **leaf** in taxonomy terms is a folder that contains at least one `.md` file — regardless of whether it also has subfolders. A **taxonomy node** is a folder that contains at least one subfolder.
 
-**Mixed folders are legal and become both.** A folder that has both subfolders and `.md` files at its own level becomes simultaneously (a) a taxonomy node — gets a `catalog.md` listing its children, and (b) a packet — gets a `packet.md` assembled from its own `.md` files. This is a first-class case, not an edge case: it lets a taxonomy node carry its own overview content (e.g., a `billing/` folder that contains both `billing/refunds/` and `billing/invoices/` **and** a top-level `billing.md` overview).
+**Every folder becomes a compiled unit.** A leaf folder's `compiled.md` carries its own content and an empty catalog section. A pure taxonomy node's `compiled.md` carries only a catalog section (summaries of its immediate children). A **mixed folder** — one that has both subfolders *and* source `.md` files at its own level — carries both. This is a first-class case, not an edge case: it lets a taxonomy node hold its own overview content (e.g., a `billing/` folder that contains `billing/refunds/`, `billing/invoices/`, **and** a top-level `billing.md` overview all in one `compiled.md`).
 
 Example raw KB before `hcag preprocess`:
 
@@ -1220,201 +1243,169 @@ raw_kb/
 
 ## 3.3 CLI Overview
 
-Two subcommands, each a distinct pass:
+A single subcommand does the full build in one pass:
 
 | Command | Purpose |
 |---|---|
-| `hcag preprocess <root>` | Walks the tree bottom-up. At every folder that qualifies as a packet, assembles `packet.md` and moves images into `assets/`. At every folder that qualifies as a taxonomy node, writes a `catalog.md` describing its immediate children. |
-| `hcag aggregate <root>` | Reads the per-level `catalog.md` files produced by `preprocess` and merges them into a single root-level `catalog.md` — the file the runtime memory module serves via `get_catalog`. |
+| `hcag preprocess <root>` | Walks the tree in **DFS post-order**. At every folder — leaf, taxonomy node, or mixed — assembles one `compiled.md` that concatenates a catalog section (summaries of immediate children, using the summaries the DFS recursion just returned from those children) with the folder's own source content. Images are copied into a per-folder `assets/`. Recursion bubbles each folder's summary up to its parent so the parent's catalog section has fresh metadata to render. The root folder's `compiled.md` is written on the way back out — no separate aggregate pass needed. |
 
 **Design decisions embedded in this structure:**
 
-- Two passes, not one. Preprocess and aggregate can be re-run independently — e.g., editorial edits to a single leaf require re-preprocessing only that subtree and then re-aggregating.
-- Aggregate **reads intermediate catalog.md files**; it does not re-scan packets. This is fast and trusts the prior pass. If intermediates are stale, re-run preprocess.
-- No `hcag build` super-command. Chaining is left to the caller (`hcag preprocess raw_kb && hcag aggregate raw_kb`).
+- One pass, not two. Because DFS naturally returns each child's assembled summary to its parent, a single traversal can populate every level's catalog section without a second top-down walk. The old two-command pipeline (`preprocess` → `aggregate`) is folded into `preprocess`; see §3.5 for the migration note.
+- Every folder is loadable. The old design gave taxonomy nodes a `catalog.md` and leaves a `packet.md` — two distinct file kinds that different code paths handled. With one `compiled.md` per folder, the memory module (§2.6) has exactly one file to open at any level and the runtime treats every folder as a first-class loadable unit.
+- No `hcag build` super-command needed. `hcag preprocess raw_kb` is the whole build. Editorial edits to a subtree re-run `preprocess` scoped with `--only <subpath>` (§3.4.7).
 
 ## 3.4 `hcag preprocess` — Detailed Semantics
 
-### 3.4.1 Traversal order
+### 3.4.1 DFS traversal
 
-Bottom-up post-order: process children before parents. Necessary because a parent's `catalog.md` references its children by ID and needs each child's generated title / description / token estimate to already exist.
+The tool walks the tree with a **depth-first, post-order** traversal — children before parents, siblings in alphabetical order for determinism. The recursion returns each folder's assembled *summary record* (id, title, short + long description, token estimate) to its caller, so a parent has every child's fresh metadata in hand at the moment it composes its own `compiled.md`. This is what lets one pass do the whole job — the old bottom-up `preprocess` step used to prepare per-level intermediates that a separate top-down `aggregate` step then rolled up; the DFS return channel replaces the intermediate handshake.
+
+Pseudocode:
+
+```
+def process(folder):
+    child_summaries = []
+    for sub in sorted(folder.subdirs):
+        child_summaries.append(process(sub))          # DFS recursion
+    own_content     = assemble_own_content(folder)    # concat source .md + copy images
+    catalog_section = render_catalog(child_summaries) # from children's returned records
+    write_compiled_md(folder, catalog_section, own_content)
+    return summarize(folder)                          # bubble up to parent
+```
+
+The root folder is the outermost call — its `compiled.md` is written last and carries the top-level catalog section plus any root-level own content. There is no separate "root catalog" file.
 
 ### 3.4.2 Per-folder classification
 
 For each folder `F` encountered:
 
-1. Let `has_md = any .md file directly in F (excluding generated packet.md)`
+1. Let `has_md = any .md file directly in F (excluding generated compiled.md)`
 2. Let `has_subdirs = any subdirectory of F`
 3. Classify:
-   - `has_md AND NOT has_subdirs` → **leaf packet** (packet-only)
-   - `has_subdirs AND NOT has_md` → **taxonomy node** (catalog-only)
-   - `has_md AND has_subdirs` → **mixed** (both packet AND catalog)
-   - Neither → skip with WARN
+   - `has_md AND NOT has_subdirs` → **leaf**: `compiled.md` has content only (catalog section is empty).
+   - `has_subdirs AND NOT has_md` → **taxonomy node**: `compiled.md` has catalog section only (own-content section is empty).
+   - `has_md AND has_subdirs` → **mixed**: `compiled.md` has both sections.
+   - Neither → skip with WARN.
 
-### 3.4.3 Packet generation (leaf and mixed folders)
+The classification decides which sections of `compiled.md` are populated; every folder in the first three cases gets exactly one `compiled.md`.
 
-For folders classified as packet:
+### 3.4.3 `compiled.md` assembly
 
-1. **Collect source .md files** in stable order (lexicographic by filename). Only true source `.md` files count — `packet.md` and `catalog.md` are HCAG-owned output artifacts and are **excluded from the source set** even if present in the folder (§3.2 rule 2). If `packet.md` already exists from a prior run and `--force` is not set, skip.
-2. **Concatenate** the source .md files into a single `packet.md` with a heading separator between each source:
+For every folder that classifies as leaf, taxonomy node, or mixed, produce one `compiled.md`:
+
+1. **Collect source .md files** in stable order (lexicographic by filename). Only true source `.md` files count — `compiled.md` is an HCAG-owned output artifact and is **excluded from the source set** even if present in the folder (§3.2 rule 2). Skip only if `compiled.md` already exists from a prior run AND `--force` is not set.
+2. **Copy all images** at this folder's own level (referenced or not — see §3.4.6) into `F/assets/`. The originals are left in place. Rewrite every image reference in the concatenated content to `assets/<filename>`.
+3. **Compute the folder's summary record** (via LLM per §3.4.4). This is the record that `process()` returns to the parent's DFS call so the parent's catalog section can render an entry for this folder.
+4. **Emit `compiled.md`** with the shape below. The header carries the folder's own metadata; the `## Sub-topics` section carries the catalog of immediate children; the `## Content` section carries the concatenated source markdown.
+
    ```markdown
-   <!-- HCAG:PACKET id=billing.refunds -->
+   <!-- HCAG:COMPILED id=billing -->
    ---
-   id: billing.refunds
-   title: <LLM-generated>
-   short_description: <LLM-generated>
-   long_description: <LLM-generated>
-   token_size_estimate: <computed>
+   id: billing
+   title: <LLM-generated title for this level>
+   short_description: <LLM-generated one-liner>
+   long_description: <LLM-generated 2–4 sentences>
+   token_size_estimate: <computed on the assembled compiled.md + image count>
+   kind: mixed            # leaf | node | mixed
    source_files:
-     - refund_policy.md
-     - refund_states.md
+     - overview.md
+     - glossary.md
+   children:
+     - billing.refunds
+     - billing.invoices
    ---
 
-   # <LLM-generated title>
+   # <title>
 
-   <content of refund_policy.md, image refs rewritten to assets/...>
+   <short_description>
 
-   ---
-
-   <content of refund_states.md, image refs rewritten to assets/...>
-   ```
-3. **Copy all images** in the folder (referenced or not — see §3.4.6) into `F/assets/`. The originals are left in place. Rewrite every image reference in the merged content to `assets/<filename>`.
-4. **Preserve the original source files.** After merge, the source `.md` files and the original image files remain untouched at their locations; they are the KB team's authoring surface and the source of truth for future re-runs. `packet.md` and everything under `assets/` are derived artifacts. On the next `hcag preprocess --force`, the sources are re-read and both are regenerated.
-5. **Compute token size estimate** on the final `packet.md` + image count using a configured tokenizer (see §3.6). Store in front-matter.
-6. **Generate metadata via LLM.** Send the merged content to the configured LLM (§3.6) with a fixed prompt that requests exactly the fields `title`, `short_description` (one line), and `long_description` (2–4 sentences). Write them into the front-matter.
-
-### 3.4.4 Catalog generation (taxonomy node and mixed folders)
-
-For folders classified as taxonomy node (or the taxonomy side of a mixed folder):
-
-1. Enumerate the folder's **immediate children** that were classified as packet, mixed, or taxonomy node.
-2. For each child that is a packet (leaf or mixed), pull metadata from its just-written `packet.md` front-matter.
-3. For each child that is a pure taxonomy node, pull metadata from its just-written `catalog.md` header block (title + short description — see below).
-4. **Write `catalog.md`** describing the children:
-
-   ```markdown
-   <!-- HCAG:CATALOG level=billing -->
-   ---
-   node_title: <LLM-generated title for this taxonomy node>
-   node_short_description: <LLM-generated one-line summary of this branch>
-   ---
-
-   # <node_title>
-
-   <node_short_description>
-
-   ## Children
+   ## Sub-topics
 
    ### `billing.refunds`
-   - **kind**: packet
    - **path**: `refunds/`
    - **title**: Refund Processing
    - **short**: How refunds are issued, states, and edge cases.
-   - **long**: Covers the full refund lifecycle...
+   - **long**: Covers the full refund lifecycle…
    - **tokens**: 3420
 
    ### `billing.invoices`
-   - **kind**: packet
    - **path**: `invoices/`
    - **title**: Invoice Generation
-   - **short**: ...
-   - **long**: ...
+   - **short**: …
+   - **long**: …
    - **tokens**: 2810
+
+   ## Content
+
+   <content of overview.md, image refs rewritten to assets/…>
+
+   ---
+
+   <content of glossary.md, image refs rewritten to assets/…>
    ```
 
-5. The `node_title` and `node_short_description` are **also LLM-generated**, from the children's short descriptions concatenated. This gives the parent's catalog.md a meaningful roll-up that the aggregate pass will use as taxonomy breadcrumbs.
+   For a pure leaf (no subfolders), the `## Sub-topics` section is omitted. For a pure taxonomy node (no own `.md`), the `## Content` section is omitted. Frontmatter `kind` reflects the classification.
 
-### 3.4.5 Packet ID scheme (D3.4)
+5. **Preserve the original source files.** After assembly, the source `.md` files and the original image files remain untouched at their locations; they are the KB team's authoring surface and the source of truth for future re-runs. `compiled.md` and everything under `assets/` are derived artifacts. On the next `hcag preprocess --force`, the sources are re-read and both are regenerated.
+6. **Compute token size estimate** on the final `compiled.md` + image count using a configured tokenizer (see §3.6). Store in front-matter.
+7. **Return the folder's summary** to the DFS caller so the parent can render its own `## Sub-topics` entry for this folder.
 
-Packet and taxonomy IDs are the **dotted path from the KB root**, using folder names as segments.
+### 3.4.4 Catalog section content
+
+The `## Sub-topics` section is what makes a folder's `compiled.md` navigate-able. Its content is derived from the summary records returned by the DFS recursion — one entry per immediate child (leaf, taxonomy node, or mixed alike). Every entry carries the same fields regardless of the child's classification: `path`, `title`, `short`, `long`, `tokens`.
+
+The folder's own `title`, `short_description`, and `long_description` (used by the parent to render **its** catalog entry for **this** folder) are **LLM-generated** from the concatenation of:
+
+- this folder's own content (if any), and
+- the short descriptions of its immediate children (if any).
+
+For a leaf folder the summary is drawn from the folder's own content alone. For a taxonomy node it is drawn from the children's short descriptions alone. For a mixed folder it is drawn from both. This bubble-up logic gives every level's summary meaningful roll-up prose — the root's `compiled.md` describes the KB in aggregate; a mid-tree folder describes its branch in aggregate; a leaf describes itself.
+
+### 3.4.5 Packet ID scheme
+
+Every folder — leaf, taxonomy node, mixed, or root — has an ID that is the **dotted path from the KB root**, using folder names as segments.
 
 - `raw_kb/billing/refunds/` → id `billing.refunds`
 - `raw_kb/auth/sso/` → id `auth.sso`
-- `raw_kb/billing/` (mixed folder) → taxonomy id `billing`, packet id `billing` (same string — context disambiguates: catalog.md refers to it as a taxonomy node; packet.md as a packet). If this collision is inconvenient in downstream consumers, use `billing._` for the packet side; the CLI supports a `--mixed-suffix` flag (default `_`).
+- `raw_kb/billing/` (mixed folder) → id `billing`
+- `raw_kb/` (root) → id `` (empty string, or `_root` if a non-empty ID is required by a downstream consumer; configurable via `--root-id`)
+
+Because there is now only one artifact per folder, the historical collision between a mixed folder's packet ID and its taxonomy-node ID is gone; the previous `--mixed-suffix` flag is no longer needed.
 
 **Rationale:** Human-readable, stable as long as folder names are stable, computable without any state. Changing folder names is a deliberate ID-change operation.
 
 ### 3.4.6 Asset policy
 
-- **All images are copied to `assets/`**, whether referenced by any MD or not. Originals are **not** moved or deleted — they remain at their authored location. Rationale: images the KB team dropped into a folder are intentional even if not yet linked; keeping a copy in `assets/` ensures they travel with the packet at load time, while preserving the original preserves the authoring workflow and lets re-runs regenerate `assets/` from source.
-- **External references** (an MD referencing `../other/img.png`) are resolved: the image is copied into the leaf's `assets/` and the reference rewritten. The original at the external path is untouched. A WARN is logged because an external reference usually indicates the source content was authored assuming a different layout.
-- **Non-MD, non-image files** are **silently ignored** — the file is left in place, a `WARN` log line records what was skipped (path + reason), and preprocessing proceeds. Rationale: KB teams often keep original source documents (`.docx`, `.pdf`), editorial notes (`README`), or OS metadata (`.DS_Store`, `Thumbs.db`) inside the tree; failing the build over them is more disruptive than useful. The runtime never sees these files because the memory module reads only `catalog.md`, `packet.md`, and files under `assets/`.
+- **All images at a folder's own level are copied into that folder's `assets/`**, whether referenced by any MD or not. Originals are **not** moved or deleted — they remain at their authored location. Rationale: images the KB team dropped into a folder are intentional even if not yet linked; keeping a copy in `assets/` ensures they travel with the `compiled.md` at load time, while preserving the original preserves the authoring workflow and lets re-runs regenerate `assets/` from source.
+- **External references** (an MD referencing `../other/img.png`) are resolved: the image is copied into the current folder's `assets/` and the reference rewritten. The original at the external path is untouched. A WARN is logged because an external reference usually indicates the source content was authored assuming a different layout.
+- **Non-MD, non-image files** are **silently ignored** — the file is left in place, a `WARN` log line records what was skipped (path + reason), and preprocessing proceeds. Rationale: KB teams often keep original source documents (`.docx`, `.pdf`), editorial notes (`README`), or OS metadata (`.DS_Store`, `Thumbs.db`) inside the tree; failing the build over them is more disruptive than useful. The runtime never sees these files because the memory module reads only `compiled.md` and files under `assets/`.
 
-### 3.4.7 Overwrite policy (D-CLI-1)
+### 3.4.7 Overwrite policy
 
-Default: **skip folders that already contain generated artifacts** (`packet.md` or `catalog.md` with a `<!-- HCAG:PACKET -->` / `<!-- HCAG:CATALOG -->` marker). This protects re-runs from clobbering hand-edits.
+Default: **skip folders that already contain a generated `compiled.md`** (identified by the `<!-- HCAG:COMPILED -->` marker). This protects re-runs from clobbering hand-edits.
 
 - `--force` regenerates unconditionally.
-- `--force-packets` regenerates only packets.
-- `--force-catalogs` regenerates only catalog.md files.
+- `--only <subpath>` restricts preprocessing to a subtree — useful for iterating on one branch. Ancestors above the subpath are still re-emitted at the end of the run so their catalog sections pick up the changed child summaries; the DFS traversal handles this naturally.
 
-If a file exists without the HCAG marker, the tool errors — it will not overwrite what it did not create.
+If a `compiled.md` file exists without the HCAG marker, the tool errors — it will not overwrite what it did not create.
 
 ### 3.4.8 Failure modes
 
 | Condition | Behavior |
 |---|---|
-| Non-MD/non-image file present | WARN, ignored, preprocessing continues |
-| Folder with no `.md` and no subfolders | WARN, skip |
-| LLM call fails for a packet | ERROR for that packet; continue with siblings; final exit non-zero if any packet failed |
-| Image referenced by MD but not found | WARN, leave the (broken) reference in packet.md |
-| Existing `packet.md` without HCAG marker | ERROR (would clobber hand-written content) |
+| Non-MD/non-image file present | WARN, ignored, preprocessing continues. |
+| Folder with no `.md` and no subfolders | WARN, skip. Parent's catalog section records the folder as empty. |
+| LLM call fails for a folder | ERROR for that folder; DFS continues with siblings; the failed folder's summary falls back to `title = <folder-name>, short = "(summary unavailable)"` so the parent's catalog section still renders. Final exit non-zero if any folder failed. |
+| Image referenced by MD but not found | WARN, leave the (broken) reference in `compiled.md`. |
+| Existing `compiled.md` without HCAG marker | ERROR — refuses to clobber hand-written content. |
+| Cycle detected via symlink | ERROR at startup — DFS won't recurse into it. |
 
-## 3.5 `hcag aggregate` — Detailed Semantics
+## 3.5 Aggregation (folded into `preprocess`)
 
-### 3.5.1 Input
+The prior design had a separate `hcag aggregate` subcommand that ran after `preprocess` to merge per-level `catalog.md` intermediates into a root `catalog.md`. With the DFS-based single-artifact design, aggregation happens implicitly on the recursion's return path: each folder's summary bubbles up to its parent, and the root folder's `compiled.md` is the final write of the traversal. No separate command exists in the current CLI.
 
-Requires that `hcag preprocess` has been run at least once. Reads every intermediate `catalog.md` in the tree.
-
-### 3.5.2 Algorithm
-
-1. Walk the tree top-down. At each folder, read its `catalog.md` (if present) to obtain `node_title`, `node_short_description`, and the list of children with metadata.
-2. Build an in-memory taxonomy tree: nodes carry title/short; leaves carry the full packet metadata.
-3. Emit `<root>/catalog.md` in the schema defined by §2.2, extended with a **taxonomy breadcrumb** field per entry so the LLM sees where each packet sits in the tree.
-
-### 3.5.3 Root `catalog.md` output shape
-
-```markdown
-<!-- HCAG:ROOT_CATALOG generated_at=2026-08-23T00:00:00Z -->
-
-# Knowledge Catalog
-
-## Taxonomy Overview
-
-- **billing** — Billing operations across refunds, invoices, and reconciliation.
-  - **billing.refunds** — Refund processing.
-  - **billing.invoices** — Invoice generation.
-- **auth** — Authentication and authorization.
-  - **auth.oauth** — OAuth 2.0 support.
-  - **auth.sso** — Single sign-on integrations.
-
-## Packets
-
-### `billing.refunds`
-- **path**: `billing/refunds/`
-- **breadcrumb**: billing → refunds
-- **title**: Refund Processing
-- **short**: How refunds are issued, states, and edge cases.
-- **long**: Covers the full refund lifecycle: eligibility, state machine, partial refunds, chargebacks, reconciliation.
-- **tokens**: 3420
-
-### `billing.invoices`
-- **path**: `billing/invoices/`
-- **breadcrumb**: billing → invoices
-- **title**: Invoice Generation
-- **short**: ...
-- **long**: ...
-- **tokens**: 2810
-```
-
-The `## Taxonomy Overview` section gives the LLM the shape of the tree (useful for classification — Problem 1); the `## Packets` section gives every packet's metadata (used for `check_and_load_kb` decisions).
-
-### 3.5.4 Failure modes
-
-| Condition | Behavior |
-|---|---|
-| Intermediate `catalog.md` missing at a folder that has subfolders with packets | ERROR — instruct user to re-run `hcag preprocess` |
-| Duplicate packet IDs discovered | ERROR — usually caused by symlinks or copy-paste; must be resolved manually |
+Callers migrating from the old pipeline should replace `hcag preprocess raw_kb && hcag aggregate raw_kb` with a single `hcag preprocess raw_kb`. The runtime memory module (§2.7) now reads `<root>/compiled.md` at bootstrap and injects its catalog section into the system prompt — there is no separate root catalog file.
 
 ## 3.6 Configuration
 
@@ -1429,15 +1420,14 @@ endpoint = ""                     # override for local/self-hosted (Ollama, llam
 
 [llm.prompts]
 # Paths to prompt template files, overridable
-packet_metadata  = "prompts/packet_metadata.md"
-node_metadata    = "prompts/node_metadata.md"
+folder_metadata  = "prompts/folder_metadata.md"   # summarizes a folder for its parent's catalog
 
 [tokenizer]
 kind = "tiktoken"                 # tiktoken | anthropic | rough
 # "rough" = chars/4 heuristic; "tiktoken" and "anthropic" call the real tokenizer
 
-[assets]
-mixed_suffix = "_"                # for packet ID on mixed folders
+[compiled]
+root_id = "_root"                 # id to use for the root folder if it needs a non-empty one
 
 [log]
 file_path = "./hcag-build.log"
@@ -1446,25 +1436,17 @@ level     = "INFO"
 
 **Local model support.** The `[llm]` block accepts `provider = "ollama"` or `provider = "llamacpp"` with a local `endpoint`. This lets KB teams without cloud credentials build a KB against a locally-hosted model. Metadata quality varies with model choice.
 
-## 3.7 Generated File Formats — Summary
+## 3.7 Generated File Format — Summary
 
-### `packet.md` (per leaf or mixed folder)
+### `compiled.md` (per folder — leaf, taxonomy node, mixed, and root alike)
 
-- HTML comment marker: `<!-- HCAG:PACKET id=<dotted-id> -->`
-- YAML front-matter: `id`, `title`, `short_description`, `long_description`, `token_size_estimate`, `source_files`
-- Body: concatenated markdown of source files, with image refs rewritten to `assets/<name>`
-
-### `catalog.md` (per non-root taxonomy or mixed folder)
-
-- HTML comment marker: `<!-- HCAG:CATALOG level=<dotted-id> -->`
-- YAML front-matter: `node_title`, `node_short_description`
-- Body: node title, short description, and a `## Children` section listing each immediate child with kind/path/metadata
-
-### `catalog.md` (root, emitted by `aggregate`)
-
-- HTML comment marker: `<!-- HCAG:ROOT_CATALOG generated_at=<iso> -->`
-- Body: `## Taxonomy Overview` (tree of nodes and packets with short descriptions) + `## Packets` (flat list with full metadata for every packet, including breadcrumb)
-- **This is the file the runtime memory module's `get_catalog` returns.**
+- HTML comment marker: `<!-- HCAG:COMPILED id=<dotted-id> -->`
+- YAML front-matter: `id`, `title`, `short_description`, `long_description`, `token_size_estimate`, `kind` (`leaf` | `node` | `mixed`), `source_files` (empty for a pure taxonomy node), `children` (empty for a pure leaf).
+- Body:
+  - `# <title>` heading and `<short_description>` preamble.
+  - `## Sub-topics` — one section per immediate child with its own summary record. Omitted for pure leaves.
+  - `## Content` — concatenated source markdown, with image refs rewritten to `assets/<name>`. Omitted for pure taxonomy nodes.
+- **The root folder's `compiled.md` is the file the runtime memory module's `get_catalog` returns** (§2.7). Its `## Sub-topics` section describes the top-level branches; deeper folders' `compiled.md` files are loaded on demand via `check_and_load_kb` (§2.3.2).
 
 ## 3.8 End-to-End Workflow
 
@@ -1473,42 +1455,88 @@ level     = "INFO"
    $ ls raw_kb/billing/refunds/
      refund_policy.md  refund_states.md  flow.png  state_machine.png
 
-2. Run preprocess (bottom-up: writes packet.md at leaves, catalog.md at nodes).
+2. Run preprocess (single DFS pass — writes compiled.md at every folder,
+   including the root).
    $ hcag preprocess raw_kb/
 
-3. Run aggregate (top-down: assembles root catalog.md).
-   $ hcag aggregate raw_kb/
-
-4. Point the runtime memory module at raw_kb/ (now normalized).
-   The agent's get_catalog will serve raw_kb/catalog.md.
+3. Point the runtime memory module at raw_kb/ (now normalized).
+   The agent's get_catalog will serve raw_kb/compiled.md; check_and_load_kb
+   pulls deeper folders' compiled.md files on demand.
 ```
 
 **Re-run after editorial edits:**
 
 ```
 # Edit refund_policy.md, add a new section
-$ vim raw_kb/billing/refunds/packet.md   # or edit sources and re-run
-$ hcag preprocess raw_kb/ --force-packets --only billing/refunds/
-$ hcag aggregate raw_kb/
+$ vim raw_kb/billing/refunds/refund_policy.md   # edit sources and re-run
+$ hcag preprocess raw_kb/ --only billing/refunds/ --force
+# The DFS walk regenerates billing/refunds/compiled.md and then re-emits
+# every ancestor's compiled.md so their `## Sub-topics` sections pick up
+# the changed child summary — no separate aggregate step needed.
 ```
 
 ## 3.9 Observability (CLI)
 
 `hcag` writes a build log to the path in `[log]` config (default `./hcag-build.log`), using the same JSON-lines format as the runtime file log (§2.11.3). Levels:
 
-- `INFO`: pass start/end, per-folder classification, LLM call summary, per-packet token estimate, catalog counts.
+- `INFO`: pass start/end, per-folder classification, LLM call summary, per-folder token estimate, catalog-section entry counts.
 - `DEBUG`: full LLM prompts and responses, full front-matter written, file moves.
 - `WARN`: skipped folders, external image references, unreferenced images copied, non-.md/non-image files ignored.
-- `ERROR`: aborts (see failure-mode tables above).
+- `ERROR`: aborts (see failure-mode table in §3.4.8).
 
-The CLI also honors the `OTEL_EXPORTER_OTLP_ENDPOINT` env var: if set, build spans (`hcag.preprocess.folder`, `hcag.llm.call`, `hcag.aggregate.walk`) are exported for build-time observability. This is symmetric with §2.11 — runtime and build tooling share the same observability model.
+The CLI also honors the `OTEL_EXPORTER_OTLP_ENDPOINT` env var: if set, build spans (`hcag.preprocess.folder`, `hcag.llm.call`) are exported for build-time observability. This is symmetric with §2.11 — runtime and build tooling share the same observability model.
 
 ## 3.10 Non-Goals for the CLI
 
 - **Content editing.** `hcag` does not rewrite the meaning of source markdown; it only concatenates, moves images, and adds metadata front-matter.
 - **Vector embedding generation.** Explicitly not produced; HCAG retrieval is taxonomic, not embedding-based (§1.1).
 - **Runtime hot-reload.** The CLI is a build tool. Runtime picks up new artifacts on next agent bootstrap; no watcher.
-- **KB validation beyond schema.** Fact-checking, link-checking across packets, and stale-content detection are separate concerns.
+- **KB validation beyond schema.** Fact-checking, link-checking across folders, and stale-content detection are separate concerns.
+
+## 3.11 Sequence Diagram
+
+One DFS post-order pass over a two-level tree (root with two children, one of them itself a mixed folder with a leaf child). Note how every `_process_folder` call returns a `FolderSummary` to its caller — that's the return channel the parent uses to render its `## Sub-topics` section, and it's what makes a separate `aggregate` step unnecessary (§3.5).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant CLI as hcag preprocess
+    participant FS as Filesystem
+    participant LLM as LLM (LiteLLM)
+
+    U->>CLI: hcag preprocess ./raw_kb
+    CLI->>FS: scan ./raw_kb
+    Note over CLI: DFS: recurse into children first
+
+    Note over CLI,FS: — descend into billing/refunds (leaf) —
+    CLI->>FS: scan billing/refunds
+    CLI->>LLM: generate_folder_metadata(own_content, children=[])
+    LLM-->>CLI: {title, short, long}
+    CLI->>FS: copy images → assets/, write billing/refunds/compiled.md
+    Note right of CLI: return FolderSummary(billing.refunds)
+
+    Note over CLI,FS: — descend into billing (mixed folder) —
+    CLI->>FS: scan billing
+    CLI->>LLM: generate_folder_metadata(own_content, children=[billing.refunds])
+    LLM-->>CLI: {title, short, long}
+    CLI->>FS: write billing/compiled.md<br/>(## Sub-topics from child summary + ## Content)
+    Note right of CLI: return FolderSummary(billing)
+
+    Note over CLI,FS: — descend into auth (pure taxonomy node) —
+    CLI->>FS: scan auth
+    Note over CLI: (auth's own children processed similarly)
+    CLI->>LLM: generate_folder_metadata(own_content="", children_shorts=[...])
+    LLM-->>CLI: {title, short, long}
+    CLI->>FS: write auth/compiled.md (## Sub-topics only, no ## Content)
+    Note right of CLI: return FolderSummary(auth)
+
+    Note over CLI,FS: — back at the root —
+    CLI->>LLM: generate_folder_metadata(root own_content, children=[billing, auth])
+    LLM-->>CLI: {title, short, long}
+    CLI->>FS: write ./raw_kb/compiled.md<br/>(top-level catalog = summaries of billing + auth)
+    CLI-->>U: preprocess complete
+```
 
 ---
 
@@ -1585,10 +1613,9 @@ Rules:
 ```
 $ crawl --depth 3 https://docs.example.com/api/
 $ hcag preprocess kb/
-$ hcag aggregate kb/
 ```
 
-`crawl` is responsible only for turning a set of remote sites into a mirrored local Markdown tree. It does not classify folders, produce `packet.md` / `catalog.md`, call an LLM, or make any decisions about the KB's taxonomy — those remain `hcag`'s job.
+`crawl` is responsible only for turning a set of remote sites into a mirrored local Markdown tree. It does not classify folders, produce `compiled.md`, call an LLM, or make any decisions about the KB's taxonomy — those remain `hcag`'s job.
 
 ## 4.7 Observability (CLI)
 
@@ -1629,7 +1656,59 @@ If any `ERROR`-level event is logged during a run, `crawl` exits with a non-zero
 - **Non-HTML, non-PDF assets.** Videos, archives, and other binary formats are neither followed as links nor mirrored into `./kb/`.
 - **Incremental re-crawl.** Each invocation fetches every in-scope URL once; change detection and freshness re-crawling are not provided.
 
----
+## 4.9 Sequence Diagram
+
+Prefix-scoped BFS starting from one seed. Every popped URL is filtered through three skip decisions (visited-dedup, depth-cap, out-of-scope) before a fetch; every fetched page contributes both a Markdown file and zero-or-more extracted images to `./kb/`, plus any in-scope outbound links back to the queue.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant CLI as crawl
+    participant Q as BFS queue (FIFO)
+    participant V as visited set
+    participant HTTP as httpx
+    participant Site as Remote site
+    participant FS as ./kb/
+
+    U->>CLI: crawl --depth 3 https://docs.example.com/api/
+    CLI->>Q: enqueue (seed, depth=0)
+    Note over CLI,Q: prefix scope = https://docs.example.com/api/
+
+    loop until queue is empty
+        Q-->>CLI: pop (url, depth)
+        alt url ∈ visited
+            Note over CLI: skip — dedup
+        else depth > max
+            Note over CLI: skip — depth-cap
+        else url outside any seed's prefix
+            Note over CLI: skip — out-of-scope
+        else
+            CLI->>V: mark visited
+            CLI->>HTTP: GET url
+            HTTP->>Site: request
+            Site-->>HTTP: response
+            HTTP-->>CLI: (status, content_type, bytes)
+            alt non-2xx or unsupported content-type
+                Note over CLI: WARN, skip
+            else content-type = text/html
+                CLI->>CLI: convert_html → markdown + links + image srcs
+            else content-type = application/pdf
+                CLI->>CLI: convert_pdf → markdown + embedded images
+            end
+            CLI->>FS: write ./kb/<domain>/<path>.md
+            loop for each extracted image
+                CLI->>HTTP: GET image (or use embedded bytes for PDF)
+                HTTP-->>CLI: bytes
+                CLI->>FS: write ./kb/<domain>/<path>/<doc-basename>-<img>.ext
+            end
+            loop for each outbound link at depth < max
+                CLI->>Q: enqueue (link, depth+1)
+            end
+        end
+    end
+    CLI-->>U: crawl complete (files written, images extracted, skips by reason)
+```
 
 # Part 5 — Voice Agent (LiveKit)
 
@@ -1652,7 +1731,7 @@ The voice agent **wraps** the runtime defined in Parts 1–2 rather than replaci
 - A **transcription publisher** that mirrors both sides of the conversation onto a LiveKit text/data channel so the browser can render live captions and streaming assistant text.
 - A **web client** (LiveKit JS SDK) that publishes the mic track, subscribes to the agent's audio track, and renders the transcription channel.
 
-The `AgentRuntime`, `MemoryModule`, and `catalog.md` / `packet.md` artifacts are unchanged. Swapping the voice front-end for a text front-end does not touch the reasoning path.
+The `AgentRuntime`, `MemoryModule`, and `compiled.md` artifacts are unchanged. Swapping the voice front-end for a text front-end does not touch the reasoning path.
 
 ### 5.2.1 Voice Class Diagram
 
@@ -1824,7 +1903,7 @@ Session startup runs to completion before the browser is allowed to send audio. 
 
 The voice agent accepts an ordered list of packet IDs — `initial_packet_ids` — via config (§5.8) or CLI (§5.9). Before opening the room to input:
 
-1. Instantiate `AgentRuntime` with the standard bootstrap (§2.7): read `catalog.md`, inject into the system prompt.
+1. Instantiate `AgentRuntime` with the standard bootstrap (§2.7): read the root `compiled.md`'s `## Sub-topics` section (top-level catalog), inject into the system prompt.
 2. For each ID in `initial_packet_ids`, call `memory_module.check_and_load_kb(requested=[id], active=<current>)` and apply the returned delta exactly as an in-turn call would. This produces a byte-identical sequence of tool-result blocks in history — the same shape a normal turn would create — so the cache-alignment rules (§2.12) apply unchanged.
 3. If the union of initial packets exceeds `MAX_ACTIVE_TOKENS`, startup fails with an explicit error (`errors[].reason = "BudgetExceeded"`). Voice sessions do not silently drop preloads — the operator misconfigured the initial set.
 4. Unknown packet IDs are logged as `voice.startup.unknown_packet` WARN entries and skipped; startup continues with the remainder. Rationale: an outdated deploy config should not brick the room.
@@ -2116,11 +2195,11 @@ The tool is a **question / expected-answer generator only**. It does not run the
 
 `evalgen` consumes a KB directory that has already been normalized by `hcag preprocess` (§3.4):
 
-- Each leaf (or mixed) folder contains a `packet.md` with HCAG front-matter (id, title, descriptions, token estimate).
-- Images referenced by a packet live in that packet's `assets/` subfolder.
-- A root `catalog.md` (from `hcag aggregate`, §3.5) is optional for generation but, when present, is used to bias cross-packet pairing toward taxonomically-related packets (§6.4.4).
+- Every folder (leaf, taxonomy node, mixed, and root) contains a `compiled.md` with HCAG front-matter (id, title, descriptions, `kind`, token estimate) and — when applicable — a `## Content` section carrying the folder's own source markdown.
+- Images referenced by a folder live in that folder's `assets/` subdirectory.
+- The root `compiled.md` — produced by `hcag preprocess` (§3) — is always available; its `## Sub-topics` section is used to bias cross-packet pairing toward taxonomically-related folders (§6.4.4).
 
-`evalgen` reads packets as-is; it does not modify the KB. Source `.md` files outside `packet.md` and images outside `assets/` are ignored — the tool operates only on the artifacts the runtime actually serves.
+`evalgen` reads folders as-is; it does not modify the KB. Source `.md` files outside `compiled.md` and images outside `assets/` are ignored — the tool operates only on the artifacts the runtime actually serves.
 
 ## 6.3 Invocation
 
@@ -2130,7 +2209,7 @@ $ evalgen <kb_root> --out <output.csv> [--total <N> | --simple <n1> --medium <n2
 
 | Parameter | Required | Description |
 |---|---|---|
-| `<kb_root>` | yes | Path to the normalized KB directory (the same directory handed to `hcag aggregate`). |
+| `<kb_root>` | yes | Path to the normalized KB directory (the same directory `hcag preprocess` was run on). |
 | `--out <path>` | yes | Path to the output CSV file. Overwritten if it exists. |
 | `--total <N>` | one-of | Total number of question/answer pairs to generate, split equally across the five types (§6.5). |
 | `--simple <n>` | one-of | Explicit count of `simple` questions to generate. |
@@ -2171,13 +2250,13 @@ Each row's `kind` column carries one of five string tags corresponding to how th
 ### 6.4.2 `medium`
 
 - **Definition.** Requires **reasoning grounded in a single paragraph** of a single packet. The answer is not a verbatim quote — the reader must interpret or combine facts within one paragraph.
-- **Source.** One packet, one paragraph (a contiguous block delimited by blank lines in `packet.md`).
+- **Source.** One folder, one paragraph (a contiguous block delimited by blank lines in that folder's `compiled.md` `## Content` section).
 - **Expected answer.** A short natural-language answer whose supporting facts all appear in the chosen paragraph, but which is not a direct quotation of it.
 - **Signal.** Measures within-passage comprehension once retrieval has succeeded.
 
 ### 6.4.3 `complex`
 
-- **Definition.** Requires **significant deduction across at least three distinct concepts, drawn from at least three different paragraphs within a single `packet.md`**.
+- **Definition.** Requires **significant deduction across at least three distinct concepts, drawn from at least three different paragraphs within a single folder's `compiled.md` `## Content` section**.
 - **Source.** One packet; at least three distinct paragraphs, each contributing a different concept the answer depends on.
 - **Expected answer.** A synthesized answer that cannot be produced from any single paragraph in isolation. The generation prompt requires the LLM to identify each paragraph's contribution before composing the answer, so the eval remains auditable.
 - **Signal.** Measures whole-packet reasoning — whether the agent uses everything a loaded packet contains, not just the first hit.
@@ -2185,7 +2264,7 @@ Each row's `kind` column carries one of five string tags corresponding to how th
 ### 6.4.4 `hard-1` (cross-packet)
 
 - **Definition.** Requires **two packets** to answer correctly, drawing on **at least three different paragraphs spread across those two packets** (e.g., 2 + 1, or 1 + 2). Neither packet alone is sufficient.
-- **Source.** A pair of packets. When a root `catalog.md` is present, pairs are biased toward siblings or cousins in the taxonomy (topically adjacent) because those are the pairs the agent is most likely to load together; when no catalog is present, pairs are drawn uniformly at random from the packet set.
+- **Source.** A pair of folders. Pairs are biased toward siblings or cousins in the taxonomy (topically adjacent) — inferred by walking each folder's `compiled.md` front-matter and the tree's dotted-path IDs — because those are the pairs the agent is most likely to load together. When taxonomy metadata is unavailable, pairs are drawn uniformly at random.
 - **Expected answer.** A synthesized answer whose supporting facts are split across the two packets, with at least three distinct paragraphs contributing.
 - **Signal.** Measures the `check_and_load_kb` selection loop (§2.3.2) — specifically whether the agent recognizes it needs a second packet and loads it, rather than answering from only the first.
 
@@ -2309,6 +2388,44 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`evalgen.run`, `evalgen.item`, `
 - **Ground-truth curation.** Generated `expected_answer` values are grounded in the KB but are themselves LLM output. Human review of the eval set before use is expected; `evalgen` does not claim editorial correctness.
 - **Adversarial or jailbreak questions.** All questions are strictly grounded in the KB's own content. Prompt-injection probes, safety evals, and out-of-distribution questions are out of scope.
 - **Cross-run diffing or eval-set versioning.** Each invocation writes a fresh CSV. Snapshotting eval sets under version control and diffing successive runs is left to the caller (e.g., commit the CSV alongside the KB revision it was generated from).
+
+## 6.12 Sequence Diagram
+
+Kinds are generated in the fixed order `simple → medium → complex → hard-1 → hard-2` (§6.6). Within each kind, one LLM call per item with a validate-and-retry inner loop; validation failures past `max_retries_per_item` drop the item with a WARN and the run continues.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant CLI as evalgen
+    participant FS as KB
+    participant LLM as LLM
+    participant CSV as output.csv
+
+    U->>CLI: evalgen ./kb --out eval.csv --total 100 --seed 42
+    CLI->>FS: scan_kb → PacketRecords (paragraphs + assets)
+    CLI->>CLI: split_total(100) per §6.5
+    CLI->>CLI: seed rng
+
+    loop for kind in [simple, medium, complex, hard-1, hard-2]
+        loop for i in requested count[kind]
+            CLI->>CLI: sample source packet(s) + paragraph(s)<br/>(taxonomy-biased for hard-1)
+            alt kind == hard-2 and no image-bearing packet available
+                Note over CLI: WARN shortfall, break kind loop
+            end
+            CLI->>LLM: per-kind prompt + selected content<br/>(image blocks for hard-2)
+            LLM-->>CLI: {question, expected_answer}
+            alt validation ok (per §6.6 rules)
+                CLI->>CSV: append row (id, kind, question, expected, "", "", "")
+            else validation failed, retries left
+                Note over CLI: retry with same source
+            else retries exhausted
+                Note over CLI: drop item, WARN
+            end
+        end
+    end
+    CLI-->>U: summary (per-kind generated/dropped counts, shortfalls)
+```
 
 ---
 
@@ -2581,6 +2698,53 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`eval.run`, `eval.row`, `eval.ch
 - **CI orchestration or threshold enforcement.** `eval` reports scores; it does not fail the CI job on a pass-rate drop. Callers wire the exit-code policy they want on top of the completed CSV (e.g., a wrapper script that parses the mean score per kind and gates a PR).
 - **Adversarial or safety evaluation.** Scoring is grounded strictly in `expected_answer`. Prompt-injection tests, jailbreak resistance, and toxicity checks are separate concerns and out of scope.
 
+## 7.13 Sequence Diagram
+
+Whole-run view. `eval` writes a promptfoo config + JSON-serialized `EvalConfig` into a tempdir and hands off concurrent per-row execution to `npx promptfoo eval`. Each row's provider spawns the multi-turn conversation loop (§7.4), classifies each chatbot reply, drives clarifications via the judge LLM when the reply isn't a real answer, and — once an answer is captured — runs the judge one final time to score against `expected_answer`. The runner then atomically writes the completed CSV and renders the HTML report.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant CLI as eval (runner)
+    participant Bk as Chatbot backend
+    participant PF as npx promptfoo eval
+    participant PY as promptfoo provider (Python)
+    participant J as Judge / classifier / clarifier LLM
+    participant OUT as CSV + HTML
+
+    U->>CLI: eval input.csv --backend-url ... --out ... --report ...
+    CLI->>Bk: GET /health
+    Bk-->>CLI: 200 ok
+    CLI->>CLI: write promptfooconfig.yaml + eval-config.json (tempdir)
+    CLI->>PF: spawn npx promptfoo eval --config … --output results.json -j N
+
+    par per row, up to N in flight
+        PF->>PY: call_api(prompt, context.vars = row)
+        PY->>Bk: POST /chat {session_id, message = row.question}
+        Bk-->>PY: reply₁
+        PY->>J: classify(reply₁) — answer | clarify | refusal
+        J-->>PY: category
+        loop while category = clarify AND turn < max_turns
+            PY->>J: generate user-side clarification<br/>(uses expected_answer without leaking it)
+            J-->>PY: user turn text
+            PY->>Bk: POST /chat next turn on same session
+            Bk-->>PY: replyₙ
+            PY->>J: classify(replyₙ)
+            J-->>PY: category
+        end
+        Note over PY: category ∈ {answer, refusal, max_turns_exceeded, backend_error}<br/>→ actual_answer captured accordingly (§7.4.3)
+        PY->>J: score(question, expected, actual, transcript) — rubric §7.5
+        J-->>PY: {score 0..3, remark}
+        PY-->>PF: {output = actual_answer, metadata = {score, remark, transcript, turn_count}}
+    end
+
+    PF-->>CLI: results.json (exit 0 or 100)
+    CLI->>OUT: atomic-write completed CSV (input order preserved)
+    CLI->>OUT: render HTML report (per-kind panels, transcripts, baseline delta if set)
+    CLI-->>U: JSON summary (mean_score, pass_rate, scored/unscored, elapsed)
+```
+
 ---
 
 # Part 8 — The `rag` CLI Tool
@@ -2593,12 +2757,12 @@ The tool is a **one-shot indexer**. It does not serve queries, does not stand up
 
 ## 8.2 KB Input Model
 
-`rag` operates on a **raw** KB folder — the same layout `hcag preprocess` (§3.4) and `crawl` (§4) produce. It intentionally does **not** require the KB to have been normalized: `packet.md` and `catalog.md` files may or may not exist, and the tool works on either shape.
+`rag` operates on a **raw** KB folder — the same layout `hcag preprocess` (§3.4) and `crawl` (§4) produce. It intentionally does **not** require the KB to have been normalized: `compiled.md` files may or may not exist, and the tool works on either shape.
 
 Two exclusion rules govern what gets indexed:
 
-1. **Skip `packet.md` files.** These are HCAG-assembled artifacts (§3.4.3) that concatenate leaf source content into a single file. Indexing them alongside the underlying source would double-count every fact and skew retrieval scores. Root `catalog.md` and per-node `catalog.md` files (§3.5) are HCAG artifacts as well and skipped for the same reason.
-2. **Skip anything inside a packet's `assets/` folder.** Per §2.1 and §3.4.6, an `assets/` directory sits alongside a `packet.md` in each leaf/mixed folder — it is HCAG's home for images the packet references. Those images are already indirectly indexed via the packet body; letting `rag` re-index them would again double-count.
+1. **Skip `compiled.md` files.** These are HCAG-assembled artifacts (§3.4.3) that concatenate a folder's own source markdown with a catalog of its children into a single file. Indexing them alongside the underlying source would double-count every fact and skew retrieval scores. Root `compiled.md` and every folder's `compiled.md` (§3.7) are skipped for the same reason.
+2. **Skip anything inside an HCAG `assets/` folder.** Per §2.1 and §3.4.6, an `assets/` directory sits alongside a `compiled.md` — it is HCAG's home for the images that folder's content section references. Those images are already indirectly indexed via the folder's `compiled.md` body; letting `rag` re-index them would again double-count.
 
 Everything else under `<kb_root>` is a candidate for indexing — the raw `.md`, `.txt`, and `.pdf` files a taxonomy owner authored, plus any images that live **outside** an HCAG `assets/` folder (loose reference material, source screenshots, diagrams the taxonomy author has not yet folded into a packet). Files whose extension is unknown are skipped with a `DEBUG` log line.
 
@@ -2812,6 +2976,61 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`rag.run`, `rag.file`, `rag.chun
 - **Cross-KB indexes.** One `rag` invocation indexes one KB into one table. Building a multi-tenant or multi-KB index (with a `tenant_id` column, for instance) is a downstream concern; run `rag` per KB and union the tables at query time if that's what the caller needs.
 - **Re-embedding on model change without `--recreate`.** If the embedding provider or model changes between runs, existing rows keep their old vectors — `rag` does not silently mix embedding spaces. Pass `--recreate` (or drop the table manually) to rebuild.
 
+## 8.11 Sequence Diagram
+
+End-to-end index build for a KB that mixes text and images. Every file is manifest-checked so a re-run against a stable tree is a no-op; only the diff pays embedding cost (§8.4.5). LanceDB tables are opened lazily on the first embedded chunk so the pinned vector dimension matches the provider's actual response (§8.4.4).
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant U as User
+    participant CLI as rag
+    participant FS as KB
+    participant M as manifest (LanceDB)
+    participant IMG as Image LLM
+    participant EMB as Embedding provider
+    participant KB_T as kb table (LanceDB)
+
+    U->>CLI: rag --kb ./kb --index ./local_lancedb
+    CLI->>FS: walk kb applying §8.2 exclusions<br/>(skip compiled.md + HCAG assets/)
+    Note over CLI: recorded candidates + skip reasons
+
+    loop per candidate file
+        CLI->>CLI: content_hash(file)
+        CLI->>M: lookup by kb_path
+        alt hash matches manifest
+            Note over CLI: unchanged — skip
+        else new or changed
+            alt image
+                CLI->>IMG: describe_image (multimodal LLM)
+                IMG-->>CLI: text description (§8.4.3)
+                CLI->>CLI: build 1 chunk (image_path retained)
+            else markdown / text / html / pdf
+                CLI->>CLI: extract text; Markdown-aware chunk<br/>(target + overlap, heading path per chunk)
+            end
+            alt kb table not yet open
+                CLI->>EMB: embed one probe chunk
+                EMB-->>CLI: vector (pin dimension)
+                CLI->>KB_T: create_table(schema with pinned dim)
+            end
+            loop batches of `embedding.batch_size`
+                CLI->>EMB: embed(batch)
+                EMB-->>CLI: vectors
+                alt dimension drift
+                    Note over CLI: ERROR — abort run (§8.4.4)
+                end
+            end
+            CLI->>KB_T: delete_by(kb_path)
+            CLI->>KB_T: insert chunk rows
+            CLI->>M: upsert manifest row (path, hash, chunk_count, source_kind)
+        end
+    end
+
+    CLI->>KB_T: create/replace vector index (IVF-PQ)
+    CLI->>KB_T: create/replace FTS index on `text`
+    CLI-->>U: summary (files indexed / unchanged / skipped, chunks, dim, images described)
+```
+
 ---
 
 # Part 9 — The RAG Chat Agent (Competing Baseline)
@@ -2943,7 +3162,7 @@ Both agents answer the same wire question and are scored on the same rubric. Wha
 
 | Axis | HCAG (`AgentRuntime`) | RAG Chat Agent (`RagAgent`) |
 |---|---|---|
-| Retrieval unit | Whole packet (`packet.md` + `assets/`) — high-context, coherent | Top-k chunks — smaller, fragmented across sources |
+| Retrieval unit | Whole folder (`compiled.md` + `assets/`) — high-context, coherent | Top-k chunks — smaller, fragmented across sources |
 | Retrieval trigger | LLM decides via `check_and_load_kb` tool once per task branch (§2.3.2) | Retriever runs unconditionally, once per turn |
 | Cross-turn reuse | Active packet set carried in LRU-ordered context; cache-friendly (§2.12) | Fresh retrieval per turn; prompt varies each call — cache-hostile |
 | Selection signal | LLM reasoning over the catalog (semantic + structural) | Embedding similarity + BM25 (surface signal) fused by RRF |
@@ -2952,7 +3171,7 @@ Both agents answer the same wire question and are scored on the same rubric. Wha
 | Latency | Higher when a load fires; near-zero on cached branches | ~constant per turn (one embed + one hybrid search + one generation) |
 | Prompt tokens per turn | Amortized down by cache hits (§2.12) — dominant cost is the packet(s) once | Full context re-sent every turn; scales with `max_context_tokens` |
 | Failure mode | Wrong classification → wrong packet → wrong answer, easy to spot in logs | Wrong retrieval ranking → chunks missing key context → subtle degradation |
-| KB build cost | `hcag preprocess` + `hcag aggregate` (§3) | `rag` (§8) — usually faster; no taxonomy authoring needed |
+| KB build cost | `hcag preprocess` — single DFS pass (§3) | `rag` (§8) — usually faster; no taxonomy authoring needed |
 
 The intended narrative when scoring both: **`simple` and `medium`** questions (§6.4.1–2) should be roughly tied — a single well-retrieved packet or a single well-retrieved chunk both suffice. **`complex` and `hard-1`** (§6.4.3–4) should favor HCAG — whole-packet load and the cross-packet loading loop both help. **`hard-2`** (§6.4.5) should strongly favor HCAG — direct image attachment beats text-of-image. A run that contradicts this is a signal worth chasing, not a bug in the eval.
 
@@ -2984,6 +3203,42 @@ Startup is fail-fast for the selected agent only:
 The other agent's config is not touched. Running both agents side by side requires two `hcag-server` processes on two ports — the eval harness already routes by `--backend-url` (§7.3) so this drops in cleanly.
 
 **Session state.** Both agents keep per-`session_id` conversation history in memory (single-node dev server, per §5 of `hcag/web/README.md`). The state is agent-specific: an HCAG session carries the LRU-ordered active packet set; a RAG session carries only the raw turn history (RAG retrieval is stateless). The `session_id` namespace is not shared across the two agents — if the same id shows up under `hcag` and `rag` in separate runs, they are independent conversations. Callers that mix agents (unusual) should mint distinct ids.
+
+### 9.5.1 Sequence diagram — HCAG agent path
+
+Companion to the RAG-agent turn diagram in §9.3.5. When `hcag-server` is started with `--agent hcag`, the same `POST /chat` route dispatches into `AgentRuntime.run_turn` (Part 2). On the first request per `session_id` the runtime is created and bootstrapped, injecting the root `compiled.md`'s `## Sub-topics` into the system prompt; subsequent turns reuse the same runtime and its LRU-ordered active packet set. The inner tool loop (`check_and_load_kb`, packet loading, LLM re-invocation) is documented in §2.10.1–4 and elided here so the diagram stays focused on the routing.
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant Cl as Client (web widget / eval / curl)
+    participant S as hcag-server (--agent hcag)
+    participant Reg as session registry
+    participant R as AgentRuntime (per session)
+    participant M as MemoryModule
+    participant KB as compiled.md + assets/
+    participant L as LLM
+
+    Cl->>S: POST /chat {session_id, message}
+    S->>Reg: get(session_id)
+    alt session_id unseen
+        Reg-->>S: (none)
+        S->>R: AgentRuntime(cfg=agent.toml).bootstrap()
+        R->>M: get_catalog
+        M->>KB: read root compiled.md (## Sub-topics section)
+        KB-->>M: catalog contents
+        M-->>R: top-level catalog
+        R->>L: init system prompt with catalog
+        S->>Reg: put(session_id → runtime)
+    else session_id known
+        Reg-->>S: runtime
+    end
+
+    S->>R: run_turn(message)
+    Note over R,L: tool loop per §2.10 — may issue<br/>check_and_load_kb one or more times<br/>(loads deeper compiled.md + assets)
+    R-->>S: assistant text
+    S-->>Cl: 200 {text, session_id}
+```
 
 ## 9.6 Configuration
 
