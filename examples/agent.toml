@@ -3,8 +3,8 @@
 # Load with: cfg = load_agent_config(Path("./agent.toml"))
 # ==============================================================================
 
-# KB root — the directory that holds catalog.md (produced by `hcag aggregate`)
-# and the per-packet folders.
+# KB root — the directory that holds the root compiled.md (produced by
+# `hcag preprocess`) and the per-packet folders.
 kb_root = "./kb"
 
 # Token budget for the active packet set. When adding new packets would exceed
@@ -20,6 +20,17 @@ max_active_tokens = 100000000
 # """
 
 # ------------------------------------------------------------------------------
+# Catalog behavior at load time (DESIGN §2.6, D3a).
+# ------------------------------------------------------------------------------
+[catalog]
+# The root compiled.md's `## Sub-topics` section indexes EVERY folder in the KB
+# at every depth, and it is injected into the system prompt at bootstrap. A
+# non-root packet's own `## Sub-topics` section is therefore a verbatim subset
+# of what the agent already holds; eliding it on load keeps that text out of the
+# active set. Turn this off only if you want compiled.md shipped byte-for-byte.
+strip_subtopics_on_load = true
+
+# ------------------------------------------------------------------------------
 # LLM — provider-neutral. All calls go through LiteLLM.
 # Pick ONE section below and comment out the others.
 # ------------------------------------------------------------------------------
@@ -29,7 +40,7 @@ max_active_tokens = 100000000
 provider    = "anthropic"
 model       = "claude-haiku-4-5-20251001"     # or claude-3-5-haiku-20241022 for cheaper
 api_key_env = "ANTHROPIC_API_KEY"
-max_tokens  = 4096
+#max_tokens  = 10096
 temperature = 0.0
 
 # --- AWS Bedrock ---
@@ -60,18 +71,43 @@ level            = "DEBUG"      # DEBUG | INFO | WARN | ERROR
 rotation_size_mb = 50
 rotation_keep    = 5
 
-# OpenTelemetry traces — activated only when `endpoint` is set.
-# Point at Langfuse, AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb,
-# or any OTLP-compatible receiver.
+# ------------------------------------------------------------------------------
+# Traces. TWO ways to configure ONE exporter (DESIGN.md §2.11.1) — pick at most
+# one. Configure NEITHER and tracing is a no-op: nothing leaves the process.
+# Configuring BOTH is a startup error, on purpose; to send to more than one
+# backend, point otel.endpoint at a collector and let it fan out.
+# ------------------------------------------------------------------------------
+
+# --- Form 1: direct Langfuse (simplest) ---
+# Uncommenting this block turns tracing on. HCAG derives the OTLP endpoint
+# (<host>/api/public/otel), pins http/protobuf, and builds the Basic auth
+# header from the key pair — no URL path or base64 to assemble by hand.
+#
+# Keys are read from the ENVIRONMENT, never from this file. Writing
+# `public_key = "pk-..."` here is a validation error, not a silent no-op, so a
+# secret cannot be committed by accident. A key env var that is unset is a
+# startup error too: observability that looks configured but exports nothing is
+# exactly what this form exists to prevent.
+#
+# [observability.langfuse]
+# host           = "https://cloud.langfuse.com"   # or https://us.cloud.langfuse.com,
+#                                                 # or your self-hosted base URL
+# public_key_env = "LANGFUSE_PUBLIC_KEY"
+# secret_key_env = "LANGFUSE_SECRET_KEY"
+
+# --- Form 2: generic OTLP — activated only when `endpoint` is set. ---
+# Point at AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb, or any
+# OTLP-compatible receiver. (Langfuse also works here; Form 1 is the same thing
+# with the endpoint path and auth header filled in for you.)
 [observability.otel]
-  endpoint     = "https://localhost:3000/api/public/otel"
-  protocol     = "http/protobuf"
-  service_name = "hcag-agent"
+#  endpoint     = "https://localhost:3000/api/public/otel"
+#  protocol     = "http/protobuf"
+#  service_name = "hcag-agent"
 
 # endpoint     = "https://cloud.langfuse.com/api/public/otel"
 # protocol     = "http/protobuf"                       # or "grpc"
 # service_name = "hcag-agent"
-# headers      = { Authorization = "Basic <base64(pk:sk)>" }
+# headers      = { Authorization = "Basic <base64(pk:sk)>" }   # prefer Form 1
 
 # --- AWS CloudWatch example (via local ADOT collector) ---
 # [observability.otel]

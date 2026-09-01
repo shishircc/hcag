@@ -18,7 +18,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field, model_validator
 
-from ..config import LLMConfig, LogConfig, ObservabilityConfig, OTELConfig
+from ..config import CatalogConfig, LLMConfig, LogConfig, ObservabilityConfig, OTELConfig
 
 
 STTProvider = Literal["deepgram", "elevenlabs"]
@@ -75,13 +75,20 @@ class VoiceAgentConfig(BaseModel):
     max_active_tokens: int = 32000
     system_prompt_prefix: str = (
         "You are an HCAG voice agent grounded in a hierarchical knowledge base. "
-        "Consult the catalog below and use check_and_load_kb only when the "
-        "currently-loaded packets are insufficient. Answer conversationally and "
-        "concisely — this response will be spoken."
+        "The catalog below indexes every folder in the KB at every depth, so "
+        "request the deepest matching ids directly rather than walking the "
+        "tree. Most turns need NO tool call: answer from the packets already "
+        "loaded, and call check_and_load_kb only when the catalog names an "
+        "entry that covers the gap and is absent from your active set. Never "
+        "call to refresh or to confirm what is loaded — in a voice "
+        "conversation every needless call is an audible pause. "
+        "Answer conversationally and concisely in plain prose with no Markdown "
+        "formatting — this response will be spoken aloud."
     )
     initial_packet_ids: list[str] = Field(default_factory=list)
 
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     observability: ObservabilityConfig = Field(
         default_factory=lambda: ObservabilityConfig(
             log=LogConfig(file_path="./hcag-voice.log"),

@@ -1,4 +1,5 @@
 import AnswerCard from "./AnswerCard";
+import Markdown from "./Markdown";
 import EscalateCard from "./EscalateCard";
 import FeedbackRow from "./FeedbackRow";
 import SourcesList from "./SourcesList";
@@ -29,8 +30,12 @@ export default function Message({
             padding: "10px 14px",
             borderRadius: "14px 14px 4px 14px",
             lineHeight: 1.5,
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
           }}
         >
+          {/* §10.3 — user input renders literally. Someone typing `2 * 3 * 4`
+              or `_maybe_` must see exactly that. Markdown is model output only. */}
           {msg.text}
         </div>
       ) : null}
@@ -45,9 +50,10 @@ export default function Message({
             borderRadius: "14px 14px 14px 4px",
             lineHeight: 1.55,
             color: "var(--ink)",
+            minWidth: 0,
           }}
         >
-          {msg.text}
+          <Markdown text={msg.text} />
         </div>
       ) : null}
 

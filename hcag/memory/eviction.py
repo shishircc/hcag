@@ -21,7 +21,7 @@ class TokenBudget:
         for pid in ids:
             entry = catalog.get(pid)
             if entry is not None:
-                total += entry.token_size_estimate
+                total += entry.budget_tokens
         return total
 
     def fits(self, total: int) -> bool:
@@ -93,7 +93,7 @@ class LRUEvictionPolicy:
             victim = ordered.pop(0)
             entry = catalog.get(victim)
             if entry is not None:
-                total -= entry.token_size_estimate
+                total -= entry.budget_tokens
             evicted.append(victim)
 
         return EvictionPlan(

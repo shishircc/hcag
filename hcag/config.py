@@ -13,7 +13,7 @@ import tomllib
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class LogConfig(BaseModel):
@@ -30,9 +30,52 @@ class OTELConfig(BaseModel):
     service_name: str = "hcag-agent"
 
 
+class LangfuseConfig(BaseModel):
+    """Direct Langfuse trace destination (§2.11.1).
+
+    A shorthand, not a second pipeline: it materializes the same OTLP exporter
+    the `otel.*` keys build by hand, deriving the endpoint, the pinned
+    http/protobuf protocol, and the Basic auth header from a key pair. The
+    `langfuse` SDK is deliberately not a dependency.
+    """
+
+    # `extra="forbid"` is the enforcement for "credentials never live in the
+    # config file": writing `public_key = "pk-..."` here is a validation error,
+    # not a silently ignored field, so a secret cannot be committed by accident.
+    model_config = ConfigDict(extra="forbid")
+
+    host: str = "https://cloud.langfuse.com"
+    """Base URL only — HCAG appends the OTLP path. Set for EU/US regional
+    hosts or a self-hosted instance."""
+
+    public_key_env: str = "LANGFUSE_PUBLIC_KEY"
+    secret_key_env: str = "LANGFUSE_SECRET_KEY"
+
+
 class ObservabilityConfig(BaseModel):
     log: LogConfig = Field(default_factory=LogConfig)
     otel: OTELConfig = Field(default_factory=OTELConfig)
+
+    langfuse: LangfuseConfig | None = None
+    """Present only when the operator configured `[observability.langfuse]`.
+
+    Presence *is* the switch — there is no `enabled` flag to leave on by
+    accident. Absent (the default) means nothing is exported to Langfuse.
+    """
+
+    @model_validator(mode="after")
+    def _one_destination(self) -> "ObservabilityConfig":
+        # Silently preferring one would send traces somewhere the operator did
+        # not intend, which is worse than refusing to start (§2.11.1). Fan-out
+        # to two backends is a collector's job, not this process's.
+        if self.langfuse is not None and self.otel.endpoint:
+            raise ValueError(
+                "observability: both otel.endpoint and [observability.langfuse] are "
+                f"configured (otel.endpoint={self.otel.endpoint!r}). Pick one. To send "
+                "to more than one backend, point otel.endpoint at a collector and let "
+                "it fan out."
+            )
+        return self
 
 
 class LLMConfig(BaseModel):
@@ -44,6 +87,16 @@ class LLMConfig(BaseModel):
     endpoint: str | None = None
     max_tokens: int = 4096
     temperature: float = 0.0
+
+    preflight: bool = True
+    """Probe the LLM before `hcag preprocess` walks the tree (§3.4.9).
+
+    Build-time only; the runtime agent ignores it. Turn it off for offline runs
+    where every LLM call is stubbed — it does not weaken the mid-run policy.
+    """
+
+    max_retries: int = 2
+    """Retries per LLM call, with exponential backoff, before the build aborts."""
 
     def litellm_model(self) -> str:
         """Build the LiteLLM-compatible model string."""
@@ -64,19 +117,73 @@ class TokenizerConfig(BaseModel):
     encoding: str = "cl100k_base"
 
 
+class CompiledConfig(BaseModel):
+    """`[compiled]` — how the generated `compiled.md` artifacts are identified."""
+
+    root_id: str | None = None
+    """ID for the root folder when a downstream consumer needs a non-empty one.
+
+    `None` means "not configured"; `CliConfig` resolves it to `""`, which is
+    the documented default for the root (§3.4.5).
+    """
+
+
+class CatalogConfig(BaseModel):
+    """Controls the `## Sub-topics` subtree roll-up (D3a, §3.4.4, §3.6).
+
+    The first four knobs are build-time (read by `hcag preprocess`);
+    `strip_subtopics_on_load` is runtime (read by the memory module).
+    """
+
+    max_depth: int = 0
+    """Cap roll-up to this many levels below each folder. 0 = unlimited."""
+
+    long_depth: int = 1
+    """Include `long` on entries at this depth or shallower. 0 = never."""
+
+    include_tree: bool = True
+    """Emit the compact `#### Tree` outline at the top of the section."""
+
+    warn_tokens: int = 40000
+    """WARN at build time if the ROOT catalog exceeds this (§3.4.8)."""
+
+    strip_subtopics_on_load: bool = True
+    """Elide `## Sub-topics` when serving a non-root packet (§2.6)."""
+
+
 class AgentConfig(BaseModel):
     """Runtime agent configuration."""
 
     kb_root: str
     max_active_tokens: int = 32000
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     system_prompt_prefix: str = (
         "You are an HCAG agent grounded in a hierarchical knowledge base. "
-        "Consult the catalog below and use check_and_load_kb only when the "
-        "currently-loaded packets are insufficient. Pass currently-known active "
-        "IDs and requested IDs; trust active_after as authoritative. "
-        "Never assume you can read the KB directly."
+        "The catalog below indexes EVERY folder in the KB at every depth, so "
+        "you never need to walk the tree: find the entries that cover the "
+        "question and request them by id directly, however deep they are. "
+        "Prefer the most specific entries -- kind: leaf or mixed hold the "
+        "actual documents; kind: node entries are taxonomy waypoints whose "
+        "descendants carry the content.\n\n"
+        "WHEN TO LOAD. Most turns need NO tool call. check_and_load_kb "
+        "acquires knowledge you do not have; it is not an acknowledgement of a "
+        "turn, not a refresh, and not a way to confirm what is loaded. On each "
+        "turn decide in this order: (1) can you answer from the packets already "
+        "loaded? Then answer, without calling. (2) Is the material inside a "
+        "packet already in this conversation? Then re-read it, without calling "
+        "-- a loaded packet never needs re-requesting. (3) Only if the catalog "
+        "names an entry that covers the gap AND that entry is absent from your "
+        "active set, call once with exactly those ids (one call may carry ids "
+        "from several branches). Never call to refresh, to make sure, or on a "
+        "conversational turn such as a follow-up, clarification, or thank-you. "
+        "Requesting ids that are already active loads nothing and is an error.\n\n"
+        "Pass currently-known active IDs and requested IDs; trust active_after "
+        "as authoritative. Do not call get_catalog -- the catalog below is "
+        "already complete. Never assume you can read the KB directly. "
+        "Answer in Markdown: use tables, lists, and headings when the source "
+        "content does, since the chat UI renders them."
     )
 
 
@@ -85,8 +192,25 @@ class CliConfig(BaseModel):
 
     llm: LLMConfig = Field(default_factory=LLMConfig)
     tokenizer: TokenizerConfig = Field(default_factory=TokenizerConfig)
+    catalog: CatalogConfig = Field(default_factory=CatalogConfig)
+    compiled: CompiledConfig = Field(default_factory=CompiledConfig)
     log: LogConfig = Field(default_factory=lambda: LogConfig(file_path="./hcag-build.log"))
-    root_id: str = ""  # id used for the root folder; empty string is fine and matches §3.4.5
+
+    root_id: str = ""
+    """Resolved root folder ID — read this, not `compiled.root_id`.
+
+    `[compiled] root_id` (§3.6) is the documented home for this setting. A
+    top-level `root_id` is also accepted, since earlier configs were written
+    that way; `[compiled]` wins when both are present.
+    """
+
+    @model_validator(mode="after")
+    def _resolve_root_id(self) -> "CliConfig":
+        if self.compiled.root_id is not None:
+            self.root_id = self.compiled.root_id
+        else:
+            self.compiled.root_id = self.root_id
+        return self
 
 
 class EvalGenGenerationConfig(BaseModel):

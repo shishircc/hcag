@@ -20,8 +20,9 @@ TOOL_DEFS = [
         "function": {
             "name": "get_catalog",
             "description": (
-                "Return the full HCAG knowledge catalog. Usually not needed since the "
-                "catalog is already in the system prompt; use only for re-inspection."
+                "Return the full HCAG knowledge catalog. You should not need this: the "
+                "catalog in your system prompt already indexes every folder in the KB "
+                "at every depth. Provided only for re-inspection."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []},
         },
@@ -31,10 +32,21 @@ TOOL_DEFS = [
         "function": {
             "name": "check_and_load_kb",
             "description": (
-                "Load additional knowledge packets from the KB. Call this ONLY when the "
-                "currently-loaded packets are insufficient to answer. Pass the packet "
-                "IDs you need in `requested_packet_ids` and the IDs you believe are "
-                "currently active in `active_packet_ids`. Returns delta (loaded + evicted)."
+                "MOST TURNS NEED NO CALL TO THIS TOOL. It acquires knowledge you do "
+                "not have; it is not an acknowledgement of a turn, not a refresh, and "
+                "not a way to confirm what is loaded. Before calling, check in order: "
+                "(1) can you answer from the packets already loaded? Then answer — do "
+                "not call. (2) Is the material inside a packet already in this "
+                "conversation? Then re-read it — do not call; a loaded packet never "
+                "needs re-requesting. (3) Only if the catalog names an entry that "
+                "covers the gap AND that entry is absent from your active set, call "
+                "with exactly those ids. Requesting ids that are already active is an "
+                "error: it loads nothing, costs a round trip, and disturbs eviction "
+                "order. Request the deepest matching ids straight from the catalog — "
+                "you never need to load a parent folder on the way to a child, and one "
+                "call can carry ids from several branches. Pass the ids you need in "
+                "`requested_packet_ids` and the ids you believe are currently active in "
+                "`active_packet_ids`. Returns delta (loaded + evicted)."
             ),
             "parameters": {
                 "type": "object",
@@ -73,7 +85,9 @@ class AgentRuntime:
     ) -> None:
         self.cfg = cfg
         self.logger = logger or build_logger(cfg.observability.log, name="hcag.runtime")
-        self.tracer = build_tracer(cfg.observability.otel)
+        # Pass the whole observability block so either trace-destination form
+        # is honored (§2.11.1); a missing Langfuse key raises here, at startup.
+        self.tracer = build_tracer(cfg.observability, logger=self.logger)
         if memory is None:
             storage = LocalFsStorage(cfg.kb_root)
             memory = FileSystemMemoryModule(
@@ -81,12 +95,17 @@ class AgentRuntime:
                 budget=TokenBudget(cfg.max_active_tokens),
                 logger=self.logger,
                 tracer=self.tracer,
+                strip_subtopics_on_load=cfg.catalog.strip_subtopics_on_load,
             )
         self.memory = memory
         self.llm = llm or LiteLLMAdapter(cfg.llm)
         self._system_prompt: str | None = None
         self._history: list[Message] = []
         self._turn_index = 0
+        # Reload discipline counters (§2.7.1). `redundant_rate` is the number
+        # that says whether the discipline is holding; healthy is at or near 0.
+        self._reload_calls = 0
+        self._redundant_reloads = 0
 
     # ---- Bootstrap ------------------------------------------------------
 
@@ -94,10 +113,16 @@ class AgentRuntime:
         catalog = self.memory.get_catalog()
         self._system_prompt = (
             f"{self.cfg.system_prompt_prefix}\n\n"
-            f"--- KNOWLEDGE CATALOG ---\n{catalog.raw_markdown}\n--- END CATALOG ---"
+            "--- KNOWLEDGE CATALOG (complete KB index — every folder, all depths) ---\n"
+            f"{catalog.raw_markdown}\n--- END CATALOG ---"
         )
         self._history = [Message(role="system", content=self._system_prompt)]
-        self.logger.info("agent.bootstrap", catalog_entries=len(catalog.entries))
+        self.logger.info(
+            "agent.bootstrap",
+            catalog_entries=len(catalog.entries),
+            catalog_max_depth=max((e.depth for e in catalog.entries), default=0),
+            catalog_chars=len(catalog.raw_markdown),
+        )
 
     # ---- Turn loop ------------------------------------------------------
 
@@ -119,7 +144,14 @@ class AgentRuntime:
             )
 
             if not response.tool_calls:
-                self.logger.info("turn.end", turn=self._turn_index, output_chars=len(response.text))
+                self.logger.info(
+                    "turn.end",
+                    turn=self._turn_index,
+                    output_chars=len(response.text),
+                    reload_calls=self._reload_calls,
+                    redundant_reloads=self._redundant_reloads,
+                    redundant_rate=round(self._redundant_reloads / self._turn_index, 3),
+                )
                 return response.text
 
             for call in response.tool_calls:
@@ -145,6 +177,9 @@ class AgentRuntime:
             )
             with self.tracer.start_as_current_span("tool.check_and_load_kb"):
                 delta = self.memory.check_and_load_kb(req)
+            self._reload_calls += 1
+            if delta.redundant:
+                self._redundant_reloads += 1
             self._append_tool_result(call.id, self._serialize_delta(delta))
             return
 
@@ -174,6 +209,11 @@ class AgentRuntime:
             "errors": [{"id": e.packet_id, "reason": e.reason} for e in delta.errors],
         }
         blocks.append({"type": "text", "text": "DELTA-METADATA: " + json.dumps(meta)})
+        if delta.note:
+            # The model reads this in-conversation, which corrects a reflex call
+            # for the rest of the session in a way a prompt rule alone does not
+            # (§2.7.1, enforcement layer 3).
+            blocks.append({"type": "text", "text": "NOTE: " + delta.note})
         for packet in delta.loaded:
             blocks.extend(packet_to_content_blocks(packet))
         return blocks

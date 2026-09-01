@@ -35,6 +35,7 @@ def build_agent_runtime(cfg: VoiceAgentConfig) -> AgentRuntime:
         kb_root=cfg.kb_root,
         max_active_tokens=cfg.max_active_tokens,
         llm=cfg.llm,
+        catalog=cfg.catalog,
         observability=cfg.observability,
         system_prompt_prefix=cfg.system_prompt_prefix,
     )

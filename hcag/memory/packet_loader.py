@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from ..compiled_io import HCAG_COMPILED_MARKER
+from ..compiled_io import strip_compiled_frontmatter, strip_subtopics_section
 from ..models import CatalogEntry, ImageBlock, Packet, TextBlock
 
 
@@ -29,38 +29,30 @@ def _mime_for(path: str) -> str:
     return _MIME_BY_EXT.get(ext, "application/octet-stream")
 
 
-def strip_compiled_frontmatter(raw: str) -> str:
-    """Return the body of a compiled.md — marker + YAML front-matter stripped.
-
-    Preserves the `## Sub-topics` and `## Content` sections verbatim so the
-    LLM sees the same catalog rendering downstream code produced.
-    """
-    text = raw
-    lines = text.splitlines()
-    # Strip HCAG marker line, if present.
-    if lines and lines[0].startswith(HCAG_COMPILED_MARKER):
-        lines = lines[1:]
-    # Strip YAML front-matter block delimited by `---` fences.
-    if lines and lines[0].strip() == "---":
-        # find closing '---'
-        for i in range(1, len(lines)):
-            if lines[i].strip() == "---":
-                lines = lines[i + 1 :]
-                break
-    return "\n".join(lines).lstrip("\n")
-
-
 def assemble_packet(
     entry: CatalogEntry,
     compiled_raw: str,
     assets: list[tuple[str, bytes]],
+    *,
+    strip_subtopics: bool = False,
 ) -> Packet:
+    """Build the content blocks for one loaded folder.
+
+    When ``strip_subtopics`` is set the folder's ``## Sub-topics`` section is
+    dropped (§2.6): because catalogs roll up the whole subtree (D3a), that
+    section is a verbatim subset of the root catalog already sitting in the
+    agent's system prompt, so shipping it again would duplicate that text
+    inside the active set for no navigational gain. What remains is the
+    ``## Content`` the packet exists to deliver.
+    """
     header = (
         f"--- packet: {entry.id or '_root'} ---\n"
         f"Title: {entry.title}\n"
         f"Short: {entry.short_description}\n"
     )
     body = strip_compiled_frontmatter(compiled_raw)
+    if strip_subtopics:
+        body = strip_subtopics_section(body)
     blocks: list[TextBlock | ImageBlock] = [
         TextBlock(text=header),
         TextBlock(text=body),

@@ -110,8 +110,8 @@ def test_get_catalog_parses_top_level_subtopics(tmp_path: Path) -> None:
     assert entry is not None
     assert entry.path == "billing/refunds"
     assert entry.token_size_estimate == 100
-    # The injected catalog text is a `## Packets` rendering of the top-level.
-    assert "## Packets" in catalog.raw_markdown
+    # The injected catalog text is the root's `## Sub-topics` section verbatim.
+    assert "## Sub-topics" in catalog.raw_markdown
     assert "billing.refunds" in catalog.raw_markdown
 
 

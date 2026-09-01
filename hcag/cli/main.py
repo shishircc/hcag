@@ -14,7 +14,7 @@ import typer
 
 from ..config import load_cli_config
 from ..logger import build_logger
-from .preprocess import preprocess_tree
+from .preprocess import PreprocessAborted, preprocess_tree
 
 
 app = typer.Typer(no_args_is_help=True, add_completion=False, help="HCAG knowledge base build tool.")
@@ -46,6 +46,15 @@ def preprocess(
             "root so their ## Sub-topics sections pick up the changed child summary."
         ),
     ),
+    allow_partial: bool = typer.Option(
+        False,
+        "--allow-partial",
+        help=(
+            "Continue past a folder that cannot be summarized, writing a placeholder "
+            "instead of aborting. Off by default: a placeholder feeds every ancestor's "
+            "summary, so its output is indistinguishable from a good build by inspection."
+        ),
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
         help="Also stream debug logs to stderr (in the same JSON-lines shape as the log file).",
@@ -53,7 +62,21 @@ def preprocess(
 ) -> None:
     """DFS build: emit compiled.md at every folder, including the root."""
     cfg, logger = _load(root, verbose=verbose)
-    preprocess_tree(root, cfg, logger, force=force, only=only)
+    try:
+        preprocess_tree(
+            root, cfg, logger, force=force, only=only, allow_partial=allow_partial
+        )
+    except PreprocessAborted as e:
+        # Fail closed (§3.4.9). Say how much is already on disk so the operator
+        # knows whether re-running resumes or starts over.
+        typer.echo(f"hcag preprocess aborted: {e}", err=True)
+        if e.folders_written:
+            typer.echo(
+                f"{e.folders_written} folder(s) were written before the abort; "
+                "re-run to resume — completed folders are skipped unless --force.",
+                err=True,
+            )
+        raise typer.Exit(code=1) from e
     typer.echo(f"Preprocess complete for {root}")
 
 

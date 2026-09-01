@@ -107,14 +107,20 @@ Given a raw KB tree of `.md` files and images organized by taxonomy, one command
 hcag preprocess ./my-kb
 ```
 
-`preprocess` walks the tree DFS post-order and emits exactly one `compiled.md` per folder — leaf, taxonomy node, mixed, or root. Each file carries the folder's own summary metadata in front-matter, an optional `## Sub-topics` section listing its immediate children (built from summaries the recursion just returned from those children), and an optional `## Content` section with the folder's own source markdown ([DESIGN.md §3.4](./DESIGN.md#34-hcag-preprocess--detailed-semantics), [§3.7](./DESIGN.md#37-generated-file-format--summary)). Because DFS naturally bubbles child summaries up to their parent, there is no separate `hcag aggregate` step — the root's `compiled.md` is the final write of the pass.
+`preprocess` walks the tree DFS post-order and emits exactly one `compiled.md` per folder — leaf, taxonomy node, mixed, or root. Each file carries the folder's own summary metadata in front-matter, an optional `## Sub-topics` section, and an optional `## Content` section with the folder's own source markdown ([DESIGN.md §3.4](./DESIGN.md#34-hcag-preprocess--detailed-semantics), [§3.7](./DESIGN.md#37-generated-file-format--summary)).
+
+`preprocess` **fails closed**. Every folder needs an LLM call, so the command probes the configured provider before scanning the tree — if the key is unset, the model id is wrong, or the endpoint is unreachable, it exits non-zero having written nothing, naming which of those it was. Once the walk is running, a call that fails after retries aborts the run rather than writing a placeholder summary: because a parent summarizes from its children's descriptions, a placeholder feeds every ancestor above it, and the resulting KB looks complete while its prose is quietly degraded. Aborts are resumable — a plain re-run skips the folders that already succeeded. Pass `--allow-partial` to accept the degraded build instead ([DESIGN.md §3.4.9](./DESIGN.md#349-llm-preflight-and-failure-policy)).
+
+**The `## Sub-topics` section indexes the folder's entire subtree, not just its immediate children.** The DFS return channel carries each folder's summary *and its already-assembled subtree index* up to its parent, which re-parents those records (depth +1, path prefixed) and splices them in — so the index grows as the recursion unwinds and is complete at the root. That is what lets the agent locate any document at any depth from the bootstrap catalog alone, instead of walking the tree one `check_and_load_kb` at a time ([DESIGN.md D3a](./DESIGN.md#d3a-catalogs-roll-up-the-whole-subtree-not-one-level)). Summarization still looks only one level down, so build cost stays at one LLM call per folder. Because aggregation happens on that same return path, there is no separate `hcag aggregate` step — the root's `compiled.md` is the final write of the pass.
 
 Iterate on one branch:
 
 ```bash
 hcag preprocess ./my-kb --only ./my-kb/billing/refunds --force
 # → regenerates that subtree, then re-emits its ancestors up to the root so
-#   their ## Sub-topics sections pick up the changed child summary.
+#   their ## Sub-topics indexes pick up the change. Mandatory, not an
+#   optimization: the root catalog names every folder, so any leaf edit
+#   invalidates it.
 ```
 
 Config is read from `./my-kb/hcag.toml` (optional). Example:
@@ -123,12 +129,20 @@ Config is read from `./my-kb/hcag.toml` (optional). Example:
 [llm]
 provider = "bedrock"
 model    = "bedrock/anthropic.claude-3-5-haiku-20241022-v1:0"
+preflight = true           # probe the LLM before the walk; see DESIGN.md §3.4.9
+max_retries = 2            # retries per call, exponential backoff, before aborting
 
 [tokenizer]
 kind = "tiktoken"
 
 [compiled]
 root_id = "_root"          # id used for the root folder if a non-empty one is needed
+
+[catalog]                  # subtree roll-up — see DESIGN.md §3.4.4
+max_depth   = 0            # cap roll-up depth; 0 = index the whole subtree
+long_depth  = 1            # `long` on entries this deep or shallower
+include_tree = true        # compact `#### Tree` outline atop each section
+warn_tokens = 40000        # WARN if the ROOT catalog outgrows this
 
 [log]
 file_path = "./hcag-build.log"
@@ -382,7 +396,7 @@ reply = agent.run_turn("How do partial refunds work?")
 print(reply)
 ```
 
-At bootstrap the agent reads the root `compiled.md` and injects its `## Sub-topics` section (the top-level branches) into the system prompt. The LLM then decides — via the `check_and_load_kb` tool — which folders to load; loading a taxonomy node reveals its own `## Sub-topics` so the agent can drill deeper on the next turn, and loading a leaf delivers its content plus any images from `assets/`. See [DESIGN.md §2.10](./DESIGN.md#210-sequence-diagrams) for the turn-by-turn sequence diagrams.
+At bootstrap the agent reads the root `compiled.md` and injects its `## Sub-topics` section — the complete index of every folder in the KB, at every depth — into the system prompt. Because the whole hierarchy is visible from turn one, the agent does not navigate the taxonomy: it finds the matching leaf entry in the catalog and requests that id directly via `check_and_load_kb`, however deep it sits. Loading a packet delivers its `## Content` plus any images from `assets/`; a non-root packet's own `## Sub-topics` section is elided on the way out, since it is a verbatim subset of the catalog already in the system prompt. See [DESIGN.md §2.10](./DESIGN.md#210-sequence-diagrams) for the turn-by-turn sequence diagrams.
 
 ## Web Chat and Voice Widget
 
@@ -461,7 +475,27 @@ Full setup + env vars: [`hcag/web/README.md`](./hcag/web/README.md).
 Two independent layers ([DESIGN.md §2.11](./DESIGN.md#211-observability)):
 
 1. **JSON-lines file log** — always on. Captures every key decision.
-2. **OpenTelemetry traces** — activated by setting `otel.endpoint`. Emits GenAI-semantic-convention spans plus HCAG-specific ones (`tool.*`, `kb.*`, `hcag.*`). Points at Langfuse, AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb, or any OTLP receiver.
+2. **OpenTelemetry traces** — off unless a destination is configured. Emits GenAI-semantic-convention spans plus HCAG-specific ones (`tool.*`, `kb.*`, `hcag.*`).
+
+There are two ways to configure that one exporter; set **at most one** ([DESIGN.md §2.11.1](./DESIGN.md#2111-configuration)).
+
+**Direct Langfuse** — the short form. HCAG derives the OTLP endpoint, pins `http/protobuf`, and builds the Basic auth header from your key pair, so there is no URL path or base64 to assemble by hand:
+
+```toml
+[observability.langfuse]
+host           = "https://cloud.langfuse.com"   # or a regional / self-hosted base URL
+public_key_env = "LANGFUSE_PUBLIC_KEY"
+secret_key_env = "LANGFUSE_SECRET_KEY"
+```
+
+```bash
+export LANGFUSE_PUBLIC_KEY=pk-...   # keys come from the environment,
+export LANGFUSE_SECRET_KEY=sk-...   # never from the config file
+```
+
+**Generic OTLP** — set `otel.endpoint` for AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb, or any OTLP receiver. Langfuse works here too; the block above is the same thing with the path and header filled in.
+
+Three behaviors worth knowing: configuring **neither** means nothing leaves the process; configuring **both** is a startup error (to send to more than one backend, point `otel.endpoint` at a collector and let it fan out); and a Langfuse block whose key env var is unset is *also* a startup error, rather than silently exporting nothing — writing a key inline in the TOML is rejected outright so it cannot be committed by accident.
 
 Every CLI (`hcag`, `crawl`, `evalgen`, `eval`, `rag`, `hcag-voice`, `hcag-server`) accepts `--verbose` / `-v`, which mirrors the file log to stderr in the same JSON-lines shape. The file sink is unchanged — it stays at whatever level `--log-level` / config specifies — so `--verbose` is purely additive and safe to leave on during development.
 

@@ -11,6 +11,31 @@ talks to a real `AgentRuntime` (chat) and a LiveKit voice worker (voice).
 - `app/`            — Next.js App Router pages + API route proxies.
 - `components/`     — Host page + chat widget (launcher, panel, voice overlay).
 - `lib/`            — `chat-client`, `voice-client` (LiveKit hook).
+
+## Markdown rendering
+
+Assistant messages render as Markdown (`components/chat/Markdown.tsx`, DESIGN.md
+§10.3). KB content is Markdown all the way down — `crawl` even repairs tables
+whose header row lost its GFM delimiter so the structure survives to a renderer
+— and answers quote it back as tables, lists, and numbered procedures.
+
+Rules worth knowing before editing that component:
+
+- **User messages stay plain text.** Someone typing `2 * 3 * 4` must see that.
+  Markdown applies to model output only. Voice captions are plain too — they
+  mirror speech.
+- **Sanitization is mandatory.** Assistant text derives from crawled web pages
+  and is never trusted markup. Raw HTML passthrough is off *and* the tree is
+  filtered through an allowlist; `javascript:`/`data:` hrefs are dropped. The
+  three Markdown deps are pinned exactly, because a transitive bump in a
+  Markdown parser is a change to a security boundary.
+- **Relative image refs render as placeholders.** `preprocess` rewrites them to
+  `assets/<file>` relative to the packet folder; the browser cannot resolve
+  that, so the widget says an image exists rather than emitting a doomed
+  request. Serving packet assets is future work.
+- **Styles are scoped to `.hcag-md`** in `app/globals.css`. The widget embeds in
+  someone else'"'"'s page and Markdown emits exactly the generic tags a host page
+  is likely to restyle.
 - The Python backend lives at `hcag/server/` (a proper submodule of the `hcag`
   package). See "Backend" below.
 

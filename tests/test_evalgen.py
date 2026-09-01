@@ -67,7 +67,7 @@ def _write_packet(folder: Path, packet_id: str, source_texts: list[tuple[str, st
         children=[],
     )
     body_sections = [(name, content) for name, content in source_texts]
-    write_compiled_md(folder / "compiled.md", fm, children=[], own_sections=body_sections)
+    write_compiled_md(folder / "compiled.md", fm, subtopics=[], own_sections=body_sections)
     if with_image:
         assets = folder / "assets"
         assets.mkdir(exist_ok=True)
