@@ -214,91 +214,6 @@ def test_log_records_skip_disposition(tmp_path: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Boilerplate detection (§4.4.4) — end-to-end
-# ---------------------------------------------------------------------------
-
-
-def _templated_page(unique_body: str) -> bytes:
-    """Small HTML page with the same nav header + footer around unique body."""
-    return (
-        b"<html><body>"
-        b"<nav>Nav | Home | Docs | About</nav>"
-        b"<h1>" + unique_body.encode() + b"</h1>"
-        b"<p>Details about " + unique_body.encode() + b".</p>"
-        b"<footer>Copyright 2026 Widgets Inc.</footer>"
-        b"</body></html>"
-    )
-
-
-def test_boilerplate_strips_shared_nav_and_footer(tmp_path: Path) -> None:
-    seeds = ["https://docs.ex.com/a", "https://docs.ex.com/b", "https://docs.ex.com/c"]
-    pages = {
-        seeds[0]: _Canned(_templated_page("Alpha")),
-        seeds[1]: _Canned(_templated_page("Beta")),
-        seeds[2]: _Canned(_templated_page("Gamma")),
-    }
-    kb = tmp_path / "kb"
-    stats = crawl(
-        seeds, depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
-    )
-    assert stats.pages_written == 3
-    assert stats.boilerplate_pages_scanned == 3
-    # Nav should be stripped from every page's Markdown, footer likewise.
-    for name in ("a", "b", "c"):
-        md = (kb / "docs.ex.com" / f"{name}.md").read_text()
-        assert "Home | Docs | About" not in md
-        assert "Copyright 2026 Widgets Inc" not in md
-    # Unique body survives in each page.
-    assert "Alpha" in (kb / "docs.ex.com" / "a.md").read_text()
-    assert "Beta" in (kb / "docs.ex.com" / "b.md").read_text()
-    assert "Gamma" in (kb / "docs.ex.com" / "c.md").read_text()
-    # Header + footer accounting.
-    assert stats.boilerplate_header_blocks_stripped >= 3
-    assert stats.boilerplate_footer_blocks_stripped >= 3
-
-
-def test_boilerplate_disabled_writes_verbatim(tmp_path: Path) -> None:
-    seeds = ["https://docs.ex.com/a", "https://docs.ex.com/b", "https://docs.ex.com/c"]
-    pages = {u: _Canned(_templated_page(u.rsplit("/", 1)[1])) for u in seeds}
-    kb = tmp_path / "kb"
-    stats = crawl(
-        seeds, depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
-        no_boilerplate=True,
-    )
-    assert stats.pages_written == 3
-    md = (kb / "docs.ex.com" / "a.md").read_text()
-    # Nav and footer are still present because detection was disabled.
-    assert "Home | Docs | About" in md
-    assert "Copyright 2026 Widgets Inc" in md
-    assert stats.boilerplate_headers_detected == 0
-    assert stats.boilerplate_footers_detected == 0
-    # Log carries the "disabled" reason.
-    reasons = [
-        e.get("reason") for e in _read_log(tmp_path)
-        if e["event"] == "crawl.boilerplate.skipped"
-    ]
-    assert "disabled" in reasons
-
-
-def test_boilerplate_skipped_when_corpus_below_min(tmp_path: Path) -> None:
-    seed = "https://docs.ex.com/only"
-    pages = {seed: _Canned(_templated_page("Only"))}
-    kb = tmp_path / "kb"
-    stats = crawl(
-        [seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
-    )
-    assert stats.pages_written == 1
-    md = (kb / "docs.ex.com" / "only.md").read_text()
-    # Only one page — detection can't run, so verbatim.
-    assert "Home | Docs | About" in md
-    reasons = [
-        e.get("reason") for e in _read_log(tmp_path)
-        if e["event"] == "crawl.boilerplate.skipped"
-    ]
-    assert "min_corpus" in reasons
-
-
-# ---------------------------------------------------------------------------
 # --min-image-bytes filter (§4.4.3)
 # ---------------------------------------------------------------------------
 
@@ -413,3 +328,120 @@ def test_size_filter_removes_ref_for_html_but_keeps_other_images(tmp_path: Path)
     md = (kb / "ex.com" / "page.md").read_text()
     assert "page-icon.png" not in md
     assert "page-diagram.png" in md
+
+
+# ---------------------------------------------------------------------------
+# Main-content extraction (§4.4.1) — end-to-end
+# ---------------------------------------------------------------------------
+
+
+def _templated_page(topic: str) -> bytes:
+    """A realistic page: chrome around an article long enough to extract."""
+    return (
+        "<html><head><title>{t}</title></head><body>"
+        "<header><a href='/'><img src='/static/logo.png' alt='logo'/></a>"
+        "<nav><a href='/a'>Alpha</a> <a href='/b'>Beta</a></nav></header>"
+        "<main><article><h1>{t}</h1>"
+        "<p>Everything you need to know about {t} in one place. This body is long "
+        "enough that the extractor treats it as the page's main content rather than "
+        "discarding it as an index page, and it mentions {t} more than once.</p>"
+        "<p>Applications for {t} are assessed against published criteria, and the "
+        "outcome is communicated by email within three weeks of submission.</p>"
+        "<img src='/media/chart.png' alt='{t} chart'/>"
+        "</article></main>"
+        "<footer><p>Copyright 2026 Widgets Inc. All rights reserved.</p></footer>"
+        "</body></html>"
+    ).format(t=topic).encode()
+
+
+def test_extraction_strips_chrome_end_to_end(tmp_path: Path) -> None:
+    seed = "https://docs.ex.com/alpha"
+    big_chart = b"\x89PNG\r\n\x1a\n" + b"\x00" * 20_000
+    pages = {
+        seed: _Canned(_templated_page("Alpha")),
+        "https://docs.ex.com/media/chart.png": _Canned(big_chart, content_type="image/png"),
+    }
+    fetcher = FakeFetcher(pages)
+    kb = tmp_path / "kb"
+    stats = crawl([seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=fetcher)
+
+    assert stats.pages_written == 1
+    assert stats.pages_extracted == 1
+    assert stats.pages_fallback == 0
+
+    md = (kb / "docs.ex.com" / "alpha.md").read_text()
+    assert "# Alpha" in md
+    assert "Everything you need to know about Alpha" in md
+    assert "Copyright 2026 Widgets Inc" not in md
+    assert "Beta" not in md  # nav link text is gone from the output
+
+    # The chrome logo is never even requested; the content image is.
+    assert "https://docs.ex.com/static/logo.png" not in fetcher.requested
+    assert "https://docs.ex.com/media/chart.png" in fetcher.requested
+    assert (kb / "docs.ex.com" / "alpha-chart.png").is_file()
+
+    ok = [e for e in _read_log(tmp_path) if e["event"] == "crawl.extract.ok"]
+    assert len(ok) == 1
+    assert ok[0]["url"] == seed
+    assert ok[0]["retained_pct"] > 0
+
+
+def test_nav_links_are_still_followed_after_extraction(tmp_path: Path) -> None:
+    """Nav is stripped from the output but still drives traversal (§4.3.1)."""
+    seed = "https://docs.ex.com/"
+    pages = {
+        seed: _Canned(_templated_page("Alpha")),
+        "https://docs.ex.com/a": _Canned(_templated_page("Alpha topic")),
+        "https://docs.ex.com/b": _Canned(_templated_page("Beta topic")),
+        "https://docs.ex.com/media/chart.png": _Canned(b"tiny", content_type="image/png"),
+        "https://docs.ex.com/static/logo.png": _Canned(b"tiny", content_type="image/png"),
+    }
+    fetcher = FakeFetcher(pages)
+    kb = tmp_path / "kb"
+    stats = crawl([seed], depth=1, kb_root=kb, logger=_logger_for(tmp_path), fetcher=fetcher)
+
+    assert stats.pages_written == 3
+    assert "https://docs.ex.com/a" in fetcher.requested
+    assert "https://docs.ex.com/b" in fetcher.requested
+
+
+def test_unextractable_page_falls_back_and_warns(tmp_path: Path) -> None:
+    seed = "https://docs.ex.com/index"
+    pages = {seed: _Canned(b"<html><body><nav>Home | Docs | About</nav></body></html>")}
+    kb = tmp_path / "kb"
+    stats = crawl([seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages))
+
+    assert stats.pages_written == 1
+    assert stats.pages_fallback == 1
+    assert stats.pages_extracted == 0
+    # Content is kept, chrome and all — a dirty page beats a missing one.
+    assert "Home | Docs | About" in (kb / "docs.ex.com" / "index.md").read_text()
+
+    fallbacks = [e for e in _read_log(tmp_path) if e["event"] == "crawl.extract.fallback"]
+    assert len(fallbacks) == 1
+    assert fallbacks[0]["reason"] in {"no_output", "too_short"}
+
+
+def test_no_extract_writes_whole_dom(tmp_path: Path) -> None:
+    seed = "https://docs.ex.com/alpha"
+    pages = {
+        seed: _Canned(_templated_page("Alpha")),
+        "https://docs.ex.com/media/chart.png": _Canned(b"tiny", content_type="image/png"),
+        "https://docs.ex.com/static/logo.png": _Canned(b"tiny", content_type="image/png"),
+    }
+    kb = tmp_path / "kb"
+    stats = crawl(
+        [seed], depth=0, kb_root=kb, logger=_logger_for(tmp_path), fetcher=FakeFetcher(pages),
+        no_extract=True,
+    )
+
+    assert stats.pages_extracted == 0
+    assert stats.pages_fallback == 1
+    md = (kb / "docs.ex.com" / "alpha.md").read_text()
+    assert "Copyright 2026 Widgets Inc" in md
+
+    reasons = [
+        e.get("reason") for e in _read_log(tmp_path)
+        if e["event"] == "crawl.extract.fallback"
+    ]
+    assert reasons == ["disabled"]

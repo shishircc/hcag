@@ -16,6 +16,7 @@ import typer
 from ..config import LogConfig
 from ..logger import build_logger
 from .core import crawl
+from .html_conv import DEFAULT_MIN_EXTRACT_CHARS, FAVOR_CHOICES
 
 
 def _cli(
@@ -41,18 +42,28 @@ def _cli(
         "INFO", "--log-level",
         help="Log level: DEBUG | INFO | WARN | ERROR.",
     ),
-    boilerplate_threshold: float = typer.Option(
-        0.7, "--boilerplate-threshold",
-        min=0.0, max=1.0,
+    extract_favor: str = typer.Option(
+        "balanced", "--extract-favor",
         help=(
-            "Fraction of pages a block must appear in (at the top or bottom) to be "
-            "stripped as site chrome (§4.4.4). 0.0 disables detection (same as "
-            "--no-boilerplate); 1.0 strips only blocks present on every page."
+            "Bias of the main-content extractor (§4.4.1): balanced | precision | recall. "
+            "precision drops anything it is unsure about; recall keeps borderline blocks."
         ),
     ),
-    no_boilerplate: bool = typer.Option(
-        False, "--no-boilerplate",
-        help="Disable boilerplate detection entirely — write every fetched page verbatim.",
+    no_extract: bool = typer.Option(
+        False, "--no-extract",
+        help=(
+            "Disable main-content extraction — convert every page whole-DOM and write "
+            "it verbatim, chrome included (§4.4.1 stage 3)."
+        ),
+    ),
+    min_extract_chars: int = typer.Option(
+        DEFAULT_MIN_EXTRACT_CHARS, "--min-extract-chars",
+        min=0,
+        help=(
+            "Extractions shorter than this many characters are treated as a failure and "
+            "the page falls back to whole-DOM conversion (§4.4.1). 0 accepts any "
+            "non-empty extraction."
+        ),
     ),
     min_image_bytes: int = typer.Option(
         10240, "--min-image-bytes",
@@ -74,6 +85,14 @@ def _cli(
         typer.echo(f"Invalid --log-level: {log_level}", err=True)
         raise typer.Exit(code=2)
 
+    favor = extract_favor.lower()
+    if favor not in FAVOR_CHOICES:
+        typer.echo(
+            f"Invalid --extract-favor: {extract_favor} (choose {' | '.join(FAVOR_CHOICES)})",
+            err=True,
+        )
+        raise typer.Exit(code=2)
+
     log_cfg = LogConfig(file_path=str(log_file), level=level)  # type: ignore[arg-type]
     logger = build_logger(log_cfg, name="crawl", console=verbose)
 
@@ -82,13 +101,15 @@ def _cli(
         depth=depth,
         kb_root=output,
         logger=logger,
-        boilerplate_threshold=boilerplate_threshold,
-        no_boilerplate=no_boilerplate,
+        no_extract=no_extract,
+        extract_favor=favor,
+        min_extract_chars=min_extract_chars,
         min_image_bytes=min_image_bytes,
     )
 
     typer.echo(
-        f"crawl complete: {stats.pages_written} page(s), "
+        f"crawl complete: {stats.pages_written} page(s) "
+        f"({stats.pages_extracted} extracted, {stats.pages_fallback} fallback), "
         f"{stats.images_extracted} image(s), "
         f"{stats.warnings} warning(s), {stats.errors} error(s). "
         f"Log: {log_file}"

@@ -37,19 +37,20 @@ hcag/
 │   │   ├── eviction.py    # TokenBudget + LRUEvictionPolicy
 │   │   ├── module.py      # FileSystemMemoryModule
 │   │   └── packet_loader.py
+│   ├── compiled_io.py     # `compiled.md` schema (front-matter + Sub-topics + Content)
 │   ├── runtime/           # Agent runtime
 │   │   ├── llm.py         # LLM protocol + LiteLLM adapter
 │   │   └── agent.py       # AgentRuntime — bootstrap + tool loop
 │   ├── cli/               # `hcag` build tool
-│   │   ├── preprocess.py  # Bottom-up: assemble packet.md + assets/
-│   │   ├── aggregate.py   # Top-down: emit root catalog.md
+│   │   ├── preprocess.py  # Single DFS pass: emit compiled.md at every folder
+│   │   ├── metadata_llm.py # LLM-generated folder title/short/long
 │   │   └── main.py        # Typer entry point
 │   ├── crawl/             # `crawl` CLI — mirror sites into a raw KB
 │   │   ├── urls.py        # Normalize, prefix-scope, URL → ./kb path
 │   │   ├── fetch.py       # httpx wrapper with retries + redirect cap
-│   │   ├── html_conv.py   # HTML → Markdown, extract links + images
+│   │   ├── html_conv.py   # DOM pre-pass + trafilatura main-content → Markdown
 │   │   ├── pdf_conv.py    # PDF → Markdown, extract embedded images
-│   │   ├── core.py        # BFS traversal + structured logging
+│   │   ├── core.py        # Single-pass BFS + convert + write
 │   │   └── main.py        # Typer entry point
 │   ├── evalgen/           # `evalgen` CLI — generate eval Q/A from a KB
 │   │   ├── kb_scan.py     # Scan packets, paragraphs, image assets
@@ -100,14 +101,20 @@ HCAG uses **[LiteLLM](https://litellm.ai)** under the hood, so it never imports 
 
 ## Building a KB with the `hcag` CLI
 
-Given a raw KB tree of `.md` files and images organized by taxonomy:
+Given a raw KB tree of `.md` files and images organized by taxonomy, one command normalizes the whole tree in a single depth-first pass:
 
 ```bash
-# 1. Bottom-up: assemble packet.md at leaves, catalog.md at nodes
 hcag preprocess ./my-kb
+```
 
-# 2. Top-down: emit root catalog.md
-hcag aggregate ./my-kb
+`preprocess` walks the tree DFS post-order and emits exactly one `compiled.md` per folder — leaf, taxonomy node, mixed, or root. Each file carries the folder's own summary metadata in front-matter, an optional `## Sub-topics` section listing its immediate children (built from summaries the recursion just returned from those children), and an optional `## Content` section with the folder's own source markdown ([DESIGN.md §3.4](./DESIGN.md#34-hcag-preprocess--detailed-semantics), [§3.7](./DESIGN.md#37-generated-file-format--summary)). Because DFS naturally bubbles child summaries up to their parent, there is no separate `hcag aggregate` step — the root's `compiled.md` is the final write of the pass.
+
+Iterate on one branch:
+
+```bash
+hcag preprocess ./my-kb --only ./my-kb/billing/refunds --force
+# → regenerates that subtree, then re-emits its ancestors up to the root so
+#   their ## Sub-topics sections pick up the changed child summary.
 ```
 
 Config is read from `./my-kb/hcag.toml` (optional). Example:
@@ -119,6 +126,9 @@ model    = "bedrock/anthropic.claude-3-5-haiku-20241022-v1:0"
 
 [tokenizer]
 kind = "tiktoken"
+
+[compiled]
+root_id = "_root"          # id used for the root folder if a non-empty one is needed
 
 [log]
 file_path = "./hcag-build.log"
@@ -142,17 +152,20 @@ crawl --depth 2 https://a.example.com/ https://b.example.com/docs/
 What it does ([DESIGN.md §4](./DESIGN.md#part-4--the-crawl-cli-tool)):
 
 - **Prefix-scoped BFS.** Each seed URL doubles as the site boundary — links are followed only if they begin with a seed's URL, so the crawl never wanders off to unrelated domains or parent paths.
+- **Reading-mode main-content extraction.** Every HTML page is reduced to the body an author actually wrote using [trafilatura](https://trafilatura.readthedocs.io/) — the same class of extractor behind browser reading modes ([§4.4.1](./DESIGN.md#441-html--main-content-extraction)). Headings, **bold**/*italic*, lists, tables, code blocks, in-body links, and content images are all preserved; navigation, breadcrumbs, sidebars, cookie banners, comment threads, and footers are dropped. Tune the bias with `--extract-favor {balanced,precision,recall}`, or turn extraction off with `--no-extract`.
+- **Links still come from the whole page.** Nav is chrome in the output but is how a site exposes its own structure, so link discovery reads the full DOM even though only the main content is written to disk.
 - **HTML and PDF.** Both are fetched and converted to Markdown; embedded images are extracted and rewritten to local paths so pages render offline.
 - **Depth-limited.** `--depth N` caps hops from any seed (seed is depth 0). Cycles are broken by a visited-URL set — every in-scope URL is fetched at most once.
 - **Mirrored layout.** Output lands under `./kb/<domain>/<url-path>/…`. Extracted images are prefixed with the source document's basename so identically-named images from different pages don't collide.
-- **Structured logging.** JSON-lines log at `./crawl.log` records every fetch, write, image extraction, and skip decision (out-of-scope / already-visited / depth-cap). Levels: DEBUG · INFO · WARN · ERROR. Any ERROR exits non-zero.
+- **One decision per page, no corpus-level state.** Extraction is the only content decision — no second stripping pass, no cross-page comparison. Pages the extractor can't handle (JS shells, pure link indexes) are written whole-DOM with a `crawl.extract.fallback` warning: a dirty page beats a missing one, and the log says which pages need attention.
+- **Small images filtered.** Images below `--min-image-bytes` (default `10240` = 10 KB) are skipped and their Markdown references removed, so inline glyphs and rating stars that survive extraction don't bloat the KB or the downstream index ([§4.4.3](./DESIGN.md#443-images)). Set `--min-image-bytes 0` to keep every image.
+- **Structured logging.** JSON-lines log at `./crawl.log` records every fetch, extraction decision (including `retained_pct` per page), write, image extraction, and skip decision (out-of-scope / already-visited / depth-cap / undersized-image). Levels: DEBUG · INFO · WARN · ERROR. Any ERROR exits non-zero.
 
 End-to-end with `hcag`:
 
 ```bash
 crawl --depth 3 https://docs.example.com/api/
 hcag preprocess ./kb
-hcag aggregate ./kb
 ```
 
 Details: [DESIGN.md §4](./DESIGN.md#part-4--the-crawl-cli-tool).
@@ -174,8 +187,8 @@ Use it as a **Flat-RAG fallback** the caller composes on top of HCAG ([§1.3.5 c
 
 **What's skipped** — to avoid double-counting HCAG's own artifacts:
 
-- `packet.md` / `catalog.md` — they concatenate source content the raw files already carry.
-- Anything under a packet's `assets/` folder — the packet body has already indirectly referenced it.
+- `compiled.md` at every folder — it concatenates source content the raw files already carry ([§8.2](./DESIGN.md#82-kb-input-model)).
+- Anything under an `assets/` folder that sits alongside a `compiled.md` — the folder's compiled body has already indirectly referenced it.
 
 **Query pattern** ([DESIGN.md §8.6](./DESIGN.md#86-hybrid-search-semantics)) — the CLI produces the index; downstream code queries it:
 
@@ -223,10 +236,10 @@ End-to-end from a crawl:
 crawl --depth 3 https://docs.example.com/api/
 rag --kb ./kb --index ./local_lancedb
 # … or, alongside the HCAG pipeline for the same KB:
-hcag preprocess ./kb && hcag aggregate ./kb
+hcag preprocess ./kb
 ```
 
-The two indexes are independent — `hcag preprocess` writes `packet.md` and `catalog.md` alongside the source files; `rag` writes only into `./local_lancedb/`. `rag` deliberately skips both artifacts when it re-scans the tree, so the two can coexist.
+The two indexes are independent — `hcag preprocess` writes one `compiled.md` per folder alongside the source files; `rag` writes only into `./local_lancedb/`. `rag` deliberately skips every `compiled.md` when it re-scans the tree, so the two can coexist.
 
 Details: [DESIGN.md §8](./DESIGN.md#part-8--the-rag-cli-tool).
 
@@ -342,7 +355,7 @@ End-to-end regression workflow:
 
 ```bash
 crawl --depth 3 https://docs.example.com/api/
-hcag preprocess ./kb && hcag aggregate ./kb
+hcag preprocess ./kb
 evalgen ./kb --out kb-eval.csv --total 100 --seed 42     # once per KB revision
 hcag-server serve --agent-config ./agent.toml --port 8000 &
 eval kb-eval.csv --backend-url http://localhost:8000 \
@@ -369,7 +382,7 @@ reply = agent.run_turn("How do partial refunds work?")
 print(reply)
 ```
 
-The agent auto-injects the catalog into its system prompt at bootstrap, then the LLM decides — via the `check_and_load_kb` tool — when to load additional packets. See [DESIGN.md §2.10](./DESIGN.md#210-sequence-diagrams) for the turn-by-turn sequence diagrams.
+At bootstrap the agent reads the root `compiled.md` and injects its `## Sub-topics` section (the top-level branches) into the system prompt. The LLM then decides — via the `check_and_load_kb` tool — which folders to load; loading a taxonomy node reveals its own `## Sub-topics` so the agent can drill deeper on the next turn, and loading a leaf delivers its content plus any images from `assets/`. See [DESIGN.md §2.10](./DESIGN.md#210-sequence-diagrams) for the turn-by-turn sequence diagrams.
 
 ## Web Chat and Voice Widget
 
@@ -450,13 +463,15 @@ Two independent layers ([DESIGN.md §2.11](./DESIGN.md#211-observability)):
 1. **JSON-lines file log** — always on. Captures every key decision.
 2. **OpenTelemetry traces** — activated by setting `otel.endpoint`. Emits GenAI-semantic-convention spans plus HCAG-specific ones (`tool.*`, `kb.*`, `hcag.*`). Points at Langfuse, AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb, or any OTLP receiver.
 
+Every CLI (`hcag`, `crawl`, `evalgen`, `eval`, `rag`, `hcag-voice`, `hcag-server`) accepts `--verbose` / `-v`, which mirrors the file log to stderr in the same JSON-lines shape. The file sink is unchanged — it stays at whatever level `--log-level` / config specifies — so `--verbose` is purely additive and safe to leave on during development.
+
 ## Testing
 
 ```bash
 pytest -q
 ```
 
-10 tests cover the LRU eviction algorithm, memory module end-to-end, and the agent tool loop (with a `FakeLLM` — no network).
+The suite covers the LRU eviction algorithm, memory module end-to-end, the agent tool loop (with a `FakeLLM` — no network), the crawl core (BFS, dedup, main-content extraction, image size filter), `evalgen`, and the voice startup + transcription paths.
 
 ## Design Deep-Dive
 

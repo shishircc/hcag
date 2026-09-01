@@ -1,0 +1,56 @@
+# ==============================================================================
+# HCAG CLI (`hcag preprocess`, `hcag aggregate`) — sample config
+# Place this file as `hcag.toml` at the ROOT of your KB directory. The CLI
+# discovers it automatically. If missing, the defaults below apply.
+# ==============================================================================
+
+# Suffix appended to a mixed folder's packet ID to disambiguate it from the
+# taxonomy-node ID at the same path. Example: `billing/` mixed folder →
+# node id = "billing", packet id = "billing_".
+mixed_suffix = "_"
+
+# ------------------------------------------------------------------------------
+# LLM used ONLY for build-time metadata generation:
+#   - packet title, short_description, long_description
+#   - node title, node short description
+# Runtime agent uses its own separate config (see examples/agent.toml).
+# For CLI a cheap+fast model is usually fine.
+# ------------------------------------------------------------------------------
+
+# --- Anthropic direct (default) ---
+[llm]
+provider    = "anthropic"
+model       = "claude-opus-4-6"      # cheap+fast for build-time
+api_key_env = "ANTHROPIC_API_KEY"
+temperature = 0.0
+
+# --- AWS Bedrock ---
+# [llm]
+# provider   = "bedrock"
+# model      = "bedrock/anthropic.claude-3-5-haiku-20241022-v1:0"
+# max_tokens = 1024
+
+# --- Ollama (local) ---
+# Metadata quality varies with model; try llama3.1:8b for a quick local build.
+# [llm]
+# provider   = "ollama"
+# model      = "ollama/llama3.1:8b"
+# endpoint   = "http://localhost:11434"
+# max_tokens = 1024
+
+# ------------------------------------------------------------------------------
+# Tokenizer for the token_size_estimate field written into each catalog entry.
+# The runtime uses these estimates for budgeting; no re-tokenization at runtime.
+# ------------------------------------------------------------------------------
+[tokenizer]
+kind     = "tiktoken"          # tiktoken | rough
+encoding = "cl100k_base"       # provider-agnostic proxy
+
+# ------------------------------------------------------------------------------
+# Build log — same JSON-lines format as the runtime log.
+# ------------------------------------------------------------------------------
+[log]
+file_path        = "./hcag-build.log"
+level            = "INFO"      # DEBUG | INFO | WARN | ERROR
+rotation_size_mb = 50
+rotation_keep    = 5

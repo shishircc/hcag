@@ -88,10 +88,9 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [4.3.2 Visited-URL tracking](#432-visited-url-tracking)
     - [4.3.3 Depth](#433-depth)
   - [4.4 Document Types](#44-document-types)
-    - [4.4.1 HTML](#441-html)
+    - [4.4.1 HTML — main-content extraction](#441-html--main-content-extraction)
     - [4.4.2 PDF](#442-pdf)
     - [4.4.3 Images](#443-images)
-    - [4.4.4 Boilerplate detection](#444-boilerplate-detection)
   - [4.5 Output Layout](#45-output-layout)
   - [4.6 Relationship to `hcag`](#46-relationship-to-hcag)
   - [4.7 Observability (CLI)](#47-observability-cli)
@@ -1121,6 +1120,10 @@ The runtime's `LLM` interface (§2.9) is bound to LiteLLM by a single thin adapt
 | CLI framework | **Typer** (built on Click) | Typed subcommands (`hcag preprocess`) |
 | Tokenization (build-time estimates) | **tiktoken** (default, `cl100k_base` proxy) | Runtime never re-tokenizes; the design's `token_size_estimate` is read from catalog |
 | Image MIME detection (CLI, optional) | **Pillow** | Runtime uses file extension only |
+| HTML fetch (`crawl`) | **httpx** | Sync client with retries and a redirect cap (§4.4.1) |
+| Main-content extraction (`crawl`) | **trafilatura** (`>=2.0` — Markdown output) | Reading-mode extraction of the article body, Markdown output with links, formatting, tables, and images; comments/nav/header/footer excluded (§4.4.1). Pulls in `lxml`. |
+| DOM pre-pass and fallback conversion (`crawl`) | **beautifulsoup4** + **markdownify** | Link harvesting and `<img src>` rewriting before extraction; whole-DOM Markdown for pages extraction rejects (§4.4.1 stage 3) |
+| PDF text/image extraction (`crawl`) | **pypdf** | §4.4.2 |
 
 Markdown content is treated as opaque UTF-8 text; no markdown-parser dependency is required for the memory module. The CLI concatenates source `.md` files verbatim between separators, so no round-tripping through a markdown AST.
 
@@ -1150,6 +1153,13 @@ Required (runtime + CLI):
   python-frontmatter                             # compiled.md front-matter
   pyyaml                                         # YAML
   tiktoken                                       # Token estimation
+
+Crawl (`crawl` CLI — §4):
+  httpx                                          # fetching
+  trafilatura>=2.0                               # main-content (reading-mode) extraction (Markdown output)
+  beautifulsoup4                                 # DOM pre-pass: links + image src rewriting
+  markdownify                                    # whole-DOM fallback conversion
+  pypdf                                          # PDF text + embedded images
 
 Optional (feature-flagged by config):
   opentelemetry-api                              # tracing (enabled when otel.endpoint is set)
@@ -1550,9 +1560,11 @@ sequenceDiagram
 
 ## 4.1 Purpose
 
-`crawl` takes a set of seed URLs and builds a local Markdown knowledge base from the pages they lead to. Each seed is fetched, converted to Markdown, and its outbound links are followed recursively — staying within the site regions defined by the seed URL prefixes. The output is a local `./kb/` tree whose directory shape mirrors the domains and URL paths of the crawled sites, ready to hand to `hcag preprocess` (Part 3) as raw KB input.
+`crawl` takes a set of seed URLs and builds a local Markdown knowledge base from the pages they lead to. Each seed is fetched, reduced to its **main content**, converted to Markdown, and its outbound links are followed recursively — staying within the site regions defined by the seed URL prefixes. The output is a local `./kb/` tree whose directory shape mirrors the domains and URL paths of the crawled sites, ready to hand to `hcag preprocess` (Part 3) as raw KB input.
 
-Site chrome that repeats across pages — top navigation, breadcrumbs, link-heavy footers — is stripped from every page's Markdown before it hits disk, using cross-page positional voting (§4.4.4). Downstream indexers therefore see the content authors wrote, not the template around it.
+The page reduction is the load-bearing part. A fetched HTML document is mostly *not* the document: top navigation, mega-menus, breadcrumbs, sidebars, cookie banners, "related articles" rails, comment threads, and link-heavy footers routinely outweigh the prose an author actually wrote. `crawl` does not try to out-guess that template itself — it delegates the decision to a library purpose-built for it, **[trafilatura](https://trafilatura.readthedocs.io/)**, the same class of tool that powers browser reading modes (§4.4.1). What lands on disk is the article body with its structure intact — headings, **bold**/*italic*, lists, tables, code blocks, in-body links, and content images — and nothing of the chrome around it.
+
+Extraction is the *only* content decision `crawl` makes. There is no second stripping pass, no cross-page analysis, and no corpus-level state: each page is decided by itself, from itself, and written as soon as it is fetched.
 
 ## 4.2 Invocation
 
@@ -1562,9 +1574,10 @@ $ crawl --depth <N> <seed_url> [<seed_url> ...]
 
 - `<seed_url>` — one or more starting URLs. Each seed defines both a starting point and a prefix scope (§4.3.1). At least one seed is required.
 - `--depth <N>` — maximum link-following depth from any seed. `N=0` fetches only the seed documents themselves; `N=1` also fetches documents reachable in one hop from a seed; and so on.
-- `--boilerplate-threshold <fraction>` — fraction of pages a block must appear in (at the top or bottom) to be treated as site chrome and stripped (§4.4.4). Default `0.7`. Range `0.0` (strip nothing, equivalent to `--no-boilerplate`) to `1.0` (strip only blocks that appear on *every* page).
-- `--no-boilerplate` — disable boilerplate detection entirely. Every fetched page's Markdown is written verbatim.
-- `--min-image-bytes <N>` — skip images whose fetched byte size is below `N` (§4.4.3). Default `10240` (10 KB). Set to `0` to keep every image regardless of size. This filters out logos, favicons, decorative rules, and social-share icons — chrome that reappears on every page and carries no content the KB needs.
+- `--extract-favor {balanced,precision,recall}` — bias of the main-content extractor (§4.4.1). `precision` drops anything the extractor is unsure about (cleanest output, occasionally loses a short real section); `recall` keeps borderline blocks (fuller output, occasionally keeps a sidebar). Default `balanced`.
+- `--no-extract` — disable main-content extraction entirely. Every page is converted whole-DOM and written verbatim, chrome included. Use it to inspect raw output, or on sites the extractor mishandles.
+- `--min-extract-chars <N>` — extraction results shorter than `N` characters are treated as a failed extraction and the page falls back (§4.4.1). Default `200`. Set to `0` to accept any non-empty extraction.
+- `--min-image-bytes <N>` — skip images whose fetched byte size is below `N` (§4.4.3). Default `10240` (10 KB). Set to `0` to keep every image regardless of size.
 
 Output is written under `./kb/` in the current working directory (§4.5).
 
@@ -1579,6 +1592,8 @@ Each seed URL doubles as a **prefix scope**. A discovered link is followed only 
 
 Rationale: the seed set defines both *where to start* and *what belongs in the KB* with a single knob — the operator does not have to state the site boundary a second time.
 
+Note that the candidate links come from the **full DOM**, not from the extracted main content (§4.4.1) — navigation is discarded from the *output* but is still the primary way a site exposes its own structure.
+
 ### 4.3.2 Visited-URL tracking
 
 `crawl` maintains a set of every URL it has already fetched. If a link resolves to a URL already in that set, it is skipped — neither re-fetched nor recursed into. Every in-scope URL is therefore fetched and converted at most once per invocation, and cycles between pages cannot cause repeat work or infinite loops.
@@ -1589,60 +1604,68 @@ The seed URL sits at depth `0`. A document reached by following a link from a de
 
 ## 4.4 Document Types
 
-### 4.4.1 HTML
+### 4.4.1 HTML — main-content extraction
 
-HTML pages are fetched, parsed, and converted to Markdown. The links to follow are the `href` values of `<a>` elements in the document. Relative hrefs are resolved against the fetched document's URL before the prefix-scope check (§4.3.1).
+An HTML response goes through three stages: a DOM pre-pass that harvests links and rewrites image sources, reading-mode extraction that decides what the page's content actually is, and a fallback for the pages extraction cannot handle. The page is written at the end of the third stage and never revisited.
+
+**Stage 1 — DOM pre-pass (BeautifulSoup).** Runs on the raw HTML, before any content decision:
+
+- **Traversal links.** Every `<a href>` in the document is resolved against the fetched URL (after redirects) and handed to the traversal loop (§4.3.1). Anchors, `javascript:`, `mailto:`, and `tel:` targets are dropped. This deliberately reads the *whole* document — a docs site's left-hand nav is chrome in the output but is exactly how the crawler discovers the rest of the site. Discarding nav before link discovery would collapse coverage to whatever the body prose happens to cross-reference.
+- **Image source rewriting.** Every `<img>` is given a local filename of the form `<doc-basename>-<remote-basename>` (with in-document collision disambiguation, §4.5) and its `src` attribute is rewritten **in place** to that local name. Lazy-loading attributes (`data-src`, `data-original`, and the first candidate of a `srcset`) are promoted into `src` first, so images that a plain parse would miss survive. Because the rewrite happens before extraction, whatever markup survives extraction already points at local files — no post-hoc Markdown surgery, and the extractor's own link/image handling never sees a relative URL.
+- Nothing is removed at this stage. The pre-pass only annotates; the content decision belongs to stage 2.
+
+**Stage 2 — reading-mode extraction (trafilatura).** The mutated DOM is serialized and passed to `trafilatura.extract()`, which returns Markdown for the main content only. Settings:
+
+| Option | Value | Why |
+|---|---|---|
+| `output_format` | `"markdown"` | Markdown is the KB's on-disk format (§4.5); no second conversion pass, no markdownify round-trip. |
+| `include_formatting` | `True` | Preserve headings, `**bold**`, `*italic*`, lists, and code blocks — structure `hcag preprocess` and downstream chunkers rely on. |
+| `include_links` | `True` | In-body links are content: cross-references between KB pages and citations to sources. |
+| `include_tables` | `True` | Tables carry a large share of the facts on reference and policy sites (eligibility criteria, salary benchmarks, fee schedules). Dropping them is the single most damaging default in naive extractors. |
+| `include_images` | `True` | Emits `![alt](src)` for content images; the `src` is already the local filename from stage 1. Images outside the main content — logos, icon rails, social badges — are never emitted, and therefore never fetched (§4.4.3). |
+| `include_comments` | `False` | User comments and discussion threads are not authored knowledge. This is the explicit exclusion the KB needs most: comment threads are long, repetitive, and confidently wrong. |
+| `favor_precision` / `favor_recall` | from `--extract-favor` | `balanced` sets neither. |
+| `url` | **not passed** | Given a URL, trafilatura resolves relative image sources against it — which would undo stage 1's local-filename rewriting. Links are already absolute by then, so nothing is lost by omitting it. |
+| `deduplicate` | `False` | trafilatura's near-duplicate suppression is an LRU cache that **spans calls**, so a paragraph legitimately repeated on two pages of a corpus would silently vanish from the second. Cross-page decisions belong to §4.4.4, where they are logged. |
+
+What extraction removes, by construction: site header and top navigation, mega-menus and breadcrumbs, sidebars and "in this section" rails, cookie/consent banners, newsletter and share widgets, related-content teasers, comment threads, and footers. What it keeps: the article body with its heading hierarchy and inline formatting.
+
+**Table repair.** One formatting fix is applied to the extracted Markdown: when a table run has no GFM delimiter row (`|---|---|`) under its first row — which happens whenever a site marks header cells up as `<td>` rather than `<th>` — one is inserted. Without it the rows are just pipe-separated text to every Markdown renderer and every Markdown-aware chunker, and the table's structure is lost exactly where it matters most. No cell content is touched.
+
+**Title.** The `<h1>` of a page frequently lives in the template header, outside the extracted body. If the extracted Markdown does not already begin with an H1, the page title from trafilatura's metadata is prepended as one. A KB packet whose first line names the topic is worth the special case — `hcag preprocess` (§3.4.3) and every downstream chunker key off it.
+
+**Stage 3 — fallback.** Extraction is a heuristic and it does fail: JS-rendered shells, index pages that are genuinely nothing but links, and unusual templates. Each fetched HTML page is therefore classified:
+
+| Condition | Classification | Handling |
+|---|---|---|
+| Extraction returns Markdown ≥ `--min-extract-chars` | `extracted` | Written to `./kb/…` (§4.5) as-is. |
+| Extraction returns nothing, or shorter than `--min-extract-chars` | `fallback` | Whole-DOM markdownify conversion, written verbatim with the chrome still attached. `WARN crawl.extract.fallback` with `reason ∈ {no_output, too_short}`. |
+| `--no-extract` given | `fallback` | Every HTML page takes the whole-DOM path. |
+
+A fallback page is a **loud** failure, not a silent one: it keeps whatever the page contained — a dirty page is more useful to a downstream index than a missing one — and it says so in the log, so a run with many fallbacks is visible and actionable (`--extract-favor recall`, or accept that the site is JS-rendered). What `crawl` does not do is try to clean it up with a second heuristic; one page, one decision, one write.
+
+**Why a library, and why this one.** Main-content extraction is a well-studied problem with a decade of published benchmarks and a long tail of per-site quirks — the wrong thing to reimplement from `<header>`/`<footer>`/`<nav>` guesses. trafilatura combines DOM-structure rules with text-density and link-density statistics, scores consistently at or near the top of independent extraction benchmarks, is pure-Python with `lxml`, is deterministic, needs no network and no model, and emits Markdown natively with per-feature switches for exactly the axes this design cares about (links, formatting, tables, images, comments). It also degrades honestly: when it cannot find a main body it returns nothing rather than guessing, which is precisely the signal stage 3 needs.
 
 ### 4.4.2 PDF
 
-Linked `.pdf` documents are treated as first-class pages: fetched, converted to Markdown (extracted text with document structure preserved), and written to the same layout as HTML output. PDFs do not contribute outbound links for further traversal.
+Linked `.pdf` documents are treated as first-class pages: fetched, converted to Markdown (extracted text with document structure preserved), and written to the same layout as HTML output. PDFs do not contribute outbound links for further traversal. Main-content extraction (§4.4.1) does not apply to them — a PDF has no site template around it.
 
 ### 4.4.3 Images
 
-Images embedded in HTML pages (`<img src>`) and images embedded inside PDF documents are extracted and saved as separate files alongside the Markdown output (§4.5). Every image reference in the generated Markdown is rewritten to point at the local saved file rather than the original remote URL, so the Markdown renders correctly offline.
+Images referenced by the **main content** of HTML pages and images embedded inside PDF documents are extracted and saved as separate files alongside the Markdown output (§4.5). Every image reference in the generated Markdown points at the local saved file rather than the original remote URL, so the Markdown renders correctly offline.
 
 Images are content of their containing document, not link targets: they are neither depth-counted nor prefix-checked.
+
+**Only what survives extraction is fetched.** Stage 1 (§4.4.1) assigns a local name to every `<img>` in the DOM, but the fetch happens only for the names that still appear in the extracted Markdown. Header logos, nav icons, social badges, and footer seals are dropped by extraction and therefore cost zero HTTP requests — a large bandwidth saving on top of the correctness one. On a fallback page (§4.4.1 stage 3) and under `--no-extract`, the whole-DOM Markdown references every `<img>`, so every image is fetched.
 
 **Size filter.** After the bytes are in hand (fetched over HTTP for HTML `<img>` targets, or extracted from the PDF stream for embedded images), images below `--min-image-bytes` (default `10240` = 10 KB) are dropped. Two things happen for a dropped image:
 
 - The image bytes are **not written** to `./kb/`.
 - The Markdown reference `![alt](local_name.ext)` is **removed** from the page's body **before** it lands on disk — no dangling links.
 
-Rationale: at any commonly-crawled site, a large majority of images by count are logos, favicons, "share this" icons, arrow glyphs, and other chrome that recurs on every page. Keeping them inflates the on-disk KB, the downstream RAG index, and the HCAG agent's multimodal context (§2.6) with content-free bytes. 10 KB is a conservative default — it lets through typical diagrams, charts, screenshots, and photographs while catching most decorative icons. Set `--min-image-bytes 0` to disable the filter for corpora where every image matters (e.g., an icon-set reference).
+Rationale: extraction removes chrome images by *position*; the size filter removes decorative images by *weight* — inline glyphs, spacer rules, and rating stars that sit inside the article body and survive extraction legitimately. 10 KB is a conservative default: it lets through typical diagrams, charts, screenshots, and photographs while catching most decorative icons. Set `--min-image-bytes 0` to disable the filter for corpora where every image matters (e.g., an icon-set reference).
 
-The filter is applied uniformly to HTML-embedded images and PDF-embedded images; nothing about the source medium is a special case. Reference removal happens on the buffered/pre-write Markdown so the on-disk `.md` is always internally consistent.
-
-### 4.4.4 Boilerplate detection
-
-Marketing headers, top navigation, breadcrumbs, cookie banners, and link-heavy footers repeat verbatim across most pages of a well-templated site. They are low-signal noise for an HCAG or RAG index — indexing the same 30-line footer once per page inflates every retrieval score and drowns out the actual content authors wrote. `crawl` strips this boilerplate from every page's Markdown using **cross-page positional voting**: a block that appears at (nearly) the same position in the majority of pages is boilerplate; every other block is content.
-
-The tool never inspects a single page's DOM to guess at conventions (`<header>`, `<footer>`, `<nav>`, sidebar `id`s). That's brittle and duplicates work. Cross-page voting sidesteps it entirely: if a block is genuinely repeated site chrome, it will show up on many pages at similar positions regardless of how the HTML labels it. The trade-off is that a single-page crawl gets no benefit — hence the `min_corpus_for_boilerplate` guard below.
-
-**Algorithm.** Detection is two-phase — fingerprint accumulation during BFS, then identification + strip after BFS ends. Pages are held in memory as their parsed block list (small — typically a few KB per page) so no page is written to disk until the boilerplate decision is final; there are no intermediate `.raw.md` files.
-
-1. **Fingerprint every block during fetch.** As each HTML-derived Markdown page is produced (§4.4.1), split its body into **blocks** — runs of non-blank lines separated by blank lines (fenced code blocks are treated as one atomic block). For each block, compute a normalized fingerprint: lowercase the text, collapse consecutive whitespace to a single space, drop trailing punctuation. Record `(fingerprint, page_id, position_from_top, position_from_bottom)` in an in-memory index.
-
-2. **Identify boilerplate after BFS ends.** For each fingerprint, count how many distinct pages contain it. A fingerprint is classified as a:
-   - **Header block** if it appears in ≥ `--boilerplate-threshold` (default 0.7) of pages AND its `position_from_top` is within the first `boilerplate_window` blocks (default 5) in the majority of those appearances.
-   - **Footer block** if it meets the same page-share threshold AND its `position_from_bottom` is within the last `boilerplate_window` blocks.
-
-   A single fingerprint can qualify as both (rare — usually a page-name breadcrumb that some templates repeat at the top and bottom). Both classifications enable both strip directions.
-
-3. **Strip per page.** For each buffered page:
-   - Starting from the top, remove the **maximal contiguous run** of header blocks. Stop the strip as soon as a non-boilerplate block is encountered — a nav item sandwiched between two content paragraphs stays; it's the reader's problem, not ours.
-   - Starting from the bottom, remove the **maximal contiguous run** of footer blocks. Same stop rule.
-
-4. **Write finalized Markdown.** The remaining blocks are joined with blank-line separators and written to `./kb/<domain>/<path>.md` per §4.5. This is the only disk write for the crawled pages.
-
-**Sanity guards** — three cases where the naive algorithm would do the wrong thing:
-
-- **50%-cap.** Never strip more than half of a page's blocks. A page that is almost entirely navigation (a site's `/sitemap` or an index-of-links page) would otherwise vanish. If the guard trips, the page is written verbatim and a `WARN` (`crawl.boilerplate.page_guard`) is logged.
-- **Minimum corpus.** Detection is skipped entirely when fewer than `min_corpus_for_boilerplate` pages (default 3) were successfully fetched. Nothing to compare against; detection would be all noise. An `INFO` (`crawl.boilerplate.skipped`) is logged with the reason.
-- **`--no-boilerplate`.** Operator opt-out. Detection is skipped and every page is written verbatim. Useful when the target site has no template (e.g., a single long spec document broken into pages) or when the operator wants to inspect raw output before deciding.
-
-**PDF and image handling.** Boilerplate detection runs on HTML-derived Markdown only. PDFs (§4.4.2) have per-document layout — the "header" of a PDF is usually its title page, which is content, not chrome. Image extraction (§4.4.3) is unaffected; images are written eagerly as pages are fetched and never buffered.
-
-**Why not LLM classification?** An LLM could probably classify header/footer better than positional voting on ambiguous pages, but it would add per-page latency, per-page cost, and a hard LLM dependency to a tool whose whole point is being a mechanical mirror (§4.8). The positional heuristic is deterministic, offline, and — on any site with more than a handful of pages — accurate enough that upgrading to an LLM classifier isn't worth its price.
+The filter is applied uniformly to HTML-embedded images and PDF-embedded images; nothing about the source medium is a special case. Reference removal happens in memory before the page is written, so the on-disk `.md` is always internally consistent.
 
 ## 4.5 Output Layout
 
@@ -1671,53 +1694,56 @@ $ hcag preprocess kb/
 
 ## 4.7 Observability (CLI)
 
-`crawl` emits a log line for every meaningful event during a crawl — each URL fetched, each Markdown document written, each image extracted, and each candidate link that was skipped — using the same JSON-lines format as the rest of the toolchain (§2.11.3, §3.9). This makes a completed crawl auditable after the fact: given the log, an operator can reconstruct exactly which URLs were visited, which were skipped and why, and which files ended up in `./kb/`.
+`crawl` emits a log line for every meaningful event during a crawl — each URL fetched, each content-extraction decision, each Markdown document written, each image extracted, and each candidate link that was skipped — using the same JSON-lines format as the rest of the toolchain (§2.11.3, §3.9). This makes a completed crawl auditable after the fact: given the log, an operator can reconstruct exactly which URLs were visited, which were skipped and why, how much of each page survived extraction, and which files ended up in `./kb/`.
 
-**Configuration.** The log path defaults to `./crawl.log` and can be overridden with `--log-file <path>`. Level is controlled with `--log-level {debug,info,warn,error}` (default `info`). If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`crawl.fetch`, `crawl.convert`, `crawl.image.extract`, `crawl.boilerplate.identify`) are also exported, matching the observability model used by the runtime (§2.11) and by `hcag` (§3.9).
+**Configuration.** The log path defaults to `./crawl.log` and can be overridden with `--log-file <path>`. Level is controlled with `--log-level {debug,info,warn,error}` (default `info`). If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`crawl.fetch`, `crawl.extract`, `crawl.convert`, `crawl.image.extract`) are also exported, matching the observability model used by the runtime (§2.11) and by `hcag` (§3.9).
 
 **Levels.**
 
 - `INFO`:
-  - Crawl start line with the resolved seed list, `--depth`, and the output root.
-  - One line per fetched document: URL, depth, content type, byte size, elapsed fetch time, and the (planned) output Markdown path.
+  - Crawl start line with the resolved seed list, `--depth`, the output root, and the extraction settings (`extract_favor`, `min_extract_chars`, `no_extract`).
+  - One line per fetched document: URL, depth, content type, byte size, elapsed fetch time, and the output Markdown path.
+  - `crawl.extract.ok` per successfully extracted HTML page: `url`, `html_bytes`, `markdown_chars`, `retained_pct` (extracted Markdown chars ÷ the DOM's total visible-text chars — cheap to compute, no second conversion), `links`, `images`, `tables`, `elapsed_ms`. `retained_pct` is the field to scan when judging whether an extractor setting is too aggressive for a site.
   - One line per extracted image: source document URL, remote image URL, and the local file path written under `./kb/`.
   - `crawl.image.skipped_small` per dropped image (§4.4.3): source document URL, remote image URL (or embedded index for PDFs), fetched byte size, threshold.
-  - `crawl.boilerplate.identified` at the end of the identification phase: `pages_scanned`, `header_fingerprints`, `footer_fingerprints`, `threshold`, `window`.
-  - `crawl.boilerplate.stripped` once per page written: `url`, `header_blocks_removed`, `footer_blocks_removed`, `total_blocks_before`, `total_blocks_after`.
-  - `crawl.boilerplate.skipped` when detection is disabled or the corpus is too small: `reason ∈ {disabled, min_corpus}`.
-  - Crawl end summary: totals for pages fetched, pages converted, images extracted, images skipped for size, links skipped (out-of-scope / already-visited), boilerplate blocks stripped, wall-clock elapsed, and log-level counts.
+  - `crawl.extract.fallback` with `reason = disabled` under `--no-extract` — the whole-DOM path was the operator's choice, not a failure, so it is INFO rather than the `WARN` below.
+  - Crawl end summary: totals for pages fetched, pages extracted vs. pages fallen back, pages written, images extracted, images skipped for size, links skipped (out-of-scope / already-visited), wall-clock elapsed, and log-level counts.
 - `DEBUG`:
   - HTTP request/response headers, redirect chains, and retry attempts.
-  - Markdown-conversion internals (heading count, link count, image count per document) and PDF-extraction internals (page count, image count).
+  - Extraction internals per page: the resolved trafilatura option set, whether a title was synthesized, and the per-feature counts (headings, tables, code blocks, in-body links, images) in the extracted Markdown.
+  - PDF-extraction internals (page count, image count).
   - For each page, the full list of `<a href>` values discovered, each tagged with its disposition: `queued`, `skipped:out-of-scope`, `skipped:visited`, or `skipped:depth-cap`.
-  - Per-fingerprint boilerplate decisions: fingerprint hash, page count, top/bottom position histogram, classification (`header`, `footer`, `both`, `content`).
 - `WARN`:
   - Fetch returned a non-2xx status for an in-scope URL (URL is dropped, siblings continue).
   - Fetched content type is neither HTML nor PDF (URL is dropped).
+  - `crawl.extract.fallback` — extraction produced no usable main content for a page: `url`, `reason ∈ {no_output, too_short}`, `chars`, `min_extract_chars`. The page still lands on disk via the whole-DOM path, chrome included (§4.4.1 stage 3). A run with many of these is the signal to re-run with `--extract-favor recall`, or to accept that the site is JS-rendered (§4.8).
   - Image extraction failed for a specific asset — the containing page is still written; the image reference is left pointing at the original remote URL and flagged in the log.
   - `href` value could not be parsed or resolved against the base URL.
   - Redirect chain exceeded the safety cap and was terminated.
   - Output path collision detected and resolved by disambiguation (e.g., two URLs mapping to the same local filename).
-  - `crawl.boilerplate.page_guard` — the 50%-cap guard tripped for a specific page; the page is written verbatim.
 - `ERROR`:
   - Crawl cannot start: no valid seeds, seed URL malformed, or `./kb/` not writable.
   - Fetch aborted after retries due to network failure or timeout.
+  - Extraction raised (malformed markup that defeats the parser) — distinct from the `WARN` fallback case, which is an orderly "no main content found".
   - Fatal I/O error while writing Markdown or an image file.
 
 If any `ERROR`-level event is logged during a run, `crawl` exits with a non-zero status; `WARN`-level events do not affect exit status but are reflected in the end-of-run summary.
 
 ## 4.8 Non-Goals
 
-- **Content editing.** `crawl` does not rewrite prose, summarize pages, or filter noise; the HTML/PDF → Markdown conversion is mechanical.
-- **JavaScript execution.** Only the initial fetched HTML is parsed. Pages whose content is constructed client-side are captured only to the extent that content is present in the server-rendered response.
+- **Content editing.** `crawl` selects the main content of a page (§4.4.1); it does not rewrite prose, summarize, translate, or reorder it. Within the selected region the HTML/PDF → Markdown conversion is mechanical.
+- **JavaScript execution.** Only the initial fetched HTML is parsed. Pages whose content is constructed client-side are captured only to the extent that content is present in the server-rendered response — and typically surface as `crawl.extract.fallback` warnings rather than silent empties.
+- **LLM-based content classification.** Extraction is a deterministic, offline library decision — no per-page latency, no per-page cost, no model dependency. An LLM would likely beat it on ambiguous pages and is still not worth its price in a tool whose job is to mirror, not to interpret.
+- **Corpus-level content analysis.** No cross-page comparison of any kind: no repeated-block voting, no shingling, no near-duplicate suppression. Every page is decided from its own markup, which is what keeps the tool single-pass, order-independent, resumable in principle, and correct on a one-page crawl.
+- **Local link rewriting.** In-body links are preserved as absolute source URLs. Rewriting cross-page links to relative `./kb/…/*.md` paths is not attempted — the mapping is only valid for the subset of the web that this crawl happened to capture.
 - **Auth-gated content.** Login flows, cookies, and custom headers beyond a plain fetch are out of scope.
 - **Non-HTML, non-PDF assets.** Videos, archives, and other binary formats are neither followed as links nor mirrored into `./kb/`.
 - **Incremental re-crawl.** Each invocation fetches every in-scope URL once; change detection and freshness re-crawling are not provided.
-- **Semantic content extraction (Readability-style).** Boilerplate detection is positional cross-page voting only (§4.4.4). Single-page inference from DOM/CSS conventions is out of scope; it's brittle and duplicates what modern site-scale crawling can determine mechanically. LLM-based boilerplate classification is also out of scope for the same reason `crawl` avoids LLMs everywhere else — it's a mechanical mirror, not an interpreter.
+- **Per-site extraction rules.** No site-specific selectors, allow-lists, or template overrides. If a site defeats the extractor, the knobs are `--extract-favor`, `--min-extract-chars`, and `--no-extract` — nothing per-domain.
 
 ## 4.9 Sequence Diagram
 
-Prefix-scoped BFS during Phase 1 filters every popped URL through three skip decisions (visited-dedup, depth-cap, out-of-scope) before a fetch. HTML-derived Markdown is **buffered in memory** rather than written eagerly, and its blocks are fingerprinted into a global index so Phase 2 can identify site chrome. Images are written eagerly — they don't participate in boilerplate detection. Phase 2 runs after BFS ends: classify fingerprints as header / footer / content, strip each buffered page's leading + trailing boilerplate runs, then write the finalized Markdown.
+A single prefix-scoped BFS pass. Every popped URL runs three skip decisions (visited-dedup, depth-cap, out-of-scope) before a fetch. Each HTML page then runs the DOM pre-pass (harvest links, rewrite `<img src>` to local names) and reading-mode extraction, and is written before the loop moves on — extracted if extraction succeeded, whole-DOM verbatim if it did not. Nothing is buffered across pages and there is no post-BFS phase; when the queue drains, the crawl is done.
 
 ```mermaid
 sequenceDiagram
@@ -1728,15 +1754,13 @@ sequenceDiagram
     participant V as visited set
     participant HTTP as httpx
     participant Site as Remote site
-    participant Buf as page buffer (in-memory)
-    participant Idx as fingerprint index
+    participant TR as trafilatura
     participant FS as ./kb/
 
     U->>CLI: crawl --depth 3 https://docs.example.com/api/
     CLI->>Q: enqueue (seed, depth=0)
     Note over CLI,Q: prefix scope = https://docs.example.com/api/
 
-    Note over CLI,FS: ── Phase 1: BFS + fingerprint accumulation ──
     loop until queue is empty
         Q-->>CLI: pop (url, depth)
         alt url ∈ visited
@@ -1754,60 +1778,43 @@ sequenceDiagram
             alt non-2xx or unsupported content-type
                 Note over CLI: WARN, skip
             else content-type = text/html
-                CLI->>CLI: convert_html → markdown + links + image srcs
-                loop for each image src
+                CLI->>CLI: DOM pre-pass — collect every anchor href,<br/>rewrite every img src to a local name
+                CLI->>TR: extract(dom, markdown, +links +formatting<br/>+tables +images, −comments, favor=…)
+                TR-->>CLI: main-content Markdown (or None)
+                alt extraction ok and length ≥ --min-extract-chars
+                    Note over CLI: INFO crawl.extract.ok (retained_pct)
+                    CLI->>CLI: prepend "# title" if body has no H1
+                else no output / too short / --no-extract
+                    Note over CLI: WARN crawl.extract.fallback
+                    CLI->>CLI: whole-DOM markdownify (chrome included)
+                end
+                loop for each image referenced in the resulting MD
                     CLI->>HTTP: GET image
                     HTTP-->>CLI: bytes
                     alt bytes < --min-image-bytes
-                        Note over CLI: INFO crawl.image.skipped_small,<br/>remove Markdown reference to this image
+                        Note over CLI: INFO crawl.image.skipped_small,<br/>remove Markdown reference
                     else bytes ≥ threshold
-                        CLI->>FS: write ./kb/<domain>/<path>/<doc-basename>-<img>.ext
+                        CLI->>FS: write <doc-basename>-<img>.ext
                     end
                 end
-                CLI->>CLI: split (possibly image-trimmed) markdown into blocks
-                CLI->>Buf: store (url, blocks)
-                loop for each block at position p (0-indexed)
-                    CLI->>Idx: record (fingerprint, url, p, reverse_p)
-                end
+                CLI->>FS: write ./kb/<domain>/<path>.md
             else content-type = application/pdf
                 CLI->>CLI: convert_pdf → markdown + embedded images
                 loop for each embedded image
                     alt bytes < --min-image-bytes
-                        Note over CLI: INFO crawl.image.skipped_small,<br/>remove Markdown reference to this image
+                        Note over CLI: INFO crawl.image.skipped_small,<br/>remove Markdown reference
                     else bytes ≥ threshold
                         CLI->>FS: write embedded image alongside pdf.md
                     end
                 end
-                CLI->>FS: write ./kb/<domain>/<path>.md (PDFs write eagerly, skip fingerprinting)
+                CLI->>FS: write ./kb/<domain>/<path>.md (PDFs skip extraction)
             end
             loop for each outbound link at depth < max
                 CLI->>Q: enqueue (link, depth+1)
             end
         end
     end
-
-    Note over CLI,FS: ── Phase 2: boilerplate identification + write ──
-    alt --no-boilerplate OR fewer than min_corpus pages
-        Note over CLI,Idx: INFO crawl.boilerplate.skipped
-        loop for each buffered page
-            Buf-->>CLI: (url, blocks)
-            CLI->>FS: write ./kb/<domain>/<path>.md verbatim
-        end
-    else detection enabled
-        CLI->>Idx: for each fingerprint, count pages + summarize positions
-        Idx-->>CLI: header set + footer set (per §4.4.4 rules)
-        Note over CLI,Idx: INFO crawl.boilerplate.identified<br/>(header_fingerprints, footer_fingerprints)
-        loop for each buffered page
-            Buf-->>CLI: (url, blocks)
-            CLI->>CLI: strip leading run of header blocks
-            CLI->>CLI: strip trailing run of footer blocks
-            alt >50% of blocks would be stripped
-                Note over CLI: WARN page_guard, keep verbatim
-            end
-            CLI->>FS: write finalized ./kb/<domain>/<path>.md
-        end
-    end
-    CLI-->>U: crawl complete (files written, images extracted, images skipped for size, boilerplate blocks stripped)
+    CLI-->>U: crawl complete (pages extracted / fallen back, files written,<br/>images extracted, images skipped for size)
 ```
 
 # Part 5 — Voice Agent (LiveKit)
@@ -2910,7 +2917,7 @@ For each file it classifies against the exclusion rules (§8.2) and the source-k
 |---|---|---|
 | `.md`, `.markdown` | `markdown` | Parsed as Markdown; chunked on heading boundaries (§8.4.2). |
 | `.txt` | `text` | Chunked with a fixed sliding window. |
-| `.html`, `.htm` | `html` | Stripped to text via the same converter `crawl` uses (§4.4.1), then chunked. |
+| `.html`, `.htm` | `html` | Reduced to main content with the same extractor `crawl` uses (§4.4.1), then chunked. |
 | `.pdf` | `pdf` | Converted to Markdown via the same converter `crawl` uses (§4.4.2), then chunked. |
 | `.png`, `.jpg`, `.jpeg`, `.gif`, `.webp` | `image` | Sent through the image-description pipeline (§8.4.3). Skipped entirely when `--no-include-images` is set. |
 | anything else | — | Skipped with a `DEBUG` `rag.file.skip_unknown_ext` log line. |
