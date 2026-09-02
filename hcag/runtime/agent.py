@@ -10,8 +10,49 @@ from ..logger import HcagLogger, build_logger
 from ..memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 from ..memory.module import MemoryModule
 from ..models import CheckAndLoadRequest, Delta
-from ..tracing import build_tracer
+from ..tracing import build_tracer, json_payload, messages_payload, set_attrs, truncate_middle
 from .llm import LLM, LiteLLMAdapter, Message, ToolCall, packet_to_content_blocks
+
+
+def _messages_for_trace(history: list[Message], max_message_chars: int) -> list[dict[str, Any]]:
+    """Render conversation history for a trace payload.
+
+    Two things are deliberately not shipped: base64 image data, which would be
+    megabytes per span, and the exact byte-for-byte tool results, which are
+    already visible as the packet ids on the tool span. Each is replaced by a
+    short marker so the shape of the conversation still reads correctly.
+    """
+    out: list[dict[str, Any]] = []
+    for m in history:
+        content = m.content
+        if isinstance(content, list):
+            parts = []
+            for block in content:
+                if block.get("type") == "image_url":
+                    parts.append("[image]")
+                else:
+                    parts.append(block.get("text", ""))
+            content = "\n".join(parts)
+        if isinstance(content, str):
+            # Middle-out: for a packet the identifying head and the trailing
+            # detail are both load-bearing (§2.11.2).
+            content = truncate_middle(content, max_message_chars)
+        entry: dict[str, Any] = {"role": m.role, "content": content}
+        if m.tool_calls:
+            entry["tool_calls"] = [
+                {"name": tc.name, "arguments": tc.arguments} for tc in m.tool_calls
+            ]
+        out.append(entry)
+    return out
+
+
+def _response_for_trace(response) -> dict[str, Any]:
+    return {
+        "content": response.text,
+        "tool_calls": [
+            {"name": tc.name, "arguments": tc.arguments} for tc in response.tool_calls
+        ],
+    }
 
 
 TOOL_DEFS = [
@@ -32,11 +73,15 @@ TOOL_DEFS = [
         "function": {
             "name": "check_and_load_kb",
             "description": (
-                "MOST TURNS NEED NO CALL TO THIS TOOL. It acquires knowledge you do "
-                "not have; it is not an acknowledgement of a turn, not a refresh, and "
-                "not a way to confirm what is loaded. Before calling, check in order: "
-                "(1) can you answer from the packets already loaded? Then answer — do "
-                "not call. (2) Is the material inside a packet already in this "
+                "Loads a packet's actual content. The catalog in your system prompt "
+                "is an index: it tells you WHICH packet to load and is never itself an "
+                "answer, so a question the catalog appears to describe is a question "
+                "you must load a packet to answer. That said, MOST TURNS NEED NO CALL: "
+                "it acquires knowledge you do not have; it is not an acknowledgement of "
+                "a turn, not a refresh, and not a way to confirm what is loaded. Before "
+                "calling, check in order: "
+                "(1) can you answer from the CONTENT of packets already loaded? Then "
+                "answer — do not call. (2) Is the material inside a packet already in this "
                 "conversation? Then re-read it — do not call; a loaded packet never "
                 "needs re-requesting. (3) Only if the catalog names an entry that "
                 "covers the gap AND that entry is absent from your active set, call "
@@ -82,8 +127,10 @@ class AgentRuntime:
         memory: MemoryModule | None = None,
         llm: LLM | None = None,
         logger: HcagLogger | None = None,
+        session_id: str | None = None,
     ) -> None:
         self.cfg = cfg
+        self.session_id = session_id
         self.logger = logger or build_logger(cfg.observability.log, name="hcag.runtime")
         # Pass the whole observability block so either trace-destination form
         # is honored (§2.11.1); a missing Langfuse key raises here, at startup.
@@ -111,10 +158,18 @@ class AgentRuntime:
 
     def bootstrap(self) -> None:
         catalog = self.memory.get_catalog()
+        # The delimiter states the catalog's role again, right where the model
+        # reads it: an index whose descriptions route, never evidence that
+        # answers. A block of plausible prose is otherwise easy to mistake for
+        # source material.
         self._system_prompt = (
             f"{self.cfg.system_prompt_prefix}\n\n"
-            "--- KNOWLEDGE CATALOG (complete KB index — every folder, all depths) ---\n"
-            f"{catalog.raw_markdown}\n--- END CATALOG ---"
+            "--- KNOWLEDGE CATALOG (INDEX ONLY — every folder, all depths) ---\n"
+            "The entries below are routing metadata. Use them to choose packet "
+            "ids to load. Do NOT answer any question from the text below; "
+            "answers come only from the ## Content of packets you have loaded.\n\n"
+            f"{catalog.raw_markdown}\n"
+            "--- END CATALOG (nothing above is a source) ---"
         )
         self._history = [Message(role="system", content=self._system_prompt)]
         self.logger.info(
@@ -135,9 +190,24 @@ class AgentRuntime:
 
         self._history.append(Message(role="user", content=user_message))
 
+        # One root span per turn, so a trace is a conversation turn rather than
+        # a loose pile of LLM calls (§2.11.2).
+        with self.tracer.start_as_current_span("conversation.turn") as turn_span:
+            set_attrs(turn_span, self._turn_attrs(user_message))
+            answer = self._run_tool_loop(max_tool_iters)
+            set_attrs(
+                turn_span,
+                {
+                    "hcag.turn.reload_calls": self._reload_calls,
+                    "hcag.turn.redundant_reloads": self._redundant_reloads,
+                    **self._content_attrs(inp=user_message, out=answer),
+                },
+            )
+            return answer
+
+    def _run_tool_loop(self, max_tool_iters: int) -> str:
         for _ in range(max_tool_iters):
-            with self.tracer.start_as_current_span("gen_ai.chat"):
-                response = self.llm.chat(self._history, tools=TOOL_DEFS)
+            response = self._chat()
 
             self._history.append(
                 Message(role="assistant", content=response.text or None, tool_calls=response.tool_calls)
@@ -160,11 +230,124 @@ class AgentRuntime:
         self.logger.warn("turn.tool_loop_exhausted", turn=self._turn_index)
         return self._history[-1].content if isinstance(self._history[-1].content, str) else ""
 
+    # ---- Tracing --------------------------------------------------------
+
+    def _turn_attrs(self, user_message: str) -> dict[str, Any]:
+        return {
+            "hcag.turn.index": self._turn_index,
+            "hcag.user.message.chars": len(user_message),
+            # Langfuse groups traces sharing a session id into one conversation.
+            "langfuse.session.id": self.session_id,
+            "session.id": self.session_id,
+        }
+
+    def _content_attrs(self, inp: Any = None, out: Any = None) -> dict[str, Any]:
+        """Input/output payloads, when content capture is enabled (§2.11.2)."""
+        obs = self.cfg.observability
+        if not obs.capture_content:
+            return {}
+        attrs: dict[str, Any] = {}
+        if inp is not None:
+            attrs["langfuse.observation.input"] = json_payload(inp, obs.max_content_chars)
+        if out is not None:
+            attrs["langfuse.observation.output"] = json_payload(out, obs.max_content_chars)
+        return attrs
+
+    def _prompt_attr(self) -> dict[str, Any]:
+        """The conversation as it was sent, for a `gen_ai.chat` span.
+
+        Uses the message-aware serializer so an oversized prompt sheds whole
+        old messages instead of having its tail — the loaded packets — cut off
+        by a character budget (§2.11.2).
+        """
+        obs = self.cfg.observability
+        if not obs.capture_content:
+            return {}
+        rendered = _messages_for_trace(self._history, obs.max_message_chars)
+        return {
+            "langfuse.observation.input": messages_payload(rendered, obs.max_content_chars),
+            "gen_ai.request.messages": len(self._history),
+        }
+
+    def _chat(self):
+        """One LLM call, with the span populated on both sides of it.
+
+        Request attributes go on before the call so a failed call still carries
+        the model and parameters; usage and output go on after.
+        """
+        llm_cfg = self.cfg.llm
+        with self.tracer.start_as_current_span("gen_ai.chat") as span:
+            set_attrs(
+                span,
+                {
+                    # Marks this as a generation in Langfuse; inert elsewhere.
+                    "langfuse.observation.type": "generation",
+                    "gen_ai.operation.name": "chat",
+                    "gen_ai.system": llm_cfg.provider,
+                    "gen_ai.request.model": llm_cfg.litellm_model(),
+                    "gen_ai.request.max_tokens": llm_cfg.max_tokens,
+                    "gen_ai.request.temperature": llm_cfg.temperature,
+                    "langfuse.session.id": self.session_id,
+                    **self._prompt_attr(),
+                },
+            )
+            response = self.llm.chat(self._history, tools=TOOL_DEFS)
+            set_attrs(
+                span,
+                {
+                    "gen_ai.response.model": getattr(response, "model", "") or None,
+                    **{
+                        f"gen_ai.usage.{k}": v
+                        for k, v in (getattr(response, "usage", None) or {}).items()
+                    },
+                    "gen_ai.response.tool_calls": len(response.tool_calls),
+                    **self._content_attrs(out=_response_for_trace(response)),
+                },
+            )
+            return response
+
     # ---- Tool dispatch --------------------------------------------------
 
     def _handle_tool_call(self, call: ToolCall) -> None:
+        """Dispatch one tool call, always inside a span.
+
+        The span is opened here, around the dispatch, rather than inside each
+        branch. Instrumenting only the branches we care about means a
+        `get_catalog` call — or a hallucinated tool name — produces no span at
+        all, and the trace shows a turn that appears to have done nothing
+        between two LLM calls. Every tool call leaves a trace, or the trace
+        cannot be trusted to show what the turn did.
+        """
+        with self.tracer.start_as_current_span(f"tool.{call.name}") as span:
+            set_attrs(
+                span,
+                {
+                    "gen_ai.operation.name": "execute_tool",
+                    "gen_ai.tool.name": call.name,
+                    "langfuse.session.id": self.session_id,
+                    **self._content_attrs(inp=call.arguments or {}),
+                },
+            )
+            self._dispatch_tool_call(call, span)
+
+    def _dispatch_tool_call(self, call: ToolCall, span: Any) -> None:
         if call.name == "get_catalog":
             catalog = self.memory.get_catalog()
+            # §2.12 item 6: the injected catalog is complete, so a mid-session
+            # read is wasted context. Surface it rather than serving it silently.
+            self.logger.warn(
+                "get_catalog.mid_session",
+                turn=self._turn_index,
+                reason="catalog is already complete in the system prompt",
+            )
+            set_attrs(
+                span,
+                {
+                    "hcag.tool.unnecessary": True,
+                    "hcag.catalog.entries": len(catalog.entries),
+                    **self._content_attrs(out=catalog.raw_markdown),
+                },
+            )
             self._append_tool_result(call.id, [{"type": "text", "text": catalog.raw_markdown}])
             return
 
@@ -175,18 +358,58 @@ class AgentRuntime:
                 requested_packet_ids=list(args.get("requested_packet_ids", []) or []),
                 active_packet_ids=list(args.get("active_packet_ids", []) or []),
             )
-            with self.tracer.start_as_current_span("tool.check_and_load_kb"):
-                delta = self.memory.check_and_load_kb(req)
+            set_attrs(
+                span,
+                {
+                    "hcag.tool.requested_ids": ",".join(req.requested_packet_ids),
+                    "hcag.tool.active_ids_in": ",".join(req.active_packet_ids),
+                    "hcag.tool.context": req.context[:512],
+                },
+            )
+            delta = self.memory.check_and_load_kb(req)
+            set_attrs(
+                span,
+                {
+                    "hcag.tool.loaded_ids": ",".join(p.id for p in delta.loaded),
+                    "hcag.tool.evicted_ids": ",".join(delta.evicted),
+                    "hcag.tool.active_ids_after": ",".join(delta.active_after),
+                    "hcag.tool.redundant": delta.redundant,
+                    "hcag.tool.errors": len(delta.errors),
+                    **self._content_attrs(
+                        out={
+                            "loaded": [p.id for p in delta.loaded],
+                            "evicted": delta.evicted,
+                            "active_after": delta.active_after,
+                            "redundant": delta.redundant,
+                            "note": delta.note,
+                            "errors": [
+                                {"id": e.packet_id, "reason": e.reason}
+                                for e in delta.errors
+                            ],
+                        }
+                    ),
+                },
+            )
             self._reload_calls += 1
             if delta.redundant:
                 self._redundant_reloads += 1
             self._append_tool_result(call.id, self._serialize_delta(delta))
             return
 
-        self._append_tool_result(
-            call.id,
-            [{"type": "text", "text": f"Unknown tool: {call.name}"}],
-        )
+        # A name we do not serve. Traced and logged rather than silently
+        # answered with an error string the model may or may not act on.
+        # NB: `name` is a reserved LogRecord field — passing it as an extra
+        # raises inside logging and would crash the turn.
+        self.logger.warn("tool.unknown", turn=self._turn_index, tool_name=call.name)
+        message = f"Unknown tool: {call.name}"
+        set_attrs(span, {"hcag.tool.unknown": True, **self._content_attrs(out=message)})
+        try:
+            from opentelemetry.trace import Status, StatusCode
+
+            span.set_status(Status(StatusCode.ERROR, message))
+        except Exception:  # noqa: BLE001 — telemetry must not fail a turn
+            pass
+        self._append_tool_result(call.id, [{"type": "text", "text": message}])
 
     def _append_tool_result(self, tool_call_id: str, blocks: list[dict[str, Any]]) -> None:
         # LiteLLM's tool-result role accepts a string or content-block list depending on

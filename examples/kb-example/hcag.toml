@@ -66,7 +66,7 @@ encoding = "cl100k_base"       # provider-agnostic proxy
 # ------------------------------------------------------------------------------
 [catalog]
 max_depth   = 0        # cap roll-up to N levels below each folder; 0 = unlimited
-long_depth  = 1        # include `long` on entries this deep or shallower; 0 = never
+long_depth  = 10        # include `long` on entries this deep or shallower; 0 = never
 include_tree = true    # emit the compact `#### Tree` outline atop the section
 warn_tokens = 40000    # WARN at build time if the ROOT catalog exceeds this
 

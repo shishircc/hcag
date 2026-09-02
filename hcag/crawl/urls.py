@@ -15,6 +15,8 @@ Three concerns live here:
 
 from __future__ import annotations
 
+import json
+
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
@@ -58,32 +60,229 @@ def _sanitize_segment(segment: str) -> str:
     return seg or "_"
 
 
+#: Filename for a page written at its own path's level (§4.5).
+OWN_PAGE_STEM = "index"
+
+
 def url_to_output_paths(url: str, kb_root: Path) -> tuple[Path, str]:
     """Compute (markdown_path, doc_basename) for `url` under `kb_root` (§4.5).
 
     - The domain becomes the first path segment under `kb_root`.
-    - URL path segments become directories, mirroring the site's shape.
-    - The final segment (with any extension stripped) becomes both the
-      Markdown filename (`.md`) and the basename prefix used for image
-      filenames extracted from this document.
-    - A URL ending in `/` or empty (directory index) gets the synthetic
-      basename `index`.
+    - **Every** URL path segment becomes a directory, the last one included, and
+      the page is written as ``index.md`` inside it. A page's Markdown belongs
+      at the deepest level of its own URL path, not at its parent's — so
+      ``/topic/subtopic`` is ``topic/subtopic/index.md``, sitting alongside its
+      children rather than beside the folder that holds them.
+    - `doc_basename` is therefore always ``index``, and images extracted from
+      the page are ``index-<image-name>`` in that same directory.
+
+    Pages that turn out to have no children are flattened back to
+    ``<segment>.md`` after the crawl, by `collapse_leaf_dirs` — a decision that
+    cannot be made here because breadth-first traversal has not yet discovered
+    whether this page has children (§4.5.2).
     """
     p = urlparse(url)
     host = (p.hostname or "unknown").lower()
     raw_path = p.path or "/"
 
-    if raw_path.endswith("/") or raw_path == "":
-        dir_segments = [_sanitize_segment(s) for s in raw_path.split("/") if s]
-        basename = "index"
-    else:
-        segments = [s for s in raw_path.split("/") if s]
+    segments = [s for s in raw_path.split("/") if s]
+    if segments and not raw_path.endswith("/"):
+        # Strip a file extension from the last segment: `/a/b/c.html` is the
+        # page `c`, and its directory should be `c/`, not `c.html/`.
         last = segments[-1]
-        dir_segments = [_sanitize_segment(s) for s in segments[:-1]]
-        stem = last.rsplit(".", 1)[0] if "." in last else last
-        basename = _sanitize_segment(stem)
+        segments[-1] = last.rsplit(".", 1)[0] if "." in last else last
 
     out_dir = kb_root / _sanitize_segment(host)
-    for seg in dir_segments:
-        out_dir = out_dir / seg
-    return out_dir / f"{basename}.md", basename
+    for seg in segments:
+        sanitized = _sanitize_segment(seg)
+        if sanitized:
+            out_dir = out_dir / sanitized
+    return out_dir / f"{OWN_PAGE_STEM}.md", OWN_PAGE_STEM
+
+
+IMAGE_EXTS = frozenset({".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"})
+
+
+def _is_own_page_asset(name: str) -> bool:
+    """True for an image belonging to this directory's own page."""
+    from pathlib import PurePosixPath
+
+    return name.startswith(f"{OWN_PAGE_STEM}-") and (
+        PurePosixPath(name).suffix.lower() in IMAGE_EXTS
+    )
+
+
+def collapse_leaf_dirs(kb_root: Path, on_collapse=None) -> int:
+    """Flatten directories that turned out to hold only their own page (§4.5.2).
+
+    `url_to_output_paths` writes every page deep, because breadth-first
+    traversal cannot know at write time whether a page will have children.
+    Once the crawl is done the filesystem answers that: a directory holding
+    nothing but `index.md` and that page's images is a leaf, and collapses to
+    `<name>.md` beside its former parent.
+
+    Keying off the filesystem rather than the URL set keeps this correct when a
+    page was skipped mid-crawl — a fetch error, an out-of-scope redirect, an
+    unsupported content type. A directory is a branch because it *has* files in
+    it, not because some URL suggested it might.
+
+    Returns the number of directories collapsed. `on_collapse(dir, md, images)`
+    is called for each, for logging.
+    """
+    if not kb_root.is_dir():
+        return 0
+
+    collapsed = 0
+    # Deepest first: a directory can only be judged a leaf after its own
+    # children have had their chance to collapse into files within it.
+    for directory in sorted(
+        (d for d in kb_root.rglob("*") if d.is_dir()),
+        key=lambda d: len(d.parts),
+        reverse=True,
+    ):
+        # The host directory is the domain separator (§4.5, "Domain first").
+        # Collapsing it would put a bare `<host>.md` at the KB root.
+        if directory.parent == kb_root:
+            continue
+
+        own_page = directory / f"{OWN_PAGE_STEM}.md"
+        if not own_page.is_file():
+            continue
+        entries = list(directory.iterdir())
+        if any(e.is_dir() for e in entries):
+            continue
+        assets = [e for e in entries if e != own_page]
+        if not all(_is_own_page_asset(e.name) for e in assets):
+            continue
+
+        name = directory.name
+        target_md = directory.parent / f"{name}.md"
+        if target_md.exists():
+            # Would violate the §4.5 invariant from the other direction. Leave
+            # the tree as-is rather than clobbering a sibling page.
+            continue
+
+        text = own_page.read_text(encoding="utf-8")
+        renamed = []
+        for asset in assets:
+            new_name = f"{name}-{asset.name[len(OWN_PAGE_STEM) + 1:]}"
+            asset.rename(directory.parent / new_name)
+            # The Markdown references images by bare filename (§4.4.1 stage 1),
+            # so moving one without rewriting its reference breaks the image.
+            text = text.replace(asset.name, new_name)
+            renamed.append(new_name)
+
+        target_md.write_text(text, encoding="utf-8")
+        own_page.unlink()
+        directory.rmdir()
+        collapsed += 1
+        if on_collapse is not None:
+            on_collapse(directory, target_md, renamed)
+
+    return collapsed
+
+
+def find_layout_collisions(kb_root: Path) -> list[Path]:
+    """Directories `X/` that sit beside a file `X.md` — forbidden by §4.5.
+
+    The postcondition of `collapse_leaf_dirs`, and the one condition that
+    distinguishes this layout from the one it replaces.
+    """
+    if not kb_root.is_dir():
+        return []
+    return [
+        d
+        for d in sorted(kb_root.rglob("*"))
+        if d.is_dir() and (d.parent / f"{d.name}.md").is_file()
+    ]
+
+
+#: Per-folder provenance written by `crawl`, read by `hcag preprocess` (§4.5.3).
+SIDECAR_NAME = ".hcag-crawl.json"
+
+
+def _slug_of(url: str) -> str:
+    """Last meaningful path segment of `url`, extension stripped."""
+    path = urlparse(url).path or ""
+    segments = [s for s in path.split("/") if s]
+    if not segments:
+        return ""
+    last = segments[-1]
+    stem = last.rsplit(".", 1)[0] if "." in last else last
+    return _sanitize_segment(stem)
+
+
+def write_link_order(folder: Path, source_url: str, links: list[str]) -> list[str] | None:
+    """Write `folder`'s link-order sidecar; return the slugs recorded (§4.5.3).
+
+    `links` is what the page linked, in full-DOM document order — the order that
+    survives extraction dropping a hub page's link list. Only slugs naming
+    something actually written in `folder` are kept, so the sidecar can never
+    point at a file that does not exist: a link that was out of scope, past the
+    depth limit, or failed to fetch simply does not appear.
+
+    Returns ``None`` when `folder` has no ``index.md`` — it collapsed to a leaf
+    (§4.5.2), so it has no children to order and gets no sidecar.
+    """
+    if not (folder / f"{OWN_PAGE_STEM}.md").is_file():
+        return None
+
+    present = {p.stem for p in folder.glob("*.md") if p.name != f"{OWN_PAGE_STEM}.md"}
+    present |= {p.name for p in folder.iterdir() if p.is_dir()}
+
+    recorded: list[str] = []
+    for link in links:
+        slug = _slug_of(link)
+        if slug and slug in present and slug not in recorded:
+            recorded.append(slug)
+
+    payload = {"source_url": source_url, "link_order": recorded}
+    (folder / SIDECAR_NAME).write_text(
+        json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+    )
+    return recorded
+
+
+def read_link_order(folder: Path) -> list[str]:
+    """Read `folder`'s recorded link order, or ``[]`` if there is none.
+
+    Never raises: a sidecar is an ordering *preference* (§3.4.3), so a missing,
+    unreadable or malformed one degrades to no signal rather than failing a
+    build over provenance.
+    """
+    path = folder / SIDECAR_NAME
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return [str(x) for x in data.get("link_order", [])]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+PDF_EXTS = frozenset({".pdf"})
+
+
+def is_asset_url(url: str) -> bool:
+    """True for a URL that is an asset rather than a page (§4.3.4).
+
+    Assets are terminal — fetched, converted, written, never crawled *from* —
+    which is what makes exempting them from prefix scope and the depth limit
+    safe: nothing is ever discovered through one, so the frontier cannot grow.
+    """
+    path = urlparse(url).path.lower()
+    return any(path.endswith(ext) for ext in PDF_EXTS)
+
+
+def asset_host_allowed(url: str, referrer: str, extra_hosts: frozenset[str] | set[str]) -> bool:
+    """Is `url` on a host this crawl may fetch assets from (§4.3.4)?
+
+    Lifting the *path* restriction is not lifting the *host* restriction:
+    following a citation off-domain by default is a different risk class from
+    mirroring a site. Default is the citing page's own host; `--asset-hosts`
+    widens it to a CDN or media subdomain.
+    """
+    host = (urlparse(url).hostname or "").lower()
+    if not host:
+        return False
+    return host == (urlparse(referrer).hostname or "").lower() or host in extra_hosts

@@ -56,6 +56,35 @@ class ObservabilityConfig(BaseModel):
     log: LogConfig = Field(default_factory=LogConfig)
     otel: OTELConfig = Field(default_factory=OTELConfig)
 
+    capture_content: bool = True
+    """Export prompt and completion text on `gen_ai.chat` spans (§2.11.2).
+
+    On by default because a trace without input and output answers almost none
+    of the questions §2.11.4 asks of it. Turn it off when KB content or user
+    questions must not leave the process — span structure, model, and token
+    counts still export, so latency and cost stay observable.
+    """
+
+    max_content_chars: int = 250_000
+    """Cap on a single exported prompt/completion payload.
+
+    Sized so a real HCAG prompt — catalog plus a loaded active set — fits
+    whole, because the question a trace has to answer is "did the model
+    actually have the right information?", and a payload cut short cannot
+    answer it. When a payload does exceed this, whole messages are shed from
+    the middle (oldest first) rather than characters from the end, so the
+    catalog and the recently-loaded packets both survive (§2.11.2).
+    """
+
+    max_message_chars: int = 25_000
+    """Cap on any single message inside a payload.
+
+    Keeps one very large packet from crowding every other message out of the
+    trace. Truncation is always marked with the original length — a silently
+    shortened message looks complete, so a reader concludes the prompt lacked
+    something it contained.
+    """
+
     langfuse: LangfuseConfig | None = None
     """Present only when the operator configured `[observability.langfuse]`.
 
@@ -160,25 +189,38 @@ class AgentConfig(BaseModel):
     catalog: CatalogConfig = Field(default_factory=CatalogConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     system_prompt_prefix: str = (
-        "You are an HCAG agent grounded in a hierarchical knowledge base. "
-        "The catalog below indexes EVERY folder in the KB at every depth, so "
-        "you never need to walk the tree: find the entries that cover the "
-        "question and request them by id directly, however deep they are. "
-        "Prefer the most specific entries -- kind: leaf or mixed hold the "
+        "You are an HCAG agent grounded in a hierarchical knowledge base.\n\n"
+        "GROUNDING -- THE MOST IMPORTANT RULE. The catalog below is an INDEX, "
+        "not a source. Its titles and descriptions exist to tell you WHICH "
+        "packet to load; they are one-line summaries written by a build tool "
+        "and they are not evidence about anything. NEVER answer from the "
+        "catalog. Every factual claim you make must come from the ## Content "
+        "of a packet you have actually loaded into this conversation. If the "
+        "catalog names a packet that looks like it covers the question, that "
+        "means you must LOAD it -- not that you may answer from its "
+        "description. If no loaded packet supports an answer, say you do not "
+        "have that information and load the packet that would; do not fill the "
+        "gap from the catalog, from the folder names, or from your own prior "
+        "knowledge.\n\n"
+        "NAVIGATION. The catalog indexes EVERY folder in the KB at every "
+        "depth, so you never need to walk the tree: find the entries that "
+        "cover the question and request them by id directly, however deep they "
+        "are. Prefer the most specific entries -- kind: leaf or mixed hold the "
         "actual documents; kind: node entries are taxonomy waypoints whose "
         "descendants carry the content.\n\n"
-        "WHEN TO LOAD. Most turns need NO tool call. check_and_load_kb "
-        "acquires knowledge you do not have; it is not an acknowledgement of a "
-        "turn, not a refresh, and not a way to confirm what is loaded. On each "
-        "turn decide in this order: (1) can you answer from the packets already "
-        "loaded? Then answer, without calling. (2) Is the material inside a "
-        "packet already in this conversation? Then re-read it, without calling "
-        "-- a loaded packet never needs re-requesting. (3) Only if the catalog "
-        "names an entry that covers the gap AND that entry is absent from your "
-        "active set, call once with exactly those ids (one call may carry ids "
+        "WHEN TO LOAD. check_and_load_kb acquires knowledge you do not have; "
+        "it is not an acknowledgement of a turn, not a refresh, and not a way "
+        "to confirm what is loaded. On each turn decide in this order: (1) is "
+        "the question already answerable from the ## Content of packets loaded "
+        "in this conversation? Then answer from that content, without calling. "
+        "(2) Is the material inside a packet already loaded? Then re-read it, "
+        "without calling -- a loaded packet never needs re-requesting. (3) "
+        "Otherwise the answer is not in your context: call once with the ids "
+        "of the catalog entries that cover the gap (one call may carry ids "
         "from several branches). Never call to refresh, to make sure, or on a "
-        "conversational turn such as a follow-up, clarification, or thank-you. "
-        "Requesting ids that are already active loads nothing and is an error.\n\n"
+        "conversational turn such as a follow-up, clarification, or "
+        "thank-you. Requesting ids that are already active loads nothing and "
+        "is an error.\n\n"
         "Pass currently-known active IDs and requested IDs; trust active_after "
         "as authoritative. Do not call get_catalog -- the catalog below is "
         "already complete. Never assume you can read the KB directly. "

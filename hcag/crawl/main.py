@@ -15,6 +15,7 @@ import typer
 
 from ..config import LogConfig
 from ..logger import build_logger
+from .console import Console
 from .core import crawl
 from .html_conv import DEFAULT_MIN_EXTRACT_CHARS, FAVOR_CHOICES
 
@@ -74,6 +75,28 @@ def _cli(
             "keep every image regardless of size."
         ),
     ),
+    asset_hosts: str = typer.Option(
+        "",
+        "--asset-hosts",
+        help=(
+            "Comma-separated extra hosts PDFs and images may be fetched from. "
+            "By default an asset is fetched only from the same host as the page "
+            "that cited it; use this for a CDN or media subdomain."
+        ),
+    ),
+    quiet: bool = typer.Option(
+        False,
+        "--quiet",
+        help="Suppress per-URL progress on stderr. The end-of-run report is still printed.",
+    ),
+    report_limit: int = typer.Option(
+        20,
+        "--report-limit",
+        help=(
+            "Example URLs shown per skip group in the end-of-run report. "
+            "0 prints counts only; a negative value prints every URL."
+        ),
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
         help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
@@ -105,6 +128,8 @@ def _cli(
         extract_favor=favor,
         min_extract_chars=min_extract_chars,
         min_image_bytes=min_image_bytes,
+        asset_hosts=tuple(h.strip() for h in asset_hosts.split(",") if h.strip()),
+        console=Console(quiet=quiet, report_limit=report_limit),
     )
 
     typer.echo(

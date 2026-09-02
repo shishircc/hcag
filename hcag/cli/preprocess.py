@@ -25,6 +25,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ..config import CatalogConfig, CliConfig
+from ..crawl.urls import SIDECAR_NAME, read_link_order
 from ..logger import HcagLogger
 from ..compiled_io import (
     CatalogRecord,
@@ -48,6 +49,10 @@ from .tokenizer import estimate_tokens
 
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg"}
 GENERATED_NAMES = {"compiled.md"}
+
+#: The folder's own page, written by `crawl` at the deepest level of its URL
+#: (§4.5). It leads the packet, because it introduces the topic.
+OWN_PAGE = "index.md"
 IMAGE_REF_RE = re.compile(r"(!\[[^\]]*\]\()([^)\s]+)(\))")
 
 #: Base for the exponential backoff between retries, in seconds.
@@ -125,6 +130,11 @@ def scan_folder(path: Path, logger: HcagLogger | None = None) -> FolderInfo:
         if name == "compiled.md":
             has_compiled = True
             continue
+        if name == SIDECAR_NAME:
+            # HCAG's own provenance file (§3.2 rule 1a): consumed for ordering,
+            # never content, and never reported as a stray — it would otherwise
+            # WARN on every branch folder of every crawled KB.
+            continue
         if suffix == ".md":
             source_md.append(entry)
         elif suffix in IMAGE_EXTS:
@@ -146,6 +156,71 @@ def scan_folder(path: Path, logger: HcagLogger | None = None) -> FolderInfo:
         ignored_files=ignored,
         has_generated_compiled=has_compiled,
     )
+
+
+def order_sources(folder: Path, sources: list[Path]) -> list[Path]:
+    """Order a folder's source `.md` files for concatenation (§3.4.3).
+
+    A packet is one document an LLM reads top to bottom, so the order sources
+    are concatenated in *is* the order the model reads them. Alphabetical order
+    is an accident of slug spelling; the site's own index page knows better.
+
+    1. `index.md` leads — it introduces the topic.
+    2. Then the order the index page mentioned the others, taken from the
+       `.hcag-crawl.json` sidecar if `crawl` wrote one (§4.5.3), else from the
+       links left in `index.md` itself.
+    3. Then anything unmentioned, alphabetically, so the build stays
+       reproducible.
+
+    Every stage degrades rather than fails: no sidecar falls back to the
+    index's own links, no links falls back to alphabetical, no `index.md`
+    falls back to alphabetical.
+    """
+    by_stem = {p.stem: p for p in sources}
+    own = next((p for p in sources if p.name == OWN_PAGE), None)
+
+    ordered: list[Path] = []
+    if own is not None:
+        ordered.append(own)
+        # The sidecar reads the full DOM, so it works on a hub page whose link
+        # list extraction removed; index.md's own links only work where they
+        # survived. Prefer the former, fall back to the latter.
+        mentioned = read_link_order(folder) or _links_in(own)
+        for slug in mentioned:
+            hit = by_stem.get(slug)
+            # An entry naming something absent is skipped rather than trusted:
+            # an edited tree must not break a build or cite a missing source.
+            if hit is not None and hit is not own and hit not in ordered:
+                ordered.append(hit)
+
+    remaining = sorted((p for p in sources if p not in ordered), key=lambda p: p.name)
+    return ordered + remaining
+
+
+_LINK_RE = re.compile(r"\[[^\]]*\]\((https?://[^)\s]+)\)")
+
+
+def _links_in(path: Path) -> list[str]:
+    """Slugs linked by `path`, in first-mention order.
+
+    Crawled links are absolute URLs (§4.4.1 stage 1) and the tree mirrors the
+    URL path (§4.5), so a link's last segment names a sibling.
+    """
+    try:
+        text = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    slugs: list[str] = []
+    for match in _LINK_RE.finditer(text):
+        url = match.group(1).split("#", 1)[0].split("?", 1)[0]
+        segments = [s for s in url.split("/") if s]
+        if len(segments) < 2:  # scheme + host only
+            continue
+        last = segments[-1]
+        slug = last.rsplit(".", 1)[0] if "." in last else last
+        if slug and slug not in slugs:
+            slugs.append(slug)
+    return slugs
 
 
 def dotted_id_for(root: Path, folder: Path, root_id: str = "") -> str:
@@ -175,7 +250,7 @@ def _relocate_images_and_rewrite(
             copied.append(entry.name)
 
     body_sections: list[tuple[str, str]] = []
-    for src in source_files:
+    for src in order_sources(folder, source_files):
         text = src.read_text(encoding="utf-8")
 
         def _rewrite(m: re.Match) -> str:

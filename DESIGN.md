@@ -89,13 +89,18 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [4.3.1 Seed prefix scope](#431-seed-prefix-scope)
     - [4.3.2 Visited-URL tracking](#432-visited-url-tracking)
     - [4.3.3 Depth](#433-depth)
+    - [4.3.4 Asset scope](#434-asset-scope)
   - [4.4 Document Types](#44-document-types)
     - [4.4.1 HTML — main-content extraction](#441-html--main-content-extraction)
     - [4.4.2 PDF](#442-pdf)
     - [4.4.3 Images](#443-images)
   - [4.5 Output Layout](#45-output-layout)
+    - [4.5.1 Why placement is not just filing](#451-why-placement-is-not-just-filing)
+    - [4.5.2 Resolving placement at the end of the crawl](#452-resolving-placement-at-the-end-of-the-crawl)
+    - [4.5.3 Link-order sidecar](#453-link-order-sidecar)
   - [4.6 Relationship to `hcag`](#46-relationship-to-hcag)
   - [4.7 Observability (CLI)](#47-observability-cli)
+    - [4.7.1 Console output](#471-console-output)
   - [4.8 Non-Goals](#48-non-goals)
   - [4.9 Sequence Diagram](#49-sequence-diagram)
 - [Part 5 — Voice Agent (LiveKit)](#part-5--voice-agent-livekit)
@@ -374,6 +379,17 @@ A folder's `## Sub-topics` section indexes **every descendant folder beneath it,
 
 **Cost and its containment.** A full index is larger than a one-level listing, and the cost is paid twice over — once at the root, and again (redundantly) inside every intermediate node's own catalog. Three mechanisms bound it: entries carry the full `long` description only for the nearest levels and drop to `short` below that (§3.4.4); `catalog.max_depth` can cap roll-up depth for very deep trees (§3.6); and the memory module elides the `## Sub-topics` section when serving any non-root packet, since the agent already holds the complete index in its system prompt (§2.6). See §3.4.4 for the sizing model.
 
+### D3b. The catalog routes; only packet content answers
+The `## Sub-topics` index is **navigation metadata, never a source**. Its `title`, `short`, and `long` fields exist so the agent can decide *which* packet to load. Every factual claim in an answer must come from the `## Content` of a packet actually loaded into the conversation (§2.6). If no loaded packet supports an answer, the agent says so and loads the packet that would — it does not fill the gap from a catalog description, from folder names, or from its own pretrained knowledge.
+
+**Rationale:** This is the failure mode that most damages a KB-grounded agent, and D3a makes it *more* likely, not less. A whole-KB index puts several hundred LLM-written descriptions in the system prompt — fluent, on-topic prose that reads exactly like source material. A model asked "how long do refunds take?" with `billing.refunds — "Covers the full refund lifecycle: eligibility, states, partial refunds, chargebacks"` in front of it can produce a confident, plausible, entirely ungrounded answer without ever calling `check_and_load_kb`. The answer looks sourced. Nothing in it is.
+
+Worse, the descriptions are *summaries of summaries* (§3.4.4): a mid-tree entry is a roll-up of a roll-up, so an answer drawn from one is several lossy compressions away from the document it purports to cite. The catalog is deliberately built to be *suggestive* — that is what makes routing work — and suggestive is precisely what must not be answered from.
+
+Two symptoms tell an operator this is happening, and both are visible without reading transcripts: `reload.redundant_rate` (§2.7.1) near zero looks healthy, but paired with a **zero** `hcag.turn.reload_calls` on turns that clearly needed knowledge, it means the agent is answering from the index. Second, a trace's `gen_ai.chat` input payload (§2.11.2) shows whether any packet content was in context at all when the answer was produced.
+
+**Enforcement** is prompt-level, and stated at all three places the model encounters the catalog: the system prompt opens with the rule before anything else (§2.7); the injected catalog block is delimited as `INDEX ONLY` with the rule repeated inside it, because a block of plausible prose is otherwise easy to mistake for content; and the `check_and_load_kb` description says that a question the catalog appears to describe is a question that must be *loaded*, not answered. This is not enforceable at the module boundary — the memory module cannot see what the model concluded — so it is stated redundantly rather than assumed.
+
 ### D4. Catalog auto-injected into system prompt (fetched via memory module)
 At conversation start, the agent runtime calls `memory_module.get_catalog()` — which returns the `## Sub-topics` section of the root `compiled.md`, i.e. (per D3a) the **complete index of every folder in the KB** — and injects it into the system prompt. The agent always "knows" the full shape of the KB and the identity of every document in it. `get_catalog` remains available as a tool for re-inspection mid-session, but the common path is a single bootstrap call and no further catalog reads at all. **Rationale:** Removes an entire round-trip class from the per-turn common path; combined with D3a it removes the *per-level* round trips as well — the agent resolves a question directly to a leaf packet ID in one hop instead of descending the tree one `check_and_load_kb` at a time. The catalog is injected once and never mutates mid-session, which is also what makes the system-prompt prefix cacheable (§2.12).
 
@@ -507,7 +523,7 @@ The `## Sub-topics` section is a **subtree index, not a child listing** (D3a): i
 | `long_description` | string | Multi-sentence description. Two consumers: the runtime LLM deciding whether to load this folder, and — at build time — the **parent's** summarizer, which is fed its children's `long_description`s rather than their `short_description`s (§3.4.4). Both make this the field to invest prose in. |
 | `token_size_estimate` | integer | Precomputed total token count for the assembled `compiled.md` + image blocks. Used for budgeting **without** loading. |
 | `kind` | enum | `leaf` \| `node` \| `mixed`. |
-| `source_files` | list<string> | Source `.md` filenames concatenated into `## Content`. Empty for pure taxonomy nodes. |
+| `source_files` | list<string> | Source `.md` filenames concatenated into `## Content`, **in reading order** (§3.4.3): `index.md` first, then the order the index page links them, then the rest alphabetically. Empty for pure taxonomy nodes. |
 | `children` | list<string> | IDs of **immediate** child folders. Empty for pure leaves. |
 | `descendants` | integer | Count of folders in this folder's subtree, excluding itself — i.e. the number of entries in its `## Sub-topics` section. `0` for a pure leaf. |
 | `subtree_depth` | integer | Depth of the deepest descendant, relative to this folder. `0` for a pure leaf. |
@@ -703,15 +719,20 @@ The agent runtime **never** reads the KB directly. At conversation start it obta
 <static agent instructions>
 <usage guidance for get_catalog and check_and_load_kb>
 
---- KNOWLEDGE CATALOG (complete KB index — every folder, all depths) ---
+--- KNOWLEDGE CATALOG (INDEX ONLY — every folder, all depths) ---
+The entries below are routing metadata. Use them to choose packet ids to
+load. Do NOT answer any question from the text below; answers come only
+from the ## Content of packets you have loaded.
+
 <catalog returned by memory_module.get_catalog()>
---- END CATALOG ---
+--- END CATALOG (nothing above is a source) ---
 ```
 
 Because the whole hierarchy is visible at bootstrap, **the agent does not navigate the taxonomy — it resolves directly to a target.** Classification and retrieval collapse into one step: the agent reads the question, finds the matching leaf entry (any depth) in the injected catalog, and issues a single `check_and_load_kb` with that leaf's exact ID. Intermediate taxonomy nodes are not on the path; they exist in the catalog as `kind: node` waypoints that give branch-level prose context, and are loaded only in the rare case where a node's own overview content is itself the answer (a `mixed` folder).
 
 The agent is instructed to:
 
+- Treat the catalog as an **index, not a source** (D3b): its descriptions select packets to load and are never themselves an answer. Every factual claim must come from the `## Content` of a loaded packet; when none supports an answer, say so and load the packet that would.
 - Consult the catalog in the system prompt when planning a task, and select the **most specific** entries that cover the question — prefer `kind: leaf`/`mixed` entries over their ancestors, since ancestors carry no content a leaf does not.
 - Request deep IDs directly. Loading `auth` on the way to `auth.sso.saml` is never necessary and wastes budget.
 - Call `check_and_load_kb` **only when** its currently-loaded folders are insufficient — to add a leaf it has not loaded, or to jump to a different branch. The default on any turn is **no call**: answer from the active set, and call only when it can name a catalog entry that covers the gap and is not already active (§2.7.1).
@@ -1089,6 +1110,9 @@ Observability is driven by configuration only — no code changes to switch back
 | `langfuse.host` | URL (string) | `https://cloud.langfuse.com` | Langfuse base URL. Set for the EU/US regional hosts or a self-hosted instance. The OTLP path is appended by HCAG — give the base URL only. |
 | `langfuse.public_key_env` | string | `LANGFUSE_PUBLIC_KEY` | Env var holding the Langfuse public key. |
 | `langfuse.secret_key_env` | string | `LANGFUSE_SECRET_KEY` | Env var holding the Langfuse secret key. |
+| `capture_content` | bool | `true` | Export prompt/completion payloads on spans (§2.11.2). Off drops the payloads and keeps structure, model, and token counts. |
+| `max_content_chars` | integer | `250000` | Cap on one exported payload. Oversized payloads shed whole messages from the middle and budget from the tail backwards (§2.11.2), never a head cut. |
+| `max_message_chars` | integer | `25000` | Cap on a single message inside a payload. Long messages are cut in the middle, keeping both ends. |
 | `log.file_path` | path (string) | `./hcag.log` | Local log file destination. |
 | `log.level` | `DEBUG` \| `INFO` \| `WARN` \| `ERROR` | `INFO` | Threshold for file logging. |
 | `log.rotation` | struct (size/time) | size 50MB, keep 5 | Optional rotation policy. |
@@ -1099,9 +1123,11 @@ Langfuse ingests OpenTelemetry over OTLP, so the direct form is **not a second t
 
 | | Derived from `[observability.langfuse]` |
 |---|---|
-| endpoint | `<langfuse.host>` + `/api/public/otel` |
+| endpoint | `<langfuse.host>` + `/api/public/otel` + `/v1/traces` |
 | protocol | `http/protobuf` (pinned — Langfuse's OTLP ingest is HTTP; `otel.protocol` is not consulted) |
 | headers | `Authorization: Basic base64(<public key>:<secret key>)`, assembled from the env vars |
+
+**The signal path is HCAG's job, not the exporter's.** OTLP/HTTP carries each signal on its own path, and the OpenTelemetry exporter appends `/v1/traces` *only* when it falls back to the `OTEL_EXPORTER_OTLP_ENDPOINT` environment variable — an `endpoint` passed to it in code is used verbatim. Vendors, Langfuse included, document the base URL (`https://cloud.langfuse.com/api/public/otel`), so handing that straight to the exporter POSTs to a route that does not exist and every batch fails with `404, reason: Not Found`. HCAG therefore appends `/v1/traces` itself, for **both** configuration forms — a generic `otel.endpoint` of `http://localhost:4318` has exactly the same problem — and tolerates an endpoint that already names the signal, so a URL copied from either style of documentation works. gRPC endpoints have no path semantics and are passed through untouched.
 
 Everything downstream is unchanged: the same span tree (§2.11.2), the same `service.name`, the same `trace_id` in the file log (§2.11.3), the same LiteLLM-native `gen_ai.*` spans that Langfuse renders as generations.
 
@@ -1130,33 +1156,53 @@ Example destinations:
 - **Langfuse (direct):** set `[observability.langfuse]` and export `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`. Nothing else.
 - **Langfuse (generic OTLP):** `otel.endpoint = https://cloud.langfuse.com/api/public/otel` with a hand-built `Authorization: Basic <base64(pk:sk)>` header. Still supported; the direct form exists because this is the step people get wrong.
 - **AWS CloudWatch (via ADOT):** `otel.endpoint = http://localhost:4318` pointing at a local ADOT collector, which forwards to CloudWatch.
+- In both cases the base URL is what you configure; HCAG appends `/v1/traces`.
 - **Grafana Tempo / Honeycomb / any OTLP receiver:** point `otel.endpoint` at their OTLP ingest URL.
 
 ### 2.11.2 OTEL Trace Model
 
 When enabled, the agent emits a span hierarchy per user turn. Spans follow OpenTelemetry **GenAI semantic conventions** where they exist and custom `hcag.*` attributes where they do not.
 
+**`conversation.turn` is the root, and the runtime populates every attribute itself.** Both halves matter. Without a turn-scoped root span each LLM call becomes its own disconnected trace, and a backend shows a conversation as unrelated fragments rather than one turn with its tool calls beneath it. And the attributes are set by `AgentRuntime` around its own calls rather than harvested from a provider SDK's instrumentation: a bare `start_as_current_span("gen_ai.chat")` that wraps the call without recording anything exports a span with a name and a duration and nothing else — structurally present, analytically useless. Request attributes go on **before** the call so a failed call still carries its model and parameters; usage and output go on after.
+
 ```
-conversation.turn                              [span]
-├─ attrs: turn.index, session.id, user.message.chars
+conversation.turn                              [span] ROOT — one per user turn
+├─ attrs: hcag.turn.index, hcag.user.message.chars,
+│         hcag.turn.reload_calls, hcag.turn.redundant_reloads,
+│         session.id, langfuse.session.id
 │
 ├─ gen_ai.chat                                 [span] LLM call
-│  ├─ attrs: gen_ai.system=anthropic,
-│  │         gen_ai.request.model,
-│  │         gen_ai.usage.input_tokens,
-│  │         gen_ai.usage.output_tokens,
-│  │         gen_ai.usage.cache_read_input_tokens
+│  └─ attrs: langfuse.observation.type=generation,
+│            gen_ai.system=anthropic,
+│            gen_ai.operation.name=chat,
+│            gen_ai.request.model,
+│            gen_ai.request.max_tokens,
+│            gen_ai.request.temperature,
+│            gen_ai.response.model,
+│            gen_ai.response.tool_calls,
+│            gen_ai.usage.input_tokens,
+│            gen_ai.usage.output_tokens,
+│            gen_ai.usage.cache_read_input_tokens
+│
+├─ tool.<name>                                 [span] one per tool call
+│  ├─ attrs (every tool): gen_ai.operation.name=execute_tool,
+│  │                      gen_ai.tool.name
 │  │
-│  └─ tool.check_and_load_kb                   [span] tool call
-│     ├─ attrs: hcag.tool.requested_ids,
-│     │         hcag.tool.active_ids_in,
-│     │         hcag.tool.context (truncated),
-│     │         hcag.tool.loaded_ids,
-│     │         hcag.tool.evicted_ids,
-│     │         hcag.tool.active_ids_after,
-│     │         hcag.tool.tokens_used,
-│     │         hcag.tool.tokens_budget
-│     │
+│  ├─ tool.check_and_load_kb adds:
+│  │      hcag.tool.requested_ids,
+│  │      hcag.tool.active_ids_in,
+│  │      hcag.tool.context (truncated),
+│  │      hcag.tool.loaded_ids,
+│  │      hcag.tool.evicted_ids,
+│  │      hcag.tool.active_ids_after,
+│  │      hcag.tool.redundant,
+│  │      hcag.tool.errors,
+│  │      hcag.tool.tokens_used,
+│  │      hcag.tool.tokens_budget
+│  │
+│  ├─ tool.get_catalog adds: hcag.tool.unnecessary=true (§2.12 item 6)
+│  └─ tool.<unrecognized> adds: hcag.tool.unknown=true, span status ERROR
+│
 │     ├─ kb.packet.load                        [span] per loaded packet
 │     │  ├─ attrs: hcag.packet.id,
 │     │  │         hcag.packet.path,
@@ -1173,6 +1219,26 @@ conversation.turn                              [span]
 └─ gen_ai.chat (final answer)                  [span]
    └─ attrs: gen_ai.usage.*
 ```
+
+**Tool spans are siblings of `gen_ai.chat`, not children of it.** The model's turn is a sequence — call, tool, call — and the chat span closes when the LLM returns, before the tool runs. Nesting the tool under the call that requested it would misreport the timing (the tool's duration is not part of the LLM's) and would leave the final answering call looking unrelated to the work that fed it. Both hang off `conversation.turn`, in the order they happened.
+
+**Every tool call gets a span, named `tool.<name>`, whatever the name.** The span is opened around the dispatch rather than inside the branch for each tool we recognize. Instrumenting only the tools we care about is how a `get_catalog` call — or a hallucinated tool name — ends up producing no span at all, leaving a trace in which the turn appears to do nothing between two LLM calls. A trace that omits some tool calls cannot be used to answer what a turn did.
+
+#### Input and output payloads
+
+Token counts and latency say what a turn *cost*; they do not say what it *did*. A trace without the prompt and the completion cannot answer most of §2.11.4's questions — which packets the model was actually reasoning over, why it picked the branch it picked, what it said. So `conversation.turn`, `gen_ai.chat`, and `tool.check_and_load_kb` each carry an input and an output payload as JSON strings on `langfuse.observation.input` / `langfuse.observation.output`, and `gen_ai.chat` additionally sets `langfuse.observation.type = "generation"` so a backend renders it as a model call rather than a plain span.
+
+These are ordinary OTEL attributes. They are named for the backend that reads them most directly, but nothing in the agent depends on Langfuse, and they are inert on any other OTLP receiver — which keeps §2.11.1's promise that the two configuration forms differ only in how the exporter is addressed.
+
+Three rules govern what actually ships:
+
+- **Content export is opt-out, not mandatory** (`observability.capture_content`, default on). Prompts contain KB content and user questions; exporting them to a third party is a decision, not a detail. Turning it off drops the payloads and keeps everything else, so cost and latency stay observable when the content itself must not leave the process.
+- **Payloads are capped, and reduced from the right end.** `observability.max_content_chars` (default 250 000) bounds one payload and `observability.max_message_chars` (default 25 000) bounds any single message inside it. The defaults are sized so a real prompt — catalog plus a loaded active set — fits whole, because the question a trace exists to answer is *"did the model actually have the right information?"*, and a payload cut short cannot answer it.
+
+  **Head truncation is the wrong strategy and the default cap must not be small.** An HCAG prompt opens with the system prompt and the entire catalog, and the material that answers that question — the loaded packets, arriving as tool results — sits at the **end**. Cutting a character budget off a serialized conversation keeps the least informative part and discards exactly the part being looked for. So an oversized payload is reduced in three stages: emit as-is; shed whole messages from the middle, oldest first, keeping the system prompt and the last three (a turn's tail is question → tool call → tool result, and losing any one removes what the trace was opened to check); then allocate the remaining characters **from the tail backwards**, so the newest messages are served whole and the bulky catalog is what shrinks. An individual message that must be shortened is cut in the **middle**, keeping both ends, because for a packet the identifying head and the trailing detail are both load-bearing.
+
+  Every reduction is marked with the original size. A silently shortened payload is worse than no payload: it looks complete, so a reader concludes the prompt lacked something it contained.
+- **Image bytes never enter a trace.** A packet's images ride the conversation as base64 (§2.6) and would add megabytes per span. They are replaced by an `[image]` marker, which preserves the shape of the conversation without the weight.
 
 **Bootstrap-only span (once per conversation):**
 
@@ -1368,6 +1434,7 @@ This lets KB teams focus on the one thing that requires human judgment — extra
 Before `hcag` runs, the tree looks like whatever the KB team produced. Only three rules apply on input:
 
 1. **Only markdown files (`.md`) and recognized image types** (`.png`, `.jpg`, `.jpeg`, `.gif`, `.webp`, `.svg`) contribute to the KB. Any other file encountered during preprocessing is **silently ignored** (a `WARN` is logged for observability). This lets teams keep incidental artifacts — `.DS_Store`, editor lock files, source documents like `.docx` / `.pdf` kept alongside extracted markdown, `README` notes, etc. — inside the KB tree without breaking the build.
+1a. **HCAG-owned sidecars are recognized, not ignored.** `.hcag-crawl.json` (§4.5.3) is read for the ordering signal it carries and is never treated as content: it contributes nothing to `## Content`, is not an image, and does not make a folder non-empty for classification purposes (§3.4.2). It is exempt from the WARN in rule 1 — a file HCAG itself writes should not be reported as an unrecognized stray on every folder.
 2. **`compiled.md` is an HCAG-owned output artifact, never input.** If it exists in a folder from a prior run, it is ignored for input-classification purposes — its contents are never treated as source markdown to be merged. Preprocessing either regenerates it from the true sources or skips per the overwrite policy (§3.4.7); it does not concatenate it into a new artifact.
 3. **The folder structure encodes the taxonomy.** Depth is unrestricted; there is no required schema for folder names beyond being valid filesystem names.
 
@@ -1484,7 +1551,27 @@ The classification decides which sections of `compiled.md` are populated; every 
 
 For every folder that classifies as leaf, taxonomy node, or mixed, produce one `compiled.md`:
 
-1. **Collect source .md files** in stable order (lexicographic by filename). Only true source `.md` files count — `compiled.md` is an HCAG-owned output artifact and is **excluded from the source set** even if present in the folder (§3.2 rule 2). Skip only if `compiled.md` already exists from a prior run AND `--force` is not set.
+1. **Collect source .md files** in **reading order** (below). Only true source `.md` files count — `compiled.md` is an HCAG-owned output artifact and is **excluded from the source set** even if present in the folder (§3.2 rule 2). Skip only if `compiled.md` already exists from a prior run AND `--force` is not set.
+
+   **Reading order.** A packet is one document that an LLM reads top to bottom, so the order its sources are concatenated in *is* the order the model reads them. Alphabetical order is an accident of slug spelling — it opens a work-pass topic on `appeal-against-a-rejected-application` and buries `key-facts` in the middle. The folder's own index page already carries a better answer: it is the site's own table of contents for that topic, and the order it links its children in is editorial (key facts → eligibility → apply → cancel is a reader's journey, not an alphabet). So:
+
+   1. **`index.md` leads.** The folder's own page (§4.5) introduces the topic, so it is concatenated first, always.
+   2. **Then the remaining files, in the order the index page mentions them**, from the first of these sources that is available:
+
+      - **`.hcag-crawl.json`, if present** (§4.5.3). `crawl` records the child slugs the index page linked, in document order, taken from the *full DOM* before extraction. This is the authoritative source and the only one that works on a hub page, because extraction removes the link list that would otherwise carry the order.
+      - **Otherwise, the links in `index.md` itself.** Every link in a crawled document is an absolute URL (§4.4.1 stage 1) and the tree mirrors the URL path (§4.5), so a link's last path segment names a sibling: `…/employment-pass/apply-for-a-pass` selects `apply-for-a-pass.md`. First mention wins; repeat links are ignored. This covers hand-authored folders and crawls predating the sidecar.
+
+   3. **Then anything unmentioned, alphabetically.** A page the index does not link to still belongs to the packet — it was crawled from somewhere — and appending it in a deterministic order keeps the build reproducible.
+
+   Slugs naming something that is not a source file in this folder are skipped: links resolving outside the folder, and links to subdirectories, which are child *packets* described in `## Sub-topics` (§3.4.4) rather than sources for this one. A sidecar is never trusted blindly — an entry that does not match a file present now is ignored, so an edited tree cannot make the build fail or reference a missing source.
+
+   **When there is no `index.md`** — a folder of flat pages whose own URL was never crawled, or a hand-authored KB folder — the order falls back to lexicographic, exactly as before. The rule adds an ordering signal where one exists; it does not require one.
+
+   `source_files` in the front-matter lists the files in this same order, so the front-matter records the reading order rather than merely the set.
+
+   **Why the sidecar is the primary source, not a nicety.** Reading the order out of `index.md` alone works only where the index page kept its links through extraction, and hub pages are exactly where it does not: a hub's *content is its link list*, and reading-mode extraction treats a link list as navigation and drops it (§4.4.1 stage 2). Measured on the 35-page `mom.gov.sg` crawl before the sidecar existed, 2 of the 6 branch folders had a usable order left in their Markdown; the two largest — 16 and 10 children — had none. The folders where ordering matters most are precisely the ones where reading the extracted Markdown yields nothing. The sidecar reads the full DOM instead, which is where the order survives.
+
+   **Ordering is a preference, never a requirement.** Every stage degrades rather than fails: no sidecar falls back to the index's own links, no links falls back to alphabetical, no `index.md` falls back to alphabetical. A folder always has a deterministic order, so a build is always reproducible; what changes is whether that order is the site's editorial sequence or an artifact of slug spelling.
 2. **Copy all images** at this folder's own level (referenced or not — see §3.4.6) into `F/assets/`. The originals are left in place. Rewrite every image reference in the concatenated content to `assets/<filename>`.
 3. **Compute the folder's summary record** (via LLM per §3.4.4). This is the record that `process()` returns to the parent's DFS call so the parent's catalog section can render an entry for this folder.
 4. **Emit `compiled.md`** with the shape below. The header carries the folder's own metadata; the `## Sub-topics` section carries the rolled-up catalog of the folder's **entire subtree** (§3.4.4); the `## Content` section carries the concatenated source markdown.
@@ -1629,7 +1716,8 @@ IDs being **absolute from the KB root** is also what makes the catalog roll-up (
 
 - **All images at a folder's own level are copied into that folder's `assets/`**, whether referenced by any MD or not. Originals are **not** moved or deleted — they remain at their authored location. Rationale: images the KB team dropped into a folder are intentional even if not yet linked; keeping a copy in `assets/` ensures they travel with the `compiled.md` at load time, while preserving the original preserves the authoring workflow and lets re-runs regenerate `assets/` from source.
 - **External references** (an MD referencing `../other/img.png`) are resolved: the image is copied into the current folder's `assets/` and the reference rewritten. The original at the external path is untouched. A WARN is logged because an external reference usually indicates the source content was authored assuming a different layout.
-- **Non-MD, non-image files** are **silently ignored** — the file is left in place, a `WARN` log line records what was skipped (path + reason), and preprocessing proceeds. Rationale: KB teams often keep original source documents (`.docx`, `.pdf`), editorial notes (`README`), or OS metadata (`.DS_Store`, `Thumbs.db`) inside the tree; failing the build over them is more disruptive than useful. The runtime never sees these files because the memory module reads only `compiled.md` and files under `assets/`.
+- **HCAG-owned sidecars** (`.hcag-crawl.json`, §4.5.3) are consumed for metadata and never reported as strays.
+- **Other non-MD, non-image files** are **silently ignored** — the file is left in place, a `WARN` log line records what was skipped (path + reason), and preprocessing proceeds. Rationale: KB teams often keep original source documents (`.docx`, `.pdf`), editorial notes (`README`), or OS metadata (`.DS_Store`, `Thumbs.db`) inside the tree; failing the build over them is more disruptive than useful. The runtime never sees these files because the memory module reads only `compiled.md` and files under `assets/`.
 
 ### 3.4.7 Overwrite policy
 
@@ -1749,11 +1837,11 @@ level     = "INFO"
 ### `compiled.md` (per folder — leaf, taxonomy node, mixed, and root alike)
 
 - HTML comment marker: `<!-- HCAG:COMPILED id=<dotted-id> -->`
-- YAML front-matter: `id`, `title`, `short_description`, `long_description`, `token_size_estimate`, `content_token_estimate`, `catalog_token_estimate`, `kind` (`leaf` | `node` | `mixed`), `source_files` (empty for a pure taxonomy node), `children` (immediate only; empty for a pure leaf), `descendants`, `subtree_depth`.
+- YAML front-matter: `id`, `title`, `short_description`, `long_description`, `token_size_estimate`, `content_token_estimate`, `catalog_token_estimate`, `kind` (`leaf` | `node` | `mixed`), `source_files` (in reading order per §3.4.3; empty for a pure taxonomy node), `children` (immediate only; empty for a pure leaf), `descendants`, `subtree_depth`.
 - Body:
   - `# <title>` heading and `<short_description>` preamble.
   - `## Sub-topics` — the rolled-up subtree index: an optional `#### Tree` outline followed by one `#### <id>` block per descendant **at every depth**, in DFS pre-order, each with `path`, `depth`, `parent`, `kind`, `title`, `short`, `tokens`, and `long` within `catalog.long_depth`. Omitted for pure leaves.
-  - `## Content` — concatenated source markdown, with image refs rewritten to `assets/<name>`. Omitted for pure taxonomy nodes.
+  - `## Content` — concatenated source markdown in reading order (§3.4.3), with image refs rewritten to `assets/<name>`. Omitted for pure taxonomy nodes.
 - **The root folder's `compiled.md` is the file the runtime memory module's `get_catalog` returns** (§2.7). Its `## Sub-topics` section is the complete index of the KB — every branch, node, and leaf — so the agent can resolve any document in one `check_and_load_kb` call (§2.3.2) without walking the tree. Non-root folders' `compiled.md` files are loaded for their `## Content`; their (redundant) `## Sub-topics` sections are elided at load time (§2.6).
 
 ## 3.8 End-to-End Workflow
@@ -1888,7 +1976,10 @@ $ crawl --depth <N> <seed_url> [<seed_url> ...]
 ```
 
 - `<seed_url>` — one or more starting URLs. Each seed defines both a starting point and a prefix scope (§4.3.1). At least one seed is required.
-- `--depth <N>` — maximum link-following depth from any seed. `N=0` fetches only the seed documents themselves; `N=1` also fetches documents reachable in one hop from a seed; and so on.
+- `--depth <N>` — maximum link-following depth from any seed. `N=0` fetches only the seed documents themselves; `N=1` also fetches documents reachable in one hop from a seed; and so on. Applies to *pages*; assets are terminal and exempt (§4.3.4).
+- `--asset-hosts <host>[,<host>…]` — additional hosts from which PDFs and images may be fetched. By default an asset is fetched only from the same host as the page that cited it (§4.3.4); this widens that to a CDN or media subdomain.
+- `--quiet` — suppress the per-URL progress lines on stderr (§4.7.1). The end-of-run report is still printed.
+- `--report-limit <N>` — example URLs shown per skip group in the end-of-run report (default `20`). `0` prints counts only; a negative value prints every URL.
 - `--extract-favor {balanced,precision,recall}` — bias of the main-content extractor (§4.4.1). `precision` drops anything the extractor is unsure about (cleanest output, occasionally loses a short real section); `recall` keeps borderline blocks (fuller output, occasionally keeps a sidebar). Default `balanced`.
 - `--no-extract` — disable main-content extraction entirely. Every page is converted whole-DOM and written verbatim, chrome included. Use it to inspect raw output, or on sites the extractor mishandles.
 - `--min-extract-chars <N>` — extraction results shorter than `N` characters are treated as a failed extraction and the page falls back (§4.4.1). Default `200`. Set to `0` to accept any non-empty extraction.
@@ -1905,6 +1996,8 @@ Each seed URL doubles as a **prefix scope**. A discovered link is followed only 
 - A seed of `https://docs.example.com/api/v2/` allows following `https://docs.example.com/api/v2/auth.html` but **not** `https://docs.example.com/api/v1/anything` (different subpath) or `https://blog.example.com/…` (different subdomain).
 - With multiple seeds, the allowed set is the union of their prefixes: a link is in scope if it matches **any** seed's prefix.
 
+**Prefix scope governs traversal, not assets.** It answers "which *pages* is this crawl about", and it answers it with a path prefix because a site's page hierarchy is its information architecture. Assets — PDFs and images — are not pages and are not filed that way; they are content *of* a page, and §4.3.4 scopes them by that relationship instead.
+
 Rationale: the seed set defines both *where to start* and *what belongs in the KB* with a single knob — the operator does not have to state the site boundary a second time.
 
 Note that the candidate links come from the **full DOM**, not from the extracted main content (§4.4.1) — navigation is discarded from the *output* but is still the primary way a site exposes its own structure.
@@ -1917,6 +2010,26 @@ Note that the candidate links come from the **full DOM**, not from the extracted
 
 The seed URL sits at depth `0`. A document reached by following a link from a depth-`k` document is at depth `k+1`. Links discovered *inside* a document whose depth equals `--depth` are **not** followed; the document itself is still fetched, converted, and written, but no further descent occurs from it.
 
+### 4.3.4 Asset scope
+
+**A PDF or image referenced by an in-scope page is fetched, whatever its path.** Prefix scope does not apply to it, and neither does the depth limit.
+
+**Why.** Sites store assets where the CMS puts them, not where the information architecture would suggest. On `mom.gov.sg` every linked PDF lives under `/-/media/mom/documents/…` — a Sitecore media root that has nothing to do with `/passes-and-permits/…`, the path the pages themselves live under. The numbers are not marginal: of the 17 PDFs cited by a 35-page crawl of that site, **17 are outside the seed prefix and zero are inside**. Scoping assets by prefix therefore does not filter the citations; it drops all of them, and with them the primary sources — salary benchmark tables, occupation lists, application forms — that the prose exists to point at.
+
+The prefix is the right tool for the wrong question here. `/-/media/…` is a *storage* path; `/passes-and-permits/…` is an *editorial* one. Judging an asset by its own path asks where the CMS filed it. Judging it by the page that cites it asks what it is about, which is the question that matters.
+
+**Why this is safe.** Assets are **terminal**: fetched, converted, written, and never queued for link extraction. Nothing is ever discovered *through* an asset, so exempting them cannot expand the frontier — the number fetched is bounded by (pages crawled × assets per page), never by the link graph. That is also why the depth limit does not apply: a PDF cited by a page at maximum depth is that page's content, not a level beyond it, and excluding it would silently truncate the deepest pages' evidence while keeping their prose.
+
+**What still bounds it.** Unbounded off-site fetching is a different risk class from following a citation, so:
+
+- An asset is fetched only if it is on the **same host as the page that referenced it**, or on a host named by `--asset-hosts` (§4.2). The default keeps a crawl to the site the operator named; the flag exists because a site's images frequently live on a CDN under a different hostname.
+- The existing image size filter (§4.4.3) still applies unchanged: off-prefix does not mean unfiltered.
+- Assets are deduplicated by the same visited-URL set as pages (§4.3.2), so a PDF cited by twenty pages is fetched once.
+
+**Where they land.** An off-prefix asset is written into the folder of the page that cited it (§4.5), *not* mirrored at its own URL path. Mirroring `/-/media/mom/documents/compass/c1-salary-benchmarks.pdf` would create `kb/www.mom.gov.sg/-/media/mom/documents/compass/…` — a parallel tree, disconnected from the taxonomy, whose folders `hcag preprocess` would turn into packets about nothing. A CMS media root is not an information architecture and must not be allowed to manufacture one. The asset has no taxonomy of its own; it inherits the topic of the page that cites it, and belongs in that page's packet.
+
+With deduplication, the **first citer wins**: the asset is written into the folder of the first page that referenced it, and later citers keep the link as a remote URL. This trades a little locality for not duplicating a 5 MB PDF into twenty packets; the alternative is defensible, and if whole-packet self-containment turns out to matter more than size, this is the knob to revisit.
+
 ## 4.4 Document Types
 
 ### 4.4.1 HTML — main-content extraction
@@ -1925,9 +2038,12 @@ An HTML response goes through three stages: a DOM pre-pass that harvests links a
 
 **Stage 1 — DOM pre-pass (BeautifulSoup).** Runs on the raw HTML, before any content decision:
 
-- **Traversal links.** Every `<a href>` in the document is resolved against the fetched URL (after redirects) and handed to the traversal loop (§4.3.1). Anchors, `javascript:`, `mailto:`, and `tel:` targets are dropped. This deliberately reads the *whole* document — a docs site's left-hand nav is chrome in the output but is exactly how the crawler discovers the rest of the site. Discarding nav before link discovery would collapse coverage to whatever the body prose happens to cross-reference.
+- **Traversal links.** Every `<a href>` in the document is resolved against the fetched URL (after redirects) and handed to the traversal loop (§4.3.1), **in document order**. Anchors, `javascript:`, `mailto:`, and `tel:` targets are dropped. This deliberately reads the *whole* document — a docs site's left-hand nav is chrome in the output but is exactly how the crawler discovers the rest of the site. Discarding nav before link discovery would collapse coverage to whatever the body prose happens to cross-reference. Reading the whole document is also what preserves a hub page's link order for §4.5.3: the extracted body will not have it, because a link list is the first thing stage 2 drops.
 - **Image source rewriting.** Every `<img>` is given a local filename of the form `<doc-basename>-<remote-basename>` (with in-document collision disambiguation, §4.5) and its `src` attribute is rewritten **in place** to that local name. Lazy-loading attributes (`data-src`, `data-original`, and the first candidate of a `srcset`) are promoted into `src` first, so images that a plain parse would miss survive. Because the rewrite happens before extraction, whatever markup survives extraction already points at local files — no post-hoc Markdown surgery, and the extractor's own link/image handling never sees a relative URL.
-- Nothing is removed at this stage. The pre-pass only annotates; the content decision belongs to stage 2.
+- **Page-wrapping `<form>` unwrapping.** Any `<form>` holding at least half the body's visible text is unwrapped — the tag goes, every child stays exactly where it was. This is the one structural edit the pre-pass makes, and it exists because reading-mode extractors discard form subtrees as chrome (search boxes, newsletter signups, comment boxes) while **ASP.NET WebForms wraps the entire page body in a single `<form runat="server">`**. On such a site the "discard forms" heuristic discards the article. Observed on `mom.gov.sg`: trafilatura's balanced mode returned 10.5k characters of a 24k-character page, dropping the "Who is eligible" section and the EP qualifying-salary tables — the page's principal content — while still reporting a successful extraction. Unwrapping first restores the full 24k. This is not specific to trafilatura: an independent converter (`html-to-markdown`) reduced the same page to nothing but front-matter for the identical reason.
+
+  Detection is by **text share, not by tag or attribute**, which is what keeps real forms working as chrome: a genuine search box holds a rounding error's worth of the body's text, while a framework wrapper holds nearly all of it. The count is reported as `forms_unwrapped` for the build log.
+- Nothing else is removed at this stage. The pre-pass otherwise only annotates; the content decision belongs to stage 2.
 
 **Stage 2 — reading-mode extraction (trafilatura).** The mutated DOM is serialized and passed to `trafilatura.extract()`, which returns Markdown for the main content only. Settings:
 
@@ -1984,17 +2100,99 @@ The filter is applied uniformly to HTML-embedded images and PDF-embedded images;
 
 ## 4.5 Output Layout
 
-Output is rooted at `./kb/`, with the domain as the first path segment and the URL path preserved below it. For a page at `https://webdomain/topic-domain/topic/subtopic/something.html`:
+Output is rooted at `./kb/`, with the domain as the first path segment and the URL path preserved below it.
+
+**A page's Markdown belongs at the deepest level of its own URL path, not at its parent's.** A page at `…/topic/subtopic` that has crawled descendants is written as `…/topic/subtopic/index.md` — *inside* the `subtopic/` directory, alongside its children — not as `…/topic/subtopic.md` sitting next to it. This is the rule the rest of this section elaborates, and §4.5.1 explains why it matters more than a filing preference.
+
+**Stated as a checkable invariant:**
+
+> No directory may contain both a subdirectory `X/` and a file `X.md`.
+
+If both would exist, `X.md` belongs *inside* `X/` as `index.md`. The pair is the signature of the bug: two artifacts describing the same URL, filed at two different levels, with the folder that owns the topic missing the page that introduces it. It is worth checking directly on any crawl output, because it is a one-line test that catches the whole class:
+
+```bash
+find kb -type d | while read -r d; do [ -f "$d.md" ] && echo "collision: $d.md + $d/"; done
+```
+
+A conforming crawl prints nothing. Before this rule, a 35-page `mom.gov.sg` crawl printed six, `…/employment-pass/eligibility.md` beside `…/employment-pass/eligibility/` among them.
+
+For a page at `https://webdomain/topic-domain/topic/subtopic/something.html` with no crawled descendants:
 
 - Markdown goes to `./kb/webdomain/topic-domain/topic/subtopic/something.md`.
 - An embedded image named `apple.jpg` goes to `./kb/webdomain/topic-domain/topic/subtopic/something-apple.jpg`.
+
+And for `https://webdomain/topic-domain/topic/subtopic`, which *does* have descendants (`/subtopic/a`, `/subtopic/b`, `/subtopic/c`):
+
+```
+kb/webdomain/topic-domain/topic/
+└── subtopic/
+    ├── index.md          ← the /topic/subtopic page itself
+    ├── index-apple.jpg   ← its images, beside it
+    ├── a.md
+    ├── b.md
+    └── c.md
+```
 
 Rules:
 
 - **Domain first.** Content from different sites lands in distinct top-level folders under `./kb/`, so multiple seed domains stay cleanly separated.
 - **Path preservation.** Below the domain, the directory structure mirrors the URL path, so the shape of the source site is legible in the output tree.
+- **Own-page placement.** A page whose URL path has crawled descendants is written as `index.md` inside its own directory. `index.md` rather than `<segment>.md` both avoids the `subtopic/subtopic.md` stutter and marks unambiguously which file is the folder's *own* page versus a child page.
+- **Leaves stay flat.** A page with no crawled descendants gets no directory of its own; it is written as `<segment>.md` in its parent's directory. This is what keeps a crawl from producing one directory per document, and it is why **a depth limit of 4 puts every level-4 page at level 3 of the tree**: nothing below them is fetched, so nothing below them exists to be the deeper level. Depth truncation and a natural leaf are indistinguishable in the output, by design — the tree describes what was crawled, not what the site contains.
 - **Extension.** Output Markdown always uses the `.md` extension, regardless of the source (`.html`, `.htm`, `.pdf`, or a directory-index URL that ends with `/`).
-- **Image naming.** Each extracted image is written with a filename of the form `<document-basename>-<image-name>`. Prefixing with the source document's basename guarantees that identically-named images extracted from different pages do not collide when they land in the same directory.
+- **Assets follow their citer, not their own path.** A PDF or image fetched from outside the seed prefix (§4.3.4) is written into the folder of the page that referenced it — a converted PDF as `<pdf-stem>.md`, an image under the naming rule below — never mirrored at its own URL path. Its own path is where a CMS filed it, not what it is about; mirroring it would grow a parallel tree of packets about nothing. Name collisions with an existing sibling are disambiguated the same way as images.
+- **Image naming.** Each extracted image is written with a filename of the form `<document-basename>-<image-name>`, in the same directory as the Markdown that references it. Prefixing with the source document's basename guarantees that identically-named images extracted from different pages do not collide when they land in the same directory. For an own-page the basename is `index`, so its images are `index-<image-name>` inside its own directory.
+
+### 4.5.1 Why placement is not just filing
+
+The old layout put `subtopic.md` in `topic/` and the subtopic's children in `topic/subtopic/`. That splits one topic across two levels, and it is not a cosmetic problem: `hcag preprocess` treats **a folder as the unit of knowledge** (D2). Under the old layout the subtopic's own overview is concatenated into the *parent's* packet, where it describes a sibling rather than the folder it is in, while `subtopic/` — the folder the agent actually loads when it wants that topic — has no overview at all. Placing the page inside its own directory puts a topic's overview and its detail pages in the same packet, which is what a reader, and the agent, expect.
+
+It also makes the folder classification in §3.4.2 mean what it says. A URL that has both its own content and sub-pages should produce a **mixed** folder (own content + children); under the old layout it produced a pure taxonomy node with the content misfiled one level up.
+
+### 4.5.2 Resolving placement at the end of the crawl
+
+Whether a page has descendants is not known when the page is written. The crawl is breadth-first (§4.3), so a page at depth *d* is fetched and written before anything at *d+1* is discovered — the crawler cannot know, at write time, whether the page it is writing will turn out to be a branch or a leaf.
+
+The layout is therefore resolved in two steps:
+
+1. **During the crawl, every page is written at the deepest level of its own path** — `…/topic/subtopic/index.md`, with its images beside it. This is the uniform case, needs no lookahead, and matches the invariant stated above.
+2. **After the crawl completes, leaf directories collapse.** Once the full set of fetched URLs is known, any directory containing nothing but its own `index.md` and that page's images — no child pages, no subdirectories — is collapsed into its parent: `…/topic/subtopic/index.md` becomes `…/topic/subtopic.md`, and `index-apple.jpg` becomes `subtopic-apple.jpg`, preserving the `<document-basename>-<image-name>` rule. The now-empty directory is removed.
+
+Collapsing only ever removes a directory that has just been emptied, so it cannot produce the `X/` + `X.md` pair the invariant forbids: the file is created at `X.md` in the same operation that removes `X/`. The invariant is the finalize pass's postcondition, and worth asserting as one — it is cheap to check and it is the single condition that distinguishes this layout from the one it replaces.
+
+Collapsing runs on the filesystem rather than on the URL set, so it stays correct when a page was skipped mid-crawl (fetch error, out-of-scope redirect, unsupported content type): a directory is a branch because it *has* files in it, not because a URL suggested it might.
+
+**Links need no rewriting; image references do.** In-body links were absolutized to remote URLs in §4.4.1 stage 1, so no link in any document points at a local path that moving a file could break. Images are the exception: stage 1 rewrites every `<img src>` to a *bare local filename*, so renaming `index-apple.jpg` to `subtopic-apple.jpg` without also rewriting the reference inside the Markdown leaves a broken image. The collapse rewrites each renamed filename in the page it belongs to, in the same step.
+
+A directory is also left alone if collapsing it would overwrite an existing `<name>.md` beside it — two URLs can sanitize to the same name, and losing a page is worse than leaving one branch un-flattened.
+
+The collapse count is reported in the end-of-crawl summary (§4.7) so the tree's final shape is auditable from the log alone.
+
+### 4.5.3 Link-order sidecar
+
+`preprocess` orders a packet's sources by the order its index page mentions them (§3.4.3), which needs one thing `preprocess` cannot recover on its own: **the order the index page linked its children in.**
+
+It cannot recover it because extraction destroys it. A hub page's content *is* its link list, and reading-mode extraction treats a link list as navigation and drops it (§4.4.1 stage 2) — so the `index.md` on disk for a 16-child hub often contains no links at all. Measured on `mom.gov.sg`, only 2 of 6 branch folders had a usable order left in their Markdown. The ordering signal exists at crawl time and is thrown away.
+
+**`crawl` already has it.** Stage 1 parses every `<a href>` in the *full DOM*, in document order, because that is how traversal discovers the site (§4.4.1) — and reading the whole document rather than the extracted body is exactly what makes it survive. Today that order is consumed by the traversal queue and discarded. Recording it costs nothing new.
+
+**The artifact.** Any folder that keeps its own `index.md` after the collapse (§4.5.2) — i.e. any branch folder — gets a sibling sidecar:
+
+```json
+// kb/www.mom.gov.sg/passes-and-permits/employment-pass/.hcag-crawl.json
+{
+  "source_url": "https://www.mom.gov.sg/passes-and-permits/employment-pass",
+  "link_order": ["key-facts", "eligibility", "apply-for-a-pass", "documents-required", "…"]
+}
+```
+
+- `link_order` holds the **child slugs** the index page linked, in first-mention document order, deduplicated. Only entries that correspond to something actually written in that folder are recorded — a link to a page that was never fetched (out of scope, over the depth limit, failed) is dropped, so the sidecar never names a file that does not exist.
+- `source_url` records which page the order came from, making the mapping auditable without re-fetching.
+- It is written in the finalize pass, after the collapse, so it describes the tree as it finally stands. Leaf folders get no sidecar: with no children there is nothing to order.
+
+**Why a sidecar rather than front-matter in `index.md`.** Crawled Markdown is content — `preprocess` concatenates it verbatim into `## Content` (§3.4.3). Metadata written into that file would either surface as literal text in the packet or require every consumer to learn to strip it. A separate file keeps provenance out of content, which is the same reason `compiled.md` carries its metadata in front-matter that the packet loader strips (§2.6) rather than inline.
+
+**This does not breach the §4.6 boundary.** `crawl` is recording *what the source document did* — a fact about the fetched page, like the links and images it already records. It is not deciding what the order means, which folders are topics, or how packets are assembled; `preprocess` remains free to use the order, ignore it, or fall back (§3.4.3). Provenance is not a taxonomy decision.
 
 ## 4.6 Relationship to `hcag`
 
@@ -2007,9 +2205,17 @@ $ hcag preprocess kb/
 
 `crawl` is responsible only for turning a set of remote sites into a mirrored local Markdown tree. It does not classify folders, produce `compiled.md`, call an LLM, or make any decisions about the KB's taxonomy — those remain `hcag`'s job.
 
+**The one place the two designs have to agree is folder shape.** `preprocess` treats a folder as the unit of knowledge (D2) and classifies it by what is in it (§3.4.2), so where `crawl` puts a page decides which packet that page ends up in. §4.5's placement rule exists to make that mapping right: a URL with its own content *and* sub-pages becomes a **mixed** folder, and a URL that is only a hub becomes a **node**.
+
+The layout also hands `preprocess` an ordering signal it did not previously have. `index.md` does not sort first among arbitrary slugs, so lexicographic concatenation would drop a topic's overview somewhere between two of its children; and the index page's *links* record the order the site itself presents those children in. §3.4.3 specifies both: `index.md` leads the packet, and the remaining sources follow the order the index page mentions them. That ordering exists only because §4.5 puts the index page in the same folder as the pages it links to.
+
+That order is carried across the boundary as data, not as a decision: `crawl` writes a `.hcag-crawl.json` sidecar recording what the source page linked and in what order (§4.5.3), and `preprocess` is free to use it, ignore it, or fall back. `crawl` still classifies nothing.
+
 ## 4.7 Observability (CLI)
 
 `crawl` emits a log line for every meaningful event during a crawl — each URL fetched, each content-extraction decision, each Markdown document written, each image extracted, and each candidate link that was skipped — using the same JSON-lines format as the rest of the toolchain (§2.11.3, §3.9). This makes a completed crawl auditable after the fact: given the log, an operator can reconstruct exactly which URLs were visited, which were skipped and why, how much of each page survived extraction, and which files ended up in `./kb/`.
+
+That is the machine-readable record. The human-readable one — live progress while the crawl runs, and a report of what it collected and skipped when it finishes — is §4.7.1. The two are generated from the same counters and cannot disagree.
 
 **Configuration.** The log path defaults to `./crawl.log` and can be overridden with `--log-file <path>`. Level is controlled with `--log-level {debug,info,warn,error}` (default `info`). If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`crawl.fetch`, `crawl.extract`, `crawl.convert`, `crawl.image.extract`) are also exported, matching the observability model used by the runtime (§2.11) and by `hcag` (§3.9).
 
@@ -2018,17 +2224,27 @@ $ hcag preprocess kb/
 - `INFO`:
   - Crawl start line with the resolved seed list, `--depth`, the output root, and the extraction settings (`extract_favor`, `min_extract_chars`, `no_extract`).
   - One line per fetched document: URL, depth, content type, byte size, elapsed fetch time, and the output Markdown path.
-  - `crawl.extract.ok` per successfully extracted HTML page: `url`, `html_bytes`, `markdown_chars`, `retained_pct` (extracted Markdown chars ÷ the DOM's total visible-text chars — cheap to compute, no second conversion), `links`, `images`, `tables`, `elapsed_ms`. `retained_pct` is the field to scan when judging whether an extractor setting is too aggressive for a site.
+  - `crawl.extract.ok` per successfully extracted HTML page: `url`, `html_bytes`, `markdown_chars`, `retained_pct` (extracted Markdown chars ÷ the DOM's total visible-text chars — cheap to compute, no second conversion), `links`, `images`, `tables`, `elapsed_ms`. `retained_pct` is the field to scan when judging whether an extractor setting is too aggressive for a site — and `crawl.extract.low_retention` below scans it for you.
   - One line per extracted image: source document URL, remote image URL, and the local file path written under `./kb/`.
   - `crawl.image.skipped_small` per dropped image (§4.4.3): source document URL, remote image URL (or embedded index for PDFs), fetched byte size, threshold.
+  - `crawl.asset.offsite_fetched` per asset fetched from outside the seed prefix (§4.3.4): the citing page, the asset URL, its kind (`pdf` / `image`), and the folder it was written into. These are the fetches prefix scope would have dropped, so they are worth being able to count — on `mom.gov.sg` they are 100% of the cited PDFs.
+  - `crawl.asset.skipped_host` at `WARN` per asset skipped because its host is neither the citing page's nor in `--asset-hosts`: the citing page, the asset URL, and its host. A recurring host here is the signal to add it to the flag.
   - `crawl.extract.fallback` with `reason = disabled` under `--no-extract` — the whole-DOM path was the operator's choice, not a failure, so it is INFO rather than the `WARN` below.
-  - Crawl end summary: totals for pages fetched, pages extracted vs. pages fallen back, pages written, images extracted, images skipped for size, links skipped (out-of-scope / already-visited), wall-clock elapsed, and log-level counts.
+  - `crawl.extract.detail` at `DEBUG` adds `favor`, `title_synthesized`, `forms_unwrapped` (§4.4.1 stage 1), and the full feature counts.
+  - `crawl.layout.collapsed` per leaf directory collapsed in the finalize pass (§4.5.2): the directory removed, the resulting Markdown path, and the number of images renamed with it.
+  - `crawl.layout.link_order` per sidecar written (§4.5.3): the folder, its `source_url`, how many child slugs were recorded, and how many linked slugs were dropped because nothing was written for them. A branch folder whose recorded order is empty is the signal that extraction ate the hub's link list *and* the full-DOM order found no in-folder children — worth a look before trusting the resulting packet order.
+  - `crawl.layout.invariant_violated` at `ERROR` if the finalize pass leaves any `X/` + `X.md` pair (§4.5). It is the postcondition of the pass and cannot legitimately fail; if it does, the tree is mis-shaped in exactly the way this layout exists to prevent, and the operator needs to know before `hcag preprocess` builds packets on top of it.
+  - Crawl end summary: totals for pages fetched, pages extracted vs. pages fallen back, pages written, `dirs_collapsed`, images extracted, images skipped for size, links skipped (out-of-scope / already-visited), wall-clock elapsed, and log-level counts.
 - `DEBUG`:
   - HTTP request/response headers, redirect chains, and retry attempts.
   - Extraction internals per page: the resolved trafilatura option set, whether a title was synthesized, and the per-feature counts (headings, tables, code blocks, in-body links, images) in the extracted Markdown.
   - PDF-extraction internals (page count, image count).
   - For each page, the full list of `<a href>` values discovered, each tagged with its disposition: `queued`, `skipped:out-of-scope`, `skipped:visited`, or `skipped:depth-cap`.
 - `WARN`:
+
+  - `crawl.extract.low_retention` when extraction *succeeded* but kept less than 25% of the page's visible text: `url`, `retained_pct`, `threshold_pct`, `markdown_chars`, `text_chars`. This catches the failure mode that `min_extract_chars` structurally cannot. That floor only rejects a near-empty result; a **partial** extraction clears it easily and is then indistinguishable from a good one — the `mom.gov.sg` case in §4.4.1 passed at 10.5k characters while missing the page's principal tables. Retention is the only cheap signal that separates "this page really is mostly chrome" from "the extractor ate the article", so a low ratio is surfaced rather than left as a number in the INFO line. It is advisory — a genuinely nav-heavy page can sit low legitimately — which is why it is a `WARN` and not a fallback trigger.
+
+    **The threshold is calibrated, not chosen.** `retained_pct`'s denominator is the whole DOM's text, chrome included, so on a nav-heavy site a *perfect* extraction still scores 40-50% and an intuitive threshold is useless: on a 35-page `mom.gov.sg` crawl, 55% flagged 15 pages of which 11 had lost nothing. Checking each flagged page against its real main-content container gives 3 caught / 0 false alarms at 25%, against 4 / 11 at 55%. 25% is the knee, and precision is the property that matters for a warning meant to be acted on rather than filtered out. Re-calibrate against a hand-checked sample before trusting the default on a very differently-shaped corpus.
   - Fetch returned a non-2xx status for an in-scope URL (URL is dropped, siblings continue).
   - Fetched content type is neither HTML nor PDF (URL is dropped).
   - `crawl.extract.fallback` — extraction produced no usable main content for a page: `url`, `reason ∈ {no_output, too_short}`, `chars`, `min_extract_chars`. The page still lands on disk via the whole-DOM path, chrome included (§4.4.1 stage 3). A run with many of these is the signal to re-run with `--extract-favor recall`, or to accept that the site is JS-rendered (§4.8).
@@ -2044,15 +2260,73 @@ $ hcag preprocess kb/
 
 If any `ERROR`-level event is logged during a run, `crawl` exits with a non-zero status; `WARN`-level events do not affect exit status but are reflected in the end-of-run summary.
 
+### 4.7.1 Console output
+
+The log answers "what happened, exactly" after the fact. The console answers a different question — "what is it doing *now*, and what did I end up with" — for a human watching a crawl run. They are separate surfaces and neither replaces the other: the console output described here changes nothing about the JSON-lines log above, and `--verbose` continues to mirror that log to stderr for anyone who wants the raw events instead.
+
+**Live progress.** Each URL is printed as it is fetched, one line per document:
+
+```
+[  1] d0  html   https://www.mom.gov.sg/passes-and-permits/employment-pass
+[  2] d1  html   https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility
+[  3] d1  pdf    https://www.mom.gov.sg/-/media/mom/documents/…/c1-salary-benchmarks.pdf
+[  4] d1  img    https://www.mom.gov.sg/-/media/mom/documents/…/compass.png
+[  5] d1  html   https://www.mom.gov.sg/passes-and-permits/employment-pass/apply-for-a-pass
+      !  404     https://www.mom.gov.sg/passes-and-permits/employment-pass/old-page
+```
+
+Three details are deliberate:
+
+- **The line prints when the fetch *starts*, not when it finishes.** A crawl that hangs then leaves the responsible URL as the last thing on screen, which is the entire reason to watch a crawl live. Printing on completion would show everything except the one that matters.
+- **Failures print immediately** on their own line, rather than waiting for the final report — a run that is failing every fetch should be obvious in the first seconds, not after it finishes.
+- **No cursor control, no in-place rewriting.** Plain lines that scroll, so the output stays readable when piped to a file or captured by CI. A progress display that only works on a TTY is one that breaks exactly where the record is most needed. The counter has no total because breadth-first traversal does not know one until it is done.
+
+Progress goes to **stderr**, so redirecting stdout captures the report below without the running commentary. `--quiet` suppresses progress entirely and keeps the report.
+
+**End-of-run report.** Printed to **stdout** — it is the result of the run, and belongs in whatever the operator redirects to a file:
+
+```
+Included (35 html, 17 pdf, 3 img)
+
+  html  /passes-and-permits/employment-pass
+  html  /passes-and-permits/employment-pass/eligibility
+  …
+  pdf   /-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks.pdf
+  …
+  img   /-/media/mom/documents/work-passes-and-permits/compass/compass.png
+
+Skipped (2,404)
+
+  out-of-scope          1,463   (showing 20)
+      https://www.mom.gov.sg/eservices/…
+      …and 1,443 more — see crawl.log
+  depth-limit             498   (showing 20)
+      …
+  already-visited         441   (count only — every one of these was crawled via another link)
+  image-too-small          21   (showing 20)
+  non-2xx                   1
+      https://www.mom.gov.sg/passes-and-permits/employment-pass/old-page  → 404
+  asset-host-not-allowed    0
+```
+
+- **Included is listed in full**, grouped by kind. It is the KB's contents — bounded, and the thing worth diffing between runs. Paths are shown relative to the host, with the host stated once per group, because the full URLs are mostly a repeated prefix.
+- **Skipped is grouped by reason, with a count always and examples by default.** The full lists live in the log at `DEBUG`; reprinting 1,463 out-of-scope URLs to a terminal buries the four numbers that actually inform a decision. `--report-limit <N>` (default 20) sets the examples per group; `--report-limit 0` prints counts only, and a negative value prints everything.
+- **`already-visited` is a count only, whatever the limit.** Every URL in it was crawled — it is a dedup tally, not a list of things that were missed, and listing it invites exactly the wrong conclusion.
+- Groups are printed in descending count order, and URLs within a group are sorted, so two runs of the same crawl produce a diffable report.
+- Every skip reason is a group, **including empty ones**. A reason showing `0` is information: `asset-host-not-allowed: 0` says the `--asset-hosts` default cost this crawl nothing (§4.3.4), which is not something the absence of a line could tell you.
+
+The report is derived from the same counters as the `crawl.done` log record, so the two can never disagree.
+
 ## 4.8 Non-Goals
 
 - **Content editing.** `crawl` selects the main content of a page (§4.4.1); it does not rewrite prose, summarize, translate, or reorder it. Within the selected region the HTML/PDF → Markdown conversion is mechanical.
 - **JavaScript execution.** Only the initial fetched HTML is parsed. Pages whose content is constructed client-side are captured only to the extent that content is present in the server-rendered response — and typically surface as `crawl.extract.fallback` warnings rather than silent empties.
 - **LLM-based content classification.** Extraction is a deterministic, offline library decision — no per-page latency, no per-page cost, no model dependency. An LLM would likely beat it on ambiguous pages and is still not worth its price in a tool whose job is to mirror, not to interpret.
 - **Corpus-level content analysis.** No cross-page comparison of any kind: no repeated-block voting, no shingling, no near-duplicate suppression. Every page is decided from its own markup, which is what keeps the tool single-pass, order-independent, resumable in principle, and correct on a one-page crawl.
-- **Local link rewriting.** In-body links are preserved as absolute source URLs. Rewriting cross-page links to relative `./kb/…/*.md` paths is not attempted — the mapping is only valid for the subset of the web that this crawl happened to capture.
+- **Local link rewriting.** In-body links are preserved as absolute source URLs. Rewriting cross-page links to relative `./kb/…/*.md` paths is not attempted — the mapping is only valid for the subset of the web that this crawl happened to capture. This applies to PDFs pulled in under §4.3.4 as well: the citing page keeps the remote URL in its prose, and the converted PDF lands beside it as a separate source file in the same packet.
 - **Auth-gated content.** Login flows, cookies, and custom headers beyond a plain fetch are out of scope.
-- **Non-HTML, non-PDF assets.** Videos, archives, and other binary formats are neither followed as links nor mirrored into `./kb/`.
+- **Non-HTML, non-PDF assets.** Videos, archives, and other binary formats are neither followed as links nor mirrored into `./kb/` — the asset exemption in §4.3.4 widens *where* a PDF or image may come from, not *what kinds* of file are collected.
+- **Unbounded off-site fetching.** §4.3.4 lifts the path-prefix restriction for assets, not the host restriction. An asset on a third-party host is fetched only when the operator names that host with `--asset-hosts`; following a citation off-domain by default is a different risk class from mirroring a site.
 - **Incremental re-crawl.** Each invocation fetches every in-scope URL once; change detection and freshness re-crawling are not provided.
 - **Per-site extraction rules.** No site-specific selectors, allow-lists, or template overrides. If a site defeats the extractor, the knobs are `--extract-favor`, `--min-extract-chars`, and `--no-extract` — nothing per-domain.
 

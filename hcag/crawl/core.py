@@ -15,12 +15,43 @@ import re
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 from ..logger import HcagLogger
 from .fetch import Fetcher, FetcherProtocol
 from .html_conv import DEFAULT_MIN_EXTRACT_CHARS, FALLBACK_DISABLED, convert_html
+
+#: Below this share of the DOM's visible text, a "successful" extraction is
+#: reported as suspect (§4.7).
+#:
+#: Calibrated against a 35-page mom.gov.sg crawl whose extractions were each
+#: checked by hand against the page's real main-content container. The
+#: denominator here is the WHOLE DOM's text — nav, footer and banners included
+#: — so on a chrome-heavy site even a perfect extraction scores 40-50%, and a
+#: threshold set by intuition drowns in false positives: 55% flagged 15 pages
+#: of which 11 were fine. Measured, the curve is steep:
+#:
+#:     threshold   caught   false alarms   missed
+#:         25%        3           0          1
+#:         35%        3           1          1
+#:         45%        4           6          0
+#:         55%        4          11          0
+#:
+#: 25% is the knee — every page it flags had genuinely lost content. It buys
+#: precision at the cost of missing partial losses in the 40s, which is the
+#: right trade for a WARN an operator is meant to act on rather than filter out.
+LOW_RETENTION_PCT = 25.0
 from .pdf_conv import convert_pdf
-from .urls import normalize_url, url_to_output_paths
+from .console import Console, CrawlReport
+from .urls import (
+    asset_host_allowed,
+    collapse_leaf_dirs,
+    find_layout_collisions,
+    is_asset_url,
+    normalize_url,
+    url_to_output_paths,
+    write_link_order,
+)
 
 
 HTML_TYPES = {"text/html", "application/xhtml+xml"}
@@ -60,6 +91,9 @@ class CrawlStats:
     links_skipped_scope: int = 0
     links_skipped_visited: int = 0
     links_skipped_depth: int = 0
+    assets_offsite: int = 0   # PDFs/images fetched from outside the prefix (§4.3.4)
+    dirs_collapsed: int = 0   # leaf dirs flattened by the finalize pass (§4.5.2)
+    sidecars_written: int = 0  # .hcag-crawl.json link-order files (§4.5.3)
     warnings: int = 0
     errors: int = 0
 
@@ -75,6 +109,8 @@ def crawl(
     extract_favor: str = "balanced",
     min_extract_chars: int = DEFAULT_MIN_EXTRACT_CHARS,
     min_image_bytes: int = DEFAULT_MIN_IMAGE_BYTES,
+    asset_hosts: tuple[str, ...] | None = None,
+    console: Console | None = None,
 ) -> CrawlStats:
     stats = CrawlStats()
 
@@ -108,22 +144,34 @@ def crawl(
         min_image_bytes=min_image_bytes,
     )
 
+    console = console or Console()
+    report = CrawlReport()
+    asset_hosts = frozenset(h.lower() for h in (asset_hosts or ()))
+
     owns_fetcher = fetcher is None
     if fetcher is None:
         fetcher = Fetcher()
 
     try:
         visited: set[str] = set()
-        queue: deque[tuple[str, int]] = deque()
+        # folder -> (source_url, links in document order). Populated as pages
+        # are written; consumed by the finalize pass to emit §4.5.3 sidecars.
+        # The order is the FULL DOM's, captured before extraction discards a
+        # hub page's link list.
+        page_links: dict[Path, tuple[str, list[str]]] = {}
+        # (url, depth, write_into). `write_into` is set for an off-prefix asset
+        # (§4.3.4): it lands in the folder of the page that cited it, never
+        # mirrored at its own URL path.
+        queue: deque[tuple[str, int, Path | None]] = deque()
         for seed in seeds:
             n = normalize_url(seed)
             if n in visited:
                 continue
             visited.add(n)
-            queue.append((seed, 0))
+            queue.append((seed, 0, None))
 
         while queue:
-            url, cur_depth = queue.popleft()
+            url, cur_depth, write_into = queue.popleft()
             _process(
                 url,
                 cur_depth,
@@ -135,11 +183,19 @@ def crawl(
                 fetcher,
                 logger,
                 stats,
+                page_links,
+                console,
+                report,
+                write_into=write_into,
+                asset_hosts=asset_hosts,
                 no_extract=no_extract,
                 extract_favor=extract_favor,
                 min_extract_chars=min_extract_chars,
                 min_image_bytes=min_image_bytes,
             )
+
+        _finalize_layout(kb_root, logger, stats, page_links)
+        console.report(report)
 
         logger.info(
             "crawl.done",
@@ -152,6 +208,9 @@ def crawl(
             skipped_scope=stats.links_skipped_scope,
             skipped_visited=stats.links_skipped_visited,
             skipped_depth=stats.links_skipped_depth,
+            dirs_collapsed=stats.dirs_collapsed,
+            sidecars_written=stats.sidecars_written,
+            assets_offsite=stats.assets_offsite,
             warnings=stats.warnings,
             errors=stats.errors,
         )
@@ -159,6 +218,69 @@ def crawl(
     finally:
         if owns_fetcher:
             fetcher.close()
+
+
+def _finalize_layout(
+    kb_root: Path,
+    logger: HcagLogger,
+    stats: CrawlStats,
+    page_links: dict[Path, tuple[str, list[str]]] | None = None,
+) -> None:
+    """Flatten leaf directories, write link-order sidecars, assert the invariant.
+
+    Runs once, after the traversal, because whether a page has children is only
+    knowable when the crawl is done (§4.5.2), and a sidecar describes the tree
+    as it finally stands (§4.5.3).
+    """
+
+    def _log(directory: Path, md_path: Path, renamed: list[str]) -> None:
+        logger.debug(
+            "crawl.layout.collapsed",
+            directory=str(directory),
+            output_path=str(md_path),
+            images_renamed=len(renamed),
+        )
+
+    stats.dirs_collapsed = collapse_leaf_dirs(kb_root, on_collapse=_log)
+
+    for folder, (source_url, links) in sorted((page_links or {}).items()):
+        recorded = write_link_order(folder, source_url, links)
+        if recorded is None:
+            continue  # collapsed to a leaf: no children, nothing to order
+        stats.sidecars_written += 1
+        logger.debug(
+            "crawl.layout.link_order",
+            folder=str(folder),
+            source_url=source_url,
+            recorded=len(recorded),
+            links_seen=len(links),
+        )
+        if not recorded:
+            # The hub's link list did not survive, AND the full-DOM order found
+            # no in-folder children — `preprocess` will fall back to
+            # alphabetical for this packet (§3.4.3).
+            stats.warnings += 1
+            logger.warn(
+                "crawl.layout.link_order_empty",
+                folder=str(folder),
+                source_url=source_url,
+                detail="no linked child pages were written; packet order will be alphabetical",
+            )
+
+    # Postcondition, not a heuristic: the collapse creates `X.md` in the same
+    # operation that removes `X/`, so a surviving pair means the tree is
+    # mis-shaped in exactly the way this layout exists to prevent — and
+    # `hcag preprocess` would build packets on top of it.
+    collisions = find_layout_collisions(kb_root)
+    if collisions:
+        stats.errors += len(collisions)
+        for directory in collisions:
+            logger.error(
+                "crawl.layout.invariant_violated",
+                directory=str(directory),
+                sibling=str(directory.parent / f"{directory.name}.md"),
+                detail="a directory must not sit beside a same-named .md file",
+            )
 
 
 def _process(
@@ -172,16 +294,23 @@ def _process(
     fetcher: FetcherProtocol,
     logger: HcagLogger,
     stats: CrawlStats,
+    page_links: dict[Path, tuple[str, list[str]]],
+    console: Console,
+    report: CrawlReport,
     *,
+    write_into: Path | None = None,
+    asset_hosts: frozenset[str] = frozenset(),
     no_extract: bool,
     extract_favor: str,
     min_extract_chars: int,
     min_image_bytes: int,
 ) -> None:
+    console.fetching(url, cur_depth, "pdf" if write_into is not None else "html")
     try:
         result = fetcher.get(url)
     except Exception as e:
         logger.error("crawl.fetch.failed", url=url, depth=cur_depth, error=str(e))
+        console.failed(url, "err")
         stats.errors += 1
         return
 
@@ -189,10 +318,17 @@ def _process(
 
     if result.status_code >= 400:
         logger.warn("crawl.fetch.non_2xx", url=url, status=result.status_code)
+        console.failed(url, str(result.status_code))
+        report.skip("non-2xx", url, detail=str(result.status_code))
         stats.warnings += 1
         return
 
     md_path, doc_basename = url_to_output_paths(url, kb_root)
+    if write_into is not None:
+        # §4.3.4/§4.5: the asset inherits the topic of the page that cited it.
+        # Its own path is where a CMS filed it, not what it is about.
+        md_path = _asset_target(write_into, md_path.parent.name)
+        doc_basename = md_path.stem
 
     if result.content_type in HTML_TYPES:
         try:
@@ -232,11 +368,31 @@ def _process(
                 tables=converted.feature_counts.get("tables", 0),
                 elapsed_ms=result.elapsed_ms,
             )
+            # Extraction can "succeed" and still drop half the article: the
+            # min_extract_chars floor only catches a near-empty result, and a
+            # partial one clears it easily. Retention is the signal that
+            # separates them, so a low ratio is a WARN rather than a number
+            # sitting unread in the INFO line above (§4.7).
+            if converted.retained_pct < LOW_RETENTION_PCT:
+                stats.warnings += 1
+                logger.warn(
+                    "crawl.extract.low_retention",
+                    url=url,
+                    retained_pct=converted.retained_pct,
+                    threshold_pct=LOW_RETENTION_PCT,
+                    markdown_chars=converted.markdown_chars,
+                    text_chars=converted.text_chars,
+                    hint=(
+                        "main content may have been dropped; compare against "
+                        "--no-extract or --favor recall"
+                    ),
+                )
             logger.debug(
                 "crawl.extract.detail",
                 url=url,
                 favor=extract_favor,
                 title_synthesized=converted.title_synthesized,
+                forms_unwrapped=converted.forms_unwrapped,
                 **converted.feature_counts,
             )
         else:
@@ -267,8 +423,11 @@ def _process(
                 fetcher,
                 logger,
                 stats,
+                report,
+                console,
                 source_doc=url,
                 min_image_bytes=min_image_bytes,
+                asset_hosts=asset_hosts,
             )
             if outcome == IMG_SIZE_SKIP:
                 markdown = _remove_image_reference(markdown, local_name)
@@ -277,10 +436,18 @@ def _process(
             md_path, markdown, logger, stats,
             url=url, depth=cur_depth, content_type=result.content_type,
             byte_size=len(result.content), elapsed_ms=result.elapsed_ms,
+            report=report, kind="html",
         )
+        # Retain what the page linked, in document order (§4.5.3). Stage 1 read
+        # the whole DOM, so this survives extraction dropping the link list.
+        page_links[md_path.parent] = (url, list(converted.links))
 
         for link in converted.links:
-            _consider_link(link, cur_depth, max_depth, normalized_seeds, visited, queue, logger, stats, source_doc=url)
+            _consider_link(
+                link, cur_depth, max_depth, normalized_seeds, visited, queue,
+                logger, stats, report,
+                source_doc=url, source_dir=md_path.parent, asset_hosts=asset_hosts,
+            )
 
     elif result.content_type in PDF_TYPES or url.lower().endswith(".pdf"):
         try:
@@ -313,6 +480,7 @@ def _process(
             md_path, markdown, logger, stats,
             url=url, depth=cur_depth, content_type=result.content_type or "application/pdf",
             byte_size=len(result.content), elapsed_ms=result.elapsed_ms,
+            report=report, kind="pdf",
         )
 
         for image in kept_images:
@@ -337,6 +505,7 @@ def _process(
             url=url,
             content_type=result.content_type or "(missing)",
         )
+        report.skip("unsupported-type", url, detail=result.content_type or "(missing)")
         stats.warnings += 1
 
 
@@ -351,6 +520,8 @@ def _write_markdown(
     content_type: str,
     byte_size: int,
     elapsed_ms: int,
+    report: CrawlReport | None = None,
+    kind: str = "html",
 ) -> None:
     try:
         md_path.parent.mkdir(parents=True, exist_ok=True)
@@ -360,6 +531,8 @@ def _write_markdown(
         stats.errors += 1
         return
     stats.pages_written += 1
+    if report is not None:
+        report.include(kind, url)
     logger.info(
         "crawl.page.written",
         url=url,
@@ -378,17 +551,36 @@ def _process_html_image(
     fetcher: FetcherProtocol,
     logger: HcagLogger,
     stats: CrawlStats,
+    report: CrawlReport,
+    console: Console,
     *,
     source_doc: str,
     min_image_bytes: int,
+    asset_hosts: frozenset[str] = frozenset(),
 ) -> str:
     """Fetch an HTML-referenced image, size-check it, write on success.
+
+    Images have always been exempt from prefix scope — an embedded image is
+    content of the page, not a page of its own — which §4.3.4 now states
+    explicitly and extends to linked PDFs. The *host* bound applies here too.
 
     Returns one of ``IMG_KEPT`` (written to disk), ``IMG_SIZE_SKIP`` (dropped
     by the ``--min-image-bytes`` filter — caller should strip its Markdown
     reference), or ``IMG_FAILED`` (fetch/status/write failed — reference is
     left alone per pre-existing behavior; a WARN is logged).
     """
+    if not asset_host_allowed(remote_url, source_doc, asset_hosts):
+        logger.warn(
+            "crawl.asset.skipped_host",
+            url=remote_url,
+            source=source_doc,
+            host=(urlparse(remote_url).hostname or ""),
+        )
+        report.skip("asset-host-not-allowed", remote_url)
+        stats.warnings += 1
+        return IMG_FAILED
+
+    console.fetching(remote_url, 0, "img")
     try:
         result = fetcher.get(remote_url)
     except Exception as e:
@@ -416,6 +608,7 @@ def _process_html_image(
             byte_size=len(result.content),
             threshold=min_image_bytes,
         )
+        report.skip("image-too-small", remote_url, detail=f"{len(result.content)}B")
         return IMG_SIZE_SKIP
 
     target = doc_dir / local_name
@@ -434,6 +627,7 @@ def _process_html_image(
         return IMG_FAILED
 
     stats.images_extracted += 1
+    report.include("img", remote_url)
     logger.info(
         "crawl.image.extract",
         source=source_doc,
@@ -443,18 +637,75 @@ def _process_html_image(
     return IMG_KEPT
 
 
+def _asset_target(folder: Path, stem: str) -> Path:
+    """Where an off-prefix asset lands inside its citing page's folder (§4.5).
+
+    Collisions with an existing sibling are disambiguated rather than
+    overwritten — an asset must never displace a crawled page.
+    """
+    candidate = folder / f"{stem}.md"
+    n = 2
+    while candidate.exists():
+        candidate = folder / f"{stem}-{n}.md"
+        n += 1
+    return candidate
+
+
 def _consider_link(
     link: str,
     cur_depth: int,
     max_depth: int,
     normalized_seeds: list[str],
     visited: set[str],
-    queue: deque[tuple[str, int]],
+    queue: deque[tuple[str, int, Path | None]],
     logger: HcagLogger,
     stats: CrawlStats,
+    report: CrawlReport,
     *,
     source_doc: str,
+    source_dir: Path,
+    asset_hosts: frozenset[str] = frozenset(),
 ) -> None:
+    try:
+        n = normalize_url(link)
+    except ValueError:
+        logger.warn("crawl.link.unparseable", url=link, source=source_doc)
+        report.skip("unparseable", link)
+        stats.warnings += 1
+        return
+
+    # §4.3.4 — an asset referenced by an in-scope page is content *of* that
+    # page. Prefix scope answers "which pages is this crawl about" and is the
+    # wrong question for a file the CMS filed under its own media root; the
+    # depth limit is likewise wrong, because an asset is terminal and cannot
+    # expand the frontier. The host restriction is NOT lifted.
+    if is_asset_url(link):
+        if not asset_host_allowed(link, source_doc, asset_hosts):
+            logger.warn(
+                "crawl.asset.skipped_host",
+                url=link,
+                source=source_doc,
+                host=(urlparse(link).hostname or ""),
+            )
+            report.skip("asset-host-not-allowed", link)
+            stats.warnings += 1
+            return
+        if n in visited:
+            report.skip("already-visited", link)
+            stats.links_skipped_visited += 1
+            return
+        visited.add(n)
+        stats.assets_offsite += 1
+        logger.info(
+            "crawl.asset.offsite_fetched",
+            url=link,
+            source=source_doc,
+            kind="pdf",
+            folder=str(source_dir),
+        )
+        queue.append((link, cur_depth, source_dir))
+        return
+
     next_depth = cur_depth + 1
     if next_depth > max_depth:
         logger.debug(
@@ -463,14 +714,8 @@ def _consider_link(
             url=link,
             source=source_doc,
         )
+        report.skip("depth-limit", link)
         stats.links_skipped_depth += 1
-        return
-
-    try:
-        n = normalize_url(link)
-    except ValueError:
-        logger.warn("crawl.link.unparseable", url=link, source=source_doc)
-        stats.warnings += 1
         return
 
     if not any(n.startswith(seed) for seed in normalized_seeds):
@@ -480,10 +725,12 @@ def _consider_link(
             url=link,
             source=source_doc,
         )
+        report.skip("out-of-scope", link)
         stats.links_skipped_scope += 1
         return
 
     if n in visited:
+        report.skip("already-visited", link)
         logger.debug(
             "crawl.link.skipped",
             disposition="skipped:visited",
@@ -494,7 +741,7 @@ def _consider_link(
         return
 
     visited.add(n)
-    queue.append((link, next_depth))
+    queue.append((link, next_depth, None))
     logger.debug(
         "crawl.link.queued",
         url=link,

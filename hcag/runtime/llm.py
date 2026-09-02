@@ -46,6 +46,15 @@ class LLMResponse:
     tool_calls: list[ToolCall]
     raw: Any = None
 
+    #: Model string the provider actually served, when it reports one.
+    model: str = ""
+    #: Token accounting, normalized across providers. Keys are the GenAI
+    #: semantic-convention suffixes: input_tokens, output_tokens,
+    #: cache_read_input_tokens, cache_creation_input_tokens. Adapters that
+    #: cannot report usage leave this empty; the tracer just omits the
+    #: attributes (§2.11.2).
+    usage: dict[str, int] = field(default_factory=dict)
+
 
 # --- Protocol -------------------------------------------------------------
 
@@ -144,7 +153,55 @@ class LiteLLMAdapter:
                     arguments=_loads_args(args),
                 )
             )
-        return LLMResponse(text=text, tool_calls=tool_calls, raw=raw)
+        return LLMResponse(
+            text=text,
+            tool_calls=tool_calls,
+            raw=raw,
+            model=str(getattr(raw, "model", "") or ""),
+            usage=_extract_usage(raw),
+        )
+
+
+def _extract_usage(raw: Any) -> dict[str, int]:
+    """Pull token counts off a LiteLLM response into GenAI-convention keys.
+
+    Every field is optional: providers differ, and the cache counters in
+    particular only appear when prompt caching is active (§2.12). Anything
+    missing is simply absent from the dict rather than reported as zero, so a
+    trace never claims "0 cache reads" when the truth is "not reported".
+    """
+    usage = getattr(raw, "usage", None)
+    if usage is None:
+        return {}
+
+    def _get(*names: str) -> int | None:
+        for name in names:
+            value = getattr(usage, name, None)
+            if value is None and isinstance(usage, dict):
+                value = usage.get(name)
+            if isinstance(value, (int, float)):
+                return int(value)
+        return None
+
+    out: dict[str, int] = {}
+    for key, names in (
+        ("input_tokens", ("prompt_tokens", "input_tokens")),
+        ("output_tokens", ("completion_tokens", "output_tokens")),
+        ("total_tokens", ("total_tokens",)),
+        ("cache_read_input_tokens", ("cache_read_input_tokens",)),
+        ("cache_creation_input_tokens", ("cache_creation_input_tokens",)),
+    ):
+        value = _get(*names)
+        if value is not None:
+            out[key] = value
+
+    # Anthropic reports cache counters in a nested details object.
+    details = getattr(usage, "prompt_tokens_details", None)
+    if details is not None and "cache_read_input_tokens" not in out:
+        cached = getattr(details, "cached_tokens", None)
+        if isinstance(cached, (int, float)):
+            out["cache_read_input_tokens"] = int(cached)
+    return out
 
 
 # --- Content-block helpers for tool results ------------------------------

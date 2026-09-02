@@ -10,6 +10,7 @@ Both agents implement ``run_turn(str) -> str`` so the HTTP route is agent-agnost
 
 from __future__ import annotations
 
+import inspect
 import os
 import threading
 import time
@@ -88,8 +89,10 @@ def _make_hcag_factory(agent_toml: Path | None, *, verbose: bool = False):
     # is attached exactly once and every per-session AgentRuntime shares it.
     shared_logger = build_logger(cfg.observability.log, name="hcag.runtime", console=verbose)
 
-    def _session() -> _AgentLike:
-        runtime = AgentRuntime(cfg=cfg, logger=shared_logger)
+    def _session(session_id: str | None = None) -> _AgentLike:
+        # The session id rides onto every span so a tracing backend groups a
+        # conversation's turns instead of showing them as unrelated traces.
+        runtime = AgentRuntime(cfg=cfg, logger=shared_logger, session_id=session_id)
         runtime.bootstrap()
         return runtime
 
@@ -226,11 +229,25 @@ def create_app(
         allow_headers=["*"],
     )
 
+    accepts_session_id = bool(inspect.signature(session_factory).parameters)
+
+    def _new_agent(session_id: str) -> _AgentLike:
+        """Build a session's agent, passing the id when the factory takes one.
+
+        The RAG factory does not — it has no tracing session concept — so the
+        argument is offered rather than required. Decided from the signature
+        rather than by catching TypeError, which would swallow a genuine
+        TypeError raised inside the factory and silently retry.
+        """
+        if accepts_session_id:
+            return session_factory(session_id)
+        return session_factory()
+
     def get_agent(session_id: str) -> _AgentLike:
         with lock:
             entry = sessions.get(session_id)
             if entry is None:
-                entry = _SessionEntry(session_factory())
+                entry = _SessionEntry(_new_agent(session_id))
                 sessions[session_id] = entry
             entry.touched = time.monotonic()
             return entry.agent

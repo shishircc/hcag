@@ -64,6 +64,21 @@ temperature = 0.0
 # Observability — two independent layers.
 # ------------------------------------------------------------------------------
 
+# What rides on the spans. Prompts carry KB content and user questions, so
+# exporting them to a third party is a decision, not a detail — but a trace
+# without input and output answers almost nothing. On by default; turn it off
+# and span structure, model, and token counts still export, so cost and latency
+# stay observable while the content stays in-process.
+[observability]
+capture_content   = true
+# Sized so a real prompt -- catalog plus a loaded active set -- fits whole: a
+# trace exists to answer "did the model actually have the right information?",
+# and a payload cut short cannot answer that. When a payload does overflow, the
+# END is preserved (loaded packets and the question) and the bulky catalog is
+# what shrinks; every reduction is marked with the original size.
+max_content_chars = 250000   # one payload
+max_message_chars = 25000    # one message inside a payload
+
 # JSON-lines file log (always on).
 [observability.log]
 file_path        = "./hcag-agent.log"
@@ -78,40 +93,54 @@ rotation_keep    = 5
 # backend, point otel.endpoint at a collector and let it fan out.
 # ------------------------------------------------------------------------------
 
-# --- Form 1: direct Langfuse (simplest) ---
-# Uncommenting this block turns tracing on. HCAG derives the OTLP endpoint
-# (<host>/api/public/otel), pins http/protobuf, and builds the Basic auth
-# header from the key pair — no URL path or base64 to assemble by hand.
+# --- Form 1: direct Langfuse (active in this example) ---
+# HCAG derives the OTLP endpoint (<host>/api/public/otel/v1/traces), pins
+# http/protobuf, and builds the Basic auth header from the key pair — no URL
+# path and no base64 to assemble by hand. Note the /v1/traces suffix: OTLP/HTTP
+# puts each signal on its own path, and an endpoint passed to the exporter in
+# code is used verbatim, so a bare base URL POSTs to a route that does not
+# exist and every batch fails with "404, reason: Not Found".
 #
-# Keys are read from the ENVIRONMENT, never from this file. Writing
-# `public_key = "pk-..."` here is a validation error, not a silent no-op, so a
-# secret cannot be committed by accident. A key env var that is unset is a
-# startup error too: observability that looks configured but exports nothing is
-# exactly what this form exists to prevent.
+# BECAUSE THIS BLOCK IS PRESENT, TRACING IS ON, and both env vars below must be
+# set before the agent will start:
 #
-# [observability.langfuse]
-# host           = "https://cloud.langfuse.com"   # or https://us.cloud.langfuse.com,
-#                                                 # or your self-hosted base URL
-# public_key_env = "LANGFUSE_PUBLIC_KEY"
-# secret_key_env = "LANGFUSE_SECRET_KEY"
+#     export LANGFUSE_PUBLIC_KEY=pk-lf-...
+#     export LANGFUSE_SECRET_KEY=sk-lf-...
+#
+# An unset key is a startup error rather than a silent downgrade — observability
+# that looks configured but exports nothing is exactly what this form prevents.
+# To run without Langfuse, comment the three lines below out; with no trace
+# destination configured at all, tracing is a no-op and nothing leaves the
+# process.
+#
+# Keys are read from the ENVIRONMENT, never from this file: writing
+# `public_key = "pk-..."` here is a validation error, not a silently ignored
+# field, so a secret cannot be committed by accident.
+[observability.langfuse]
+host           = "http://localhost:3000"   # or https://us.cloud.langfuse.com,
+                                                # or your self-hosted base URL
+public_key_env = "LANGFUSE_PUBLIC_KEY"
+secret_key_env = "LANGFUSE_SECRET_KEY"
 
 # --- Form 2: generic OTLP — activated only when `endpoint` is set. ---
 # Point at AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb, or any
 # OTLP-compatible receiver. (Langfuse also works here; Form 1 is the same thing
 # with the endpoint path and auth header filled in for you.)
-[observability.otel]
-#  endpoint     = "https://localhost:3000/api/public/otel"
-#  protocol     = "http/protobuf"
-#  service_name = "hcag-agent"
-
-# endpoint     = "https://cloud.langfuse.com/api/public/otel"
-# protocol     = "http/protobuf"                       # or "grpc"
-# service_name = "hcag-agent"
-# headers      = { Authorization = "Basic <base64(pk:sk)>" }   # prefer Form 1
-
-# --- AWS CloudWatch example (via local ADOT collector) ---
+#
+# Leave this commented while Form 1 is active: configuring BOTH is a startup
+# error, on purpose. To send to more than one backend, point otel.endpoint at a
+# collector and let the collector fan out.
+#
+# Give the BASE url; HCAG appends /v1/traces for http/protobuf (see above).
 # [observability.otel]
-# endpoint     = "http://localhost:4318"
-# protocol     = "http/protobuf"
+# endpoint     = "http://localhost:4318"    # e.g. a local ADOT collector -> CloudWatch
+# protocol     = "http/protobuf"            # or "grpc"
 # service_name = "hcag-agent"
+# headers      = { Authorization = "Bearer <token>" }
+#
+# Langfuse the long way, for reference — equivalent to Form 1 above:
+# [observability.otel]
+# endpoint     = "https://cloud.langfuse.com/api/public/otel"
+# protocol     = "http/protobuf"
+# headers      = { Authorization = "Basic <base64(pk:sk)>" }
 

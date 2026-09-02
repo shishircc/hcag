@@ -60,7 +60,7 @@ def test_langfuse_derives_endpoint_protocol_and_auth(monkeypatch) -> None:
 
     assert dest is not None
     assert dest.source == "langfuse"
-    assert dest.endpoint == "https://cloud.langfuse.com" + LANGFUSE_OTLP_PATH
+    assert dest.endpoint.startswith("https://cloud.langfuse.com" + LANGFUSE_OTLP_PATH)
     # Langfuse's OTLP ingest is HTTP; otel.protocol is not consulted.
     assert dest.protocol == "http/protobuf"
     token = base64.b64encode(b"pk-lf-1:sk-lf-2").decode()
@@ -78,7 +78,9 @@ def test_langfuse_protocol_is_pinned_even_if_otel_protocol_says_grpc(monkeypatch
 def test_self_hosted_host_and_trailing_slash(monkeypatch) -> None:
     _keys(monkeypatch)
     obs = ObservabilityConfig(langfuse=LangfuseConfig(host="https://lf.internal:3000/"))
-    assert resolve_destination(obs).endpoint == "https://lf.internal:3000" + LANGFUSE_OTLP_PATH
+    assert resolve_destination(obs).endpoint.startswith(
+        "https://lf.internal:3000" + LANGFUSE_OTLP_PATH
+    )
 
 
 def test_custom_key_env_vars(monkeypatch) -> None:
@@ -175,7 +177,7 @@ def test_build_tracer_logs_the_destination_without_the_auth_token(monkeypatch) -
     event, fields = log.events[0]
     assert event == "tracing.enabled"
     assert fields["source"] == "langfuse"
-    assert fields["endpoint"].endswith(LANGFUSE_OTLP_PATH)
+    assert LANGFUSE_OTLP_PATH in fields["endpoint"]
     # The Basic token must never reach the log.
     blob = repr(log.events)
     assert "Authorization" not in blob
@@ -205,3 +207,50 @@ def test_agent_runtime_surfaces_a_missing_key_at_construction(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="LANGFUSE_PUBLIC_KEY"):
         AgentRuntime(cfg=cfg, llm=object())
+
+
+# --- OTLP signal path (the "404, reason: Not Found" bug) -------------------
+
+
+def test_langfuse_endpoint_includes_the_traces_signal_path(monkeypatch) -> None:
+    """The OTLP/HTTP exporter uses an explicit `endpoint` verbatim — it appends
+    /v1/traces only for the env-var fallback. Posting to Langfuse's documented
+    base URL therefore 404s; the traces path has to be on the URL we build."""
+    _keys(monkeypatch)
+    dest = resolve_destination(ObservabilityConfig(langfuse=LangfuseConfig()))
+    assert dest.endpoint == "https://cloud.langfuse.com/api/public/otel/v1/traces"
+
+
+def test_generic_http_endpoint_gets_the_traces_path_too(monkeypatch) -> None:
+    """Same trap for a collector configured with its base URL."""
+    obs = ObservabilityConfig(otel=OTELConfig(endpoint="http://localhost:4318"))
+    assert resolve_destination(obs).endpoint == "http://localhost:4318/v1/traces"
+
+
+@pytest.mark.parametrize(
+    "given",
+    [
+        "http://localhost:4318/v1/traces",
+        "http://localhost:4318/v1/traces/",
+        "http://localhost:4318/",
+        "http://localhost:4318",
+    ],
+)
+def test_traces_path_is_not_doubled_or_dropped(given: str) -> None:
+    """A value copied from vendor docs works whether or not it names the signal."""
+    obs = ObservabilityConfig(otel=OTELConfig(endpoint=given))
+    assert resolve_destination(obs).endpoint == "http://localhost:4318/v1/traces"
+
+
+def test_grpc_endpoint_is_left_alone() -> None:
+    """gRPC has no path semantics; appending one would break it."""
+    obs = ObservabilityConfig(otel=OTELConfig(endpoint="localhost:4317", protocol="grpc"))
+    assert resolve_destination(obs).endpoint == "localhost:4317"
+
+
+def test_self_hosted_langfuse_also_gets_the_signal_path(monkeypatch) -> None:
+    _keys(monkeypatch)
+    obs = ObservabilityConfig(langfuse=LangfuseConfig(host="https://lf.internal:3000/"))
+    assert resolve_destination(obs).endpoint == (
+        "https://lf.internal:3000/api/public/otel/v1/traces"
+    )

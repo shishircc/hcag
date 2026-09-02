@@ -139,20 +139,23 @@ def test_empty_request_is_not_treated_as_redundant(tmp_path: Path) -> None:
 # --- Tool + prompt wording (§2.7.1 enforcement layers 1 and 2) --------------
 
 
-def test_tool_description_leads_with_the_negative_case() -> None:
+def test_tool_description_states_both_rules() -> None:
     desc = next(
         t["function"]["description"]
         for t in TOOL_DEFS
         if t["function"]["name"] == "check_and_load_kb"
     )
-    assert desc.lstrip().startswith("MOST TURNS NEED NO CALL")
+    # Grounding: the catalog routes, it never answers.
+    assert "never itself an answer" in desc
+    # Reload discipline: the default is no call.
+    assert "MOST TURNS NEED NO CALL" in desc
     assert "already active is an error" in desc
 
 
 def test_system_prompt_carries_the_decision_rule() -> None:
     prompt = AgentConfig(kb_root="/tmp/x").system_prompt_prefix
     assert "WHEN TO LOAD" in prompt
-    assert "Most turns need NO tool call" in prompt
+    assert "not an acknowledgement of a turn" in prompt
     assert "never needs re-requesting" in prompt
     # The chat UI renders Markdown (§10.3), so the model is told to use it.
     assert "Markdown" in prompt
@@ -235,3 +238,46 @@ def test_runtime_surfaces_the_note_and_counts_the_call(tmp_path: Path) -> None:
     assert any(getattr(r, "event", None) == "check_and_load_kb.redundant" for r in cap.records)
     ends = [r for r in cap.records if getattr(r, "event", None) == "turn.end"]
     assert ends and ends[-1].redundant_rate == 1.0
+
+
+# --- Grounding: the catalog routes, packet content answers -----------------
+
+
+def test_system_prompt_forbids_answering_from_the_catalog() -> None:
+    """The catalog's descriptions are build-tool summaries, not evidence. A
+    model that answers from them produces confident, unsourced answers that
+    look grounded — the worst failure this KB design can have."""
+    prompt = AgentConfig(kb_root="/tmp/x").system_prompt_prefix
+    assert "GROUNDING" in prompt
+    assert "NEVER answer from the catalog" in prompt
+    assert "not evidence" in prompt
+    # And says what to do instead of guessing.
+    assert "say you do not" in prompt
+    assert "## Content" in prompt
+
+
+def test_injected_catalog_is_labelled_as_an_index(tmp_path: Path) -> None:
+    """The rule is repeated at the injection point, because a block of
+    plausible prose is otherwise easy to mistake for source material."""
+    from hcag.runtime.agent import AgentRuntime
+
+    root = _kb(tmp_path)
+    cfg = AgentConfig(kb_root=str(root))
+    cfg.observability.log.file_path = str(tmp_path / "a.log")
+    runtime = AgentRuntime(cfg=cfg, llm=_ScriptedLLM())
+    runtime.bootstrap()
+
+    prompt = runtime._history[0].content
+    assert "INDEX ONLY" in prompt
+    assert "Do NOT answer any question from the text below" in prompt
+    assert "nothing above is a source" in prompt
+    # The catalog itself is still there to route with.
+    assert "billing" in prompt
+
+
+def test_voice_prompt_carries_the_same_grounding_rule() -> None:
+    from hcag.voice.config import VoiceAgentConfig
+
+    prompt = VoiceAgentConfig(kb_root="/tmp/x").system_prompt_prefix
+    assert "INDEX, not a source" in prompt
+    assert "never evidence" in prompt

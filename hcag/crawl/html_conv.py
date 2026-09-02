@@ -6,7 +6,10 @@ Three stages, per §4.4.1:
    the traversal loop and so in-body links survive as absolute URLs), promote
    lazy-loading image attributes into ``src``, and rewrite every ``<img src>``
    in place to a local filename of the form ``<doc-basename>-<remote-basename>``
-   (with in-doc collision disambiguation). Nothing is removed here.
+   (with in-doc collision disambiguation). No *content* is removed; the one
+   structural change is unwrapping a ``<form>`` that wraps the whole page (an
+   ASP.NET WebForms artifact), because stage 2 discards form subtrees as chrome
+   and would otherwise discard the article with it.
 2. **Reading-mode extraction (trafilatura).** The mutated DOM is handed to
    ``trafilatura.extract()``, which returns Markdown for the page's main
    content only — navigation, breadcrumbs, sidebars, cookie banners, comment
@@ -38,6 +41,10 @@ FAVOR_CHOICES = ("balanced", "precision", "recall")
 # Attributes lazy-loading templates use instead of a real `src` (§4.4.1 stage 1).
 _LAZY_SRC_ATTRS = ("data-src", "data-original", "data-lazy-src")
 
+# A <form> holding at least this share of the body's text is a page wrapper,
+# not a form (§4.4.1 stage 1).
+_FORM_WRAPPER_TEXT_SHARE = 0.5
+
 # Reasons a page took the whole-DOM path (§4.4.1 stage 3).
 FALLBACK_NO_OUTPUT = "no_output"
 FALLBACK_TOO_SHORT = "too_short"
@@ -57,6 +64,9 @@ class ConvertedHtml:
     markdown_chars: int = 0
     text_chars: int = 0          # DOM visible-text length — denominator of retained_pct
     title_synthesized: bool = False
+    # Page-wrapping <form> tags removed in stage 1 (§4.4.1) — a WebForms
+    # artifact that would otherwise take the article down with it.
+    forms_unwrapped: int = 0
     feature_counts: dict[str, int] = field(default_factory=dict)
 
     @property
@@ -184,6 +194,37 @@ def _extract_main_content(html_text: str, favor: str) -> str | None:
     )
 
 
+def unwrap_form_wrappers(soup: BeautifulSoup) -> int:
+    """Unwrap any ``<form>`` that contains the bulk of the page's text.
+
+    ASP.NET WebForms emits ``<form id="mainform" runat="server">`` around the
+    *entire* body — it is a framework artifact, not a form a reader would ever
+    fill in. Reading-mode extractors discard form subtrees as chrome (search
+    boxes, newsletter signups, comment boxes), which on such a site discards
+    the article: trafilatura's balanced mode returned 10.5k characters of a
+    24k-character page and silently dropped its principal tables.
+
+    Detecting this by text share rather than by attribute keeps real forms
+    working as chrome. A genuine search box holds a rounding error's worth of
+    the body's text; a wrapper holds nearly all of it. Only the tag is removed
+    — every child, and the tag's own position in the tree, is preserved.
+
+    Returns the number of forms unwrapped, for the caller to log.
+    """
+    body = soup.body or soup
+    total = len(body.get_text(" ", strip=True))
+    if total == 0:
+        return 0
+    unwrapped = 0
+    # Materialize first: unwrap() mutates the tree being walked.
+    for form in list(soup.find_all("form")):
+        share = len(form.get_text(" ", strip=True)) / total
+        if share >= _FORM_WRAPPER_TEXT_SHARE:
+            form.unwrap()
+            unwrapped += 1
+    return unwrapped
+
+
 def _whole_dom_markdown(soup: BeautifulSoup) -> str:
     md = markdownify(str(soup), heading_style="ATX")
     return _tidy(md)
@@ -281,6 +322,7 @@ def convert_html(
 
     links = _collect_links(soup, base_url)
     images = _rewrite_images(soup, base_url, doc_basename)
+    forms_unwrapped = unwrap_form_wrappers(soup)
     html_text = str(soup)
     text_chars = len(soup.get_text(" ", strip=True))
 
@@ -318,6 +360,7 @@ def convert_html(
         fallback_reason=fallback_reason,
         markdown_chars=len(markdown),
         text_chars=text_chars,
+        forms_unwrapped=forms_unwrapped,
         title_synthesized=title_synthesized,
         feature_counts=_count_features(markdown),
     )
