@@ -133,6 +133,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
 - [Part 6 — The `evalgen` CLI Tool](#part-6--the-evalgen-cli-tool)
   - [6.1 Purpose](#61-purpose)
   - [6.2 KB Input Model](#62-kb-input-model)
+    - [6.2.1 Paragraphs — the grounding unit](#621-paragraphs--the-grounding-unit)
   - [6.3 Invocation](#63-invocation)
   - [6.4 Question Types](#64-question-types)
     - [6.4.1 `simple`](#641-simple)
@@ -1603,7 +1604,13 @@ Every prompt the system can load is declared in one place, with its required pla
 | `preprocess.folder_metadata` | build-time folder summary (§3.4.4) | `$sections`, `$scope` |
 | `preprocess.scope_own` | scoping clause for a leaf/mixed folder (§3.4.4) | — |
 | `preprocess.scope_branch` | scoping clause for a taxonomy node (§3.4.4) | — |
-| `evalgen.*`, `eval.judge` | question generation and the LLM-judge rubric (Parts 6, 7) | per prompt |
+| `evalgen.simple` | FAQ-style question (§6.4.1) | `$content` |
+| `evalgen.medium` | single-paragraph reasoning question (§6.4.2) | `$packet_id`, `$paragraph` |
+| `evalgen.complex` | whole-packet reasoning question (§6.4.3) | `$packet_id`, `$paragraphs` |
+| `evalgen.hard1` | cross-packet question (§6.4.4) | `$packet_a_id`, `$packet_b_id`, `$paragraphs_a`, `$paragraphs_b` |
+| `evalgen.hard2` | multimodal question (§6.4.5) | `$packet_id`, `$content` |
+
+What counts as a "hard" question about work-pass rules is a domain judgement, so `evalgen`'s wording belongs in files for the same reason the agent's does. **`eval`'s LLM-judge rubric (§7.5) is not yet in the registry** — it remains in `hcag/eval/` and is the last piece of model-facing text still written in Python.
 
 `$packets` and `$today` are available to any prompt and required by none — a deployment that wants them writes them into its file, and one that does not simply omits them.
 
@@ -2323,6 +2330,12 @@ Measured on that document: 32 GFM tables recovered where the previous path produ
 Images referenced by the **main content** of HTML pages and images embedded inside PDF documents are extracted and saved as separate files alongside the Markdown output (§4.5). Every image reference in the generated Markdown points at the local saved file rather than the original remote URL, so the Markdown renders correctly offline.
 
 Images are content of their containing document, not link targets: they are neither depth-counted nor prefix-checked.
+
+**A PDF's images are deduplicated by content.** A letterhead, seal, or footer rule placed on every page of a PDF is *one* image referenced many times, not many images. Extraction sees it once per page, so the naive rule — dedupe by the name the PDF gives each placement — writes N byte-identical copies. Measured on `mom.gov.sg`: one 18 KB graphic written 10 times from a single document, and **46 duplicate copies across 94 images** corpus-wide, one of them repeated 25 times.
+
+The cost is not only disk. Each copy becomes its own multimodal content block when the packet is loaded (§2.6), so a ten-page PDF spends ten images' worth of the token budget showing the model the same logo ten times; and `evalgen`'s multimodal question kind (§6.4.5) samples an image per packet, so roughly half its samples would land on a decorative graphic that cannot ground a question about anything.
+
+So images are hashed as they are extracted and each distinct image is **written once**, with every page that carries it referencing the same file. Deduplication is per document rather than corpus-wide: two PDFs that happen to share a logo still get a copy each, because a packet must be self-contained (D2) and cross-document sharing would make one packet's assets depend on another's presence.
 
 **Only what survives extraction is fetched.** Stage 1 (§4.4.1) assigns a local name to every `<img>` in the DOM, but the fetch happens only for the names that still appear in the extracted Markdown. Header logos, nav icons, social badges, and footer seals are dropped by extraction and therefore cost zero HTTP requests — a large bandwidth saving on top of the correctness one. On a fallback page (§4.4.1 stage 3) and under `--no-extract`, the whole-DOM Markdown references every `<img>`, so every image is fetched.
 
@@ -3142,6 +3155,22 @@ The tool is a **question / expected-answer generator only**. It does not run the
 
 `evalgen` reads folders as-is; it does not modify the KB. Source `.md` files outside `compiled.md` and images outside `assets/` are ignored — the tool operates only on the artifacts the runtime actually serves.
 
+### 6.2.1 Paragraphs — the grounding unit
+
+Several question kinds are grounded in a *paragraph* (§6.4.2, §6.4.3, §6.4.4), so what counts as one decides what a question can be about. Paragraphs are the blank-line-separated blocks of a folder's `## Content`, filtered by `generation.paragraph_min_chars`.
+
+Blank-line splitting is right for prose and needs exactly one repair for PDF-derived content, which since §4.4.2 makes up the majority of some KBs. `pymupdf4llm` sometimes emits a whole logical row as a **single table cell**, so a paragraph of real prose arrives fenced in pipes:
+
+```
+| Eligible job titles Novel food biotechnologist Job duties Develop bioprocess … |
+```
+
+That is not a table and not a fragment of one — no delimiter row, no second cell — but it reads as a broken table row, and a question grounded in it inherits the confusion. Such a block is unwrapped to plain text. **Only the unambiguous case**: one line, no delimiter row, no internal `|`. Anything with real cell boundaries is left exactly as it is, because guessing where a row's columns were is how a table stops being ugly and starts being wrong.
+
+**Multi-row tables are left whole**, header included, and are legitimate grounding units — a salary band table is often the most answerable thing in a packet.
+
+**No header reattachment, deliberately.** The obvious next worry is a table split across a page boundary, whose continuation would arrive as headerless rows meaning nothing on their own. That was measured rather than assumed: on a 19-packet `mom.gov.sg` KB, **every** headerless table block was a single-cell paragraph and **none** was a continuation — `pymupdf4llm` repeats the header on each page. Machinery to carry headers forward would be speculative, and speculative repair of table structure is the failure mode this section is trying to avoid. If a corpus is found where continuations do occur, that measurement is the thing to redo first.
+
 ## 6.3 Invocation
 
 ```
@@ -3212,7 +3241,7 @@ Each row's `kind` column carries one of five string tags corresponding to how th
 ### 6.4.5 `hard-2` (multimodal)
 
 - **Definition.** Requires an **image from the packet's `assets/` folder to be read together with the packet markdown**. The image must hold information **essential** to the answer, so that the question cannot be answered from the markdown alone and the model must perform multimodal reasoning across text and image.
-- **Source.** One packet whose `assets/` folder contains at least one image. Only packets with images are eligible; packets with no assets are silently skipped for this kind.
+- **Source.** One packet whose `assets/` folder contains at least one image. Only packets with images are eligible; packets with no assets are silently skipped for this kind. Sampling is meaningful only because a PDF's repeated letterheads are collapsed to one file at crawl time (§4.4.3) — without that, roughly half of a PDF-heavy packet's images are the same decorative graphic, and a random draw grounds the question in nothing.
 - **Expected answer.** A short answer whose key fact is visually present in the image (a label on a diagram, a value in a chart, a state in a state-machine figure, a component in a screenshot) and only weakly implied — or not implied at all — by the surrounding markdown.
 - **Signal.** Measures the multimodal loading path (§2.6) — whether images are actually attached to the LLM call and whether the model uses them.
 - **Availability.** If the requested `--hard-2` count exceeds the number of image-bearing packets, `evalgen` generates as many as it can and logs a `WARN` indicating the shortfall. It does **not** substitute another kind to reach the requested total.

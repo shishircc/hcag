@@ -18,6 +18,7 @@ by construction (§4.4.2).
 
 from __future__ import annotations
 
+import hashlib
 from dataclasses import dataclass, field
 
 
@@ -76,6 +77,13 @@ def convert_pdf(pdf_bytes: bytes, doc_basename: str) -> ConvertedPdf:
         lines: list[str] = []
         images: list[PdfImage] = []
         taken: set[str] = set()
+        # Content hash -> filename already emitted for this document. A
+        # letterhead placed on every page is ONE image referenced ten times,
+        # not ten images: deduping by name alone (the previous behaviour) wrote
+        # ten byte-identical copies, which inflate the packet, ride into the
+        # model's context as ten multimodal blocks, and give `evalgen` a 1-in-2
+        # chance of grounding a multimodal question in a decorative graphic.
+        by_content: dict[str, str] = {}
 
         for page_idx in range(1, doc.page_count + 1):
             text = ""
@@ -89,6 +97,13 @@ def convert_pdf(pdf_bytes: bytes, doc_basename: str) -> ConvertedPdf:
                 lines.append("")
 
             for name, data in _page_images(doc, page_idx - 1):
+                digest = hashlib.md5(data).hexdigest()
+                existing = by_content.get(digest)
+                if existing is not None:
+                    # Same bytes, later page: reference it again, write it once.
+                    lines.append(f"![]({existing})")
+                    lines.append("")
+                    continue
                 stem, ext = name
                 candidate = f"{doc_basename}-{stem}{ext}"
                 n = 2
@@ -96,6 +111,7 @@ def convert_pdf(pdf_bytes: bytes, doc_basename: str) -> ConvertedPdf:
                     candidate = f"{doc_basename}-{stem}-{n}{ext}"
                     n += 1
                 taken.add(candidate)
+                by_content[digest] = candidate
                 images.append(PdfImage(data=data, local_filename=candidate))
                 lines.append(f"![]({candidate})")
                 lines.append("")

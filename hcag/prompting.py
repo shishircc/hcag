@@ -221,6 +221,27 @@ REGISTRY: list[PromptSpec] = [
     ),
     PromptSpec("preprocess.scope_own", description="leaf/mixed scoping clause (§3.4.4)"),
     PromptSpec("preprocess.scope_branch", description="node scoping clause (§3.4.4)"),
+    PromptSpec("evalgen.simple", frozenset({"content"}), "FAQ-style question (§6.4.1)"),
+    PromptSpec(
+        "evalgen.medium",
+        frozenset({"packet_id", "paragraph"}),
+        "single-paragraph reasoning question (§6.4.2)",
+    ),
+    PromptSpec(
+        "evalgen.complex",
+        frozenset({"packet_id", "paragraphs"}),
+        "whole-packet reasoning question (§6.4.3)",
+    ),
+    PromptSpec(
+        "evalgen.hard1",
+        frozenset({"packet_a_id", "packet_b_id", "paragraphs_a", "paragraphs_b"}),
+        "cross-packet question (§6.4.4)",
+    ),
+    PromptSpec(
+        "evalgen.hard2",
+        frozenset({"packet_id", "content"}),
+        "multimodal question (§6.4.5)",
+    ),
 ]
 
 

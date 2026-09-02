@@ -55,10 +55,49 @@ def _strip_body(text: str) -> str:
     return text
 
 
+_TABLE_LINE = re.compile(r"^\s*\|")
+_DELIM_LINE = re.compile(r"^\s*\|(?:\s*:?-+:?\s*\|)+\s*$")
+
+
+def _unwrap_single_cell(block: str) -> str:
+    """Return `block` as prose if it is one line fenced as a single table cell.
+
+    PDF extraction (§4.4.2) sometimes emits a whole logical row as one cell, so
+    a paragraph of real prose arrives as `| Eligible job titles … Job duties …
+    |`. It is not a table and not a fragment of one — there is no delimiter row
+    and no second cell — but it *looks* like a broken table row, and a question
+    grounded in it would inherit the confusion.
+
+    Only the unambiguous case is unwrapped: a single line, no delimiter, no
+    internal `|`. Anything with real cell boundaries is left alone, because
+    guessing where a row's columns were is how a table becomes wrong rather
+    than merely ugly.
+    """
+    line = block.strip()
+    if "\n" in line or not line.startswith("|") or not line.endswith("|"):
+        return block
+    inner = line[1:-1]
+    if "|" in inner or _DELIM_LINE.match(line):
+        return block
+    return inner.strip()
+
+
 def _split_paragraphs(body: str, min_chars: int) -> list[str]:
+    """Split into grounding units.
+
+    Blank-line splitting is right for prose. The one repair applied on top is
+    `_unwrap_single_cell`, for the pipe-fenced paragraphs PDF extraction
+    produces.
+
+    Multi-row tables are left exactly as they are: they arrive from
+    `pymupdf4llm` with their header row attached, and on the corpus this was
+    measured against every headerless table block was a single-cell paragraph
+    rather than a continuation. Reattaching headers to genuine continuations
+    would be speculative machinery for a case that does not occur here.
+    """
     paragraphs: list[str] = []
     for block in _PARAGRAPH_SPLIT_RE.split(body):
-        stripped = block.strip()
+        stripped = _unwrap_single_cell(block.strip())
         if len(stripped) >= min_chars:
             paragraphs.append(stripped)
     return paragraphs

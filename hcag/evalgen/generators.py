@@ -17,6 +17,7 @@ from pathlib import PurePosixPath
 from typing import Any, Literal
 
 from ..config import LLMConfig
+from ..prompting import load_prompts
 from .kb_scan import PacketRecord, taxonomy_prefix
 
 
@@ -61,6 +62,23 @@ def _extract_json(text: str) -> dict:
         raise
 
 
+
+_LIB = None
+
+
+def _prompts(cfg):
+    """Load evalgen's prompts once per process (D11, §2.15).
+
+    Question wording is exactly the kind of thing a subject-matter expert
+    should be able to tune — what counts as a "hard" question for work-pass
+    rules is a domain judgement, not a code change.
+    """
+    global _LIB
+    if _LIB is None:
+        _LIB = load_prompts(getattr(cfg, "prompts_dir", None))
+    return _LIB
+
+
 def _complete(cfg: LLMConfig, content: list[dict[str, Any]] | str) -> str:
     import litellm
 
@@ -98,93 +116,9 @@ def _parse_question_answer(raw: str) -> tuple[str, str]:
 # --- Prompt templates -----------------------------------------------------
 
 
-_SIMPLE_PROMPT = """You are generating an FAQ-style evaluation question.
-
-Task: Produce ONE question whose answer appears **verbatim** in the packet below (a sentence or short quoted phrase). No reasoning. No paraphrasing. The reader must be able to find the answer as a literal substring of the packet.
-
-Return a single JSON object, no prose, no code fences:
-{{
-  "question": "<the question>",
-  "expected_answer": "<verbatim quote from the packet>"
-}}
-
-Packet content:
----
-{content}
----"""
 
 
-_MEDIUM_PROMPT = """You are generating a single-paragraph reasoning question.
 
-Task: Produce ONE question whose answer requires **reasoning grounded in the paragraph below**. All supporting facts must appear in this one paragraph, but the answer must NOT be a direct quote — the reader must interpret or combine facts within the paragraph.
-
-Return a single JSON object, no prose, no code fences:
-{{
-  "question": "<the question>",
-  "expected_answer": "<a short natural-language answer, not a quote>"
-}}
-
-Packet: {packet_id}
-Paragraph:
----
-{paragraph}
----"""
-
-
-_COMPLEX_PROMPT = """You are generating a whole-packet reasoning question.
-
-Task: Produce ONE question whose answer requires **significant deduction across at least three distinct concepts, each drawn from a different paragraph** shown below. The question must not be answerable from any single paragraph in isolation.
-
-You will be given three or more paragraphs from the same packet. Your JSON must cite which paragraph each supporting concept came from, using the paragraph's index (0-based) as shown.
-
-Return a single JSON object, no prose, no code fences:
-{{
-  "question": "<the question>",
-  "expected_answer": "<a synthesized answer combining all cited concepts>",
-  "cited_paragraph_indices": [<int>, <int>, <int>, ...]
-}}
-
-Packet: {packet_id}
-Paragraphs:
-{paragraphs}"""
-
-
-_HARD1_PROMPT = """You are generating a cross-packet reasoning question.
-
-Task: Produce ONE question whose answer requires **two packets** to answer correctly, drawing on **at least three distinct paragraphs spread across those two packets**. Neither packet alone is sufficient.
-
-Your JSON must cite which packet each supporting paragraph came from (by packet id).
-
-Return a single JSON object, no prose, no code fences:
-{{
-  "question": "<the question>",
-  "expected_answer": "<a synthesized answer combining facts from both packets>",
-  "cited_packet_ids": ["<packet_id_1>", "<packet_id_2>"]
-}}
-
-Packet A ({packet_a_id}) — paragraphs:
-{paragraphs_a}
-
-Packet B ({packet_b_id}) — paragraphs:
-{paragraphs_b}"""
-
-
-_HARD2_PROMPT = """You are generating a multimodal question.
-
-Task: Produce ONE question whose answer **requires reading the attached image** together with the packet markdown. The key fact of the answer must be **visually present in the image** (a label on a diagram, a value in a chart, a state in a state-machine figure, a component in a screenshot) and NOT stated in the surrounding markdown alone. The question must not be answerable from the markdown by itself.
-
-Return a single JSON object, no prose, no code fences:
-{{
-  "question": "<the question>",
-  "expected_answer": "<a short answer whose key fact is in the image>",
-  "image_reference": "<what in the image supports the answer, one sentence>"
-}}
-
-Packet: {packet_id}
-Packet markdown:
----
-{content}
----"""
 
 
 # --- Selection helpers ----------------------------------------------------
@@ -242,7 +176,7 @@ def gen_simple(
     max_content_chars: int = 20000,
 ) -> GeneratedItem:
     content = _trim(packet.body, max_content_chars)
-    prompt = _SIMPLE_PROMPT.format(content=content)
+    prompt = _prompts(cfg).get("evalgen.simple", content=content)
     raw = _complete(cfg, prompt)
     question, answer = _parse_question_answer(raw)
     # Validation: the answer must appear verbatim in the packet (allowing
@@ -270,7 +204,7 @@ def gen_medium(
 ) -> GeneratedItem:
     idx = rng.randrange(len(packet.paragraphs))
     paragraph = _trim(packet.paragraphs[idx], max_paragraph_chars)
-    prompt = _MEDIUM_PROMPT.format(packet_id=packet.id, paragraph=paragraph)
+    prompt = _prompts(cfg).get("evalgen.medium", packet_id=packet.id, paragraph=paragraph)
     raw = _complete(cfg, prompt)
     question, answer = _parse_question_answer(raw)
     return GeneratedItem(
@@ -290,7 +224,7 @@ def gen_complex(
         raise GenerationError(f"packet {packet.id} has <3 paragraphs")
     indices = _choose_paragraphs(packet.paragraphs, 3, rng)
     formatted = _format_indexed_paragraphs(packet.paragraphs, indices)
-    prompt = _COMPLEX_PROMPT.format(packet_id=packet.id, paragraphs=formatted)
+    prompt = _prompts(cfg).get("evalgen.complex", packet_id=packet.id, paragraphs=formatted)
     raw = _complete(cfg, prompt)
     data = _extract_json(raw)
     question = str(data.get("question", "")).strip()
@@ -332,7 +266,8 @@ def gen_hard1(
 
     a_indices = _choose_paragraphs(packet.paragraphs, a_take, rng)
     b_indices = _choose_paragraphs(other.paragraphs, b_take, rng)
-    prompt = _HARD1_PROMPT.format(
+    prompt = _prompts(cfg).get(
+        "evalgen.hard1",
         packet_a_id=packet.id,
         packet_b_id=other.id,
         paragraphs_a=_format_indexed_paragraphs(packet.paragraphs, a_indices),
@@ -366,7 +301,7 @@ def gen_hard2(
         raise GenerationError(f"packet {packet.id} has no image assets")
     image_path = rng.choice(packet.assets)
     content = _trim(packet.body, max_content_chars)
-    text_prompt = _HARD2_PROMPT.format(packet_id=packet.id, content=content)
+    text_prompt = _prompts(cfg).get("evalgen.hard2", packet_id=packet.id, content=content)
     message_content = [
         {"type": "text", "text": text_prompt},
         _image_block(image_path),

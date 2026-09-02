@@ -179,7 +179,11 @@ def test_packets_can_be_supplied_by_the_deployment(tmp_path: Path) -> None:
 def test_the_whole_registry_loads_and_renders() -> None:
     """Every declared prompt has a file, valid template, and required vars."""
     lib = load_prompts()
-    values = {"catalog": "C", "requested": "a, b", "sections": "S", "scope": "SC"}
+    values = {
+        "catalog": "C", "requested": "a, b", "sections": "S", "scope": "SC",
+        "content": "X", "packet_id": "p", "paragraph": "P", "paragraphs": "PS",
+        "packet_a_id": "a", "packet_b_id": "b", "paragraphs_a": "A", "paragraphs_b": "B",
+    }
     for spec in REGISTRY:
         rendered = lib.get(spec.name, **{k: values[k] for k in spec.required})
         assert rendered.strip(), spec.name
