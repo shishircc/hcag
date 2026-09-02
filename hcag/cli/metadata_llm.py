@@ -133,11 +133,10 @@ def check_credentials(cfg: LLMConfig) -> None:
 
 
 _PROMPT = """You will summarize one folder of a hierarchical knowledge base so
-its parent's catalog can describe it.
+a catalog can route to it.
 
-The folder may include its own content, descriptions of its child topics, or
-both. When child topics are present, summarize ACROSS all of them — the result
-must characterize the whole branch, not just its first or largest child.
+{scope}
+
 Emit ONE compact JSON object with exactly these fields (no prose, no code fences):
   "title": short human-readable title (<=60 chars)
   "short_description": ONE line, no line breaks, <=180 chars
@@ -176,6 +175,28 @@ def _complete(cfg: LLMConfig, prompt: str) -> str:
     return resp.choices[0].message.content or ""
 
 
+#: How the summary must be scoped, by folder kind (§3.4.4).
+#:
+#: A folder with its own content must be described by THAT content. Describing
+#: what its children hold makes its catalog entry match questions its own
+#: `## Content` cannot answer — and since the roll-up (D3a) already gives every
+#: descendant its own entry in the same catalog, advertising their contents
+#: buys nothing and costs precision. Observed: an "eligibility" folder whose
+#: description absorbed a child's "sector-specific salary benchmark tables"
+#: drew the agent to the child and away from the rule it needed.
+_SCOPE_OWN = """Describe what THIS folder's own content says — the text under
+OWN CONTENT below. Child topics are listed only as context so you can tell what
+kind of branch this is; do NOT describe their contents or borrow their
+specifics. Every descendant has its own catalog entry, so this entry only has
+to make THIS folder findable. If the folder's own content states a rule,
+threshold, or definition, say so explicitly — that is what callers route on."""
+
+_SCOPE_BRANCH = """This folder has no content of its own: it is a waypoint. Its
+child topics are all there is to describe, so summarize ACROSS them — the
+result must characterize the whole branch, not just its first or largest
+child."""
+
+
 def _compose_sections(
     own_content: str,
     children_longs: list[tuple[str, str]],
@@ -202,6 +223,7 @@ def generate_folder_metadata(
     children_longs: list[tuple[str, str]] | None = None,
     max_content_chars: int = 20000,
     max_child_chars: int = 1200,
+    kind: str = "",
 ) -> FolderMetadata:
     """Summarize one folder for its parent's catalog entry.
 
@@ -219,7 +241,11 @@ def generate_folder_metadata(
     sections = _compose_sections(
         trimmed, list(children_longs or []), max_child_chars=max_child_chars
     )
-    raw = _complete(cfg, _PROMPT.format(sections=sections))
+    # A `node` has nothing but its children to describe; anything else must be
+    # described by its own content (§3.4.4).
+    has_own = bool(trimmed.strip()) if not kind else kind in ("leaf", "mixed")
+    scope = _SCOPE_OWN if has_own else _SCOPE_BRANCH
+    raw = _complete(cfg, _PROMPT.format(sections=sections, scope=scope))
     data = _extract_json(raw)
     return FolderMetadata(
         title=str(data.get("title", "Untitled")).strip(),

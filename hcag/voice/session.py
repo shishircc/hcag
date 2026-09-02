@@ -197,24 +197,49 @@ class VoiceSession:
         )
 
     async def _drive_llm_turn(self, user_text: str) -> None:
-        """Run the AgentRuntime turn.
+        """Run the AgentRuntime turn, streaming (§2.14).
 
-        The base `AgentRuntime.run_turn` is synchronous and returns the final
-        assistant string. We surface it as a single `assistant.final` (there
-        is no per-token stream on the base runtime). A streaming variant
-        can subclass this class and override this method to invoke a
-        streaming LLM path — the transcription/TTS wiring above is already
-        delta-based.
+        Consumes `run_turn_stream` — the same iterator the HTTP streaming route
+        serves — so voice and chat cannot drift in what a turn emits. Deltas go
+        to TTS as they arrive rather than after the whole answer is composed,
+        which is the difference between a conversational pause and a dead one.
+
+        `tool.*` events are published too (§5.7): the packet load between the
+        user's last word and the agent's first is the most conspicuous silence
+        in a voice turn, and it is the one pause the client can explain rather
+        than merely fill.
         """
+        turn_id = self.state.open_turn.turn_id if self.state.open_turn else "unknown"
+        final: str | None = None
         try:
-            reply = self.runtime.run_turn(user_text)
+            for event in self.runtime.run_turn_stream(user_text):
+                if event.kind == "assistant.delta":
+                    await self.on_llm_delta(event.data.get("text", ""))
+                elif event.kind in ("tool.start", "tool.end"):
+                    await self.publisher.emit(
+                        event.kind, turn_id=turn_id, **event.data
+                    )
+                elif event.kind == "assistant.final":
+                    final = event.data.get("text", "")
+                elif event.kind == "error":
+                    raise RuntimeError(event.data.get("detail", "turn failed"))
         except Exception as e:  # noqa: BLE001
-            turn_id = self.state.open_turn.turn_id if self.state.open_turn else "unknown"
             self.logger.error("voice.turn.failed", turn_id=turn_id, error=str(e))
             await self.publisher.emit("system.error", turn_id=turn_id, reason=str(e))
             self._close_turn()
             return
-        await self.on_llm_final(reply)
+
+        if final is None:
+            # A stream that ends without assistant.final is a failed turn, not
+            # a short answer (§2.14.3) — never speak a truncated reply as if
+            # it were complete.
+            self.logger.error("voice.turn.incomplete", turn_id=turn_id)
+            await self.publisher.emit(
+                "system.error", turn_id=turn_id, reason="stream ended before the answer"
+            )
+            self._close_turn()
+            return
+        await self.on_llm_final(final)
 
 
 async def _maybe_await(value: Any) -> Any:

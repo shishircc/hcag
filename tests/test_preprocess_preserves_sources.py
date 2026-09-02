@@ -14,7 +14,7 @@ from hcag.logger import build_logger
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
 
-def _fake_metadata(cfg, *, own_content="", children_longs=None, max_content_chars=20000, max_child_chars=1200):  # noqa: ARG001
+def _fake_metadata(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
     return FolderMetadata(
         title="Test Folder",
         short_description="Short",

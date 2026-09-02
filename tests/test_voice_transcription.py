@@ -76,3 +76,72 @@ def test_make_message_matches_dataclass_shape() -> None:
     assert d["turn_id"] == "t_1"
     assert d["text"] == "hi"
     assert d["latency_ms"] == 42
+
+
+# --- Streaming voice turn (§2.14, §5.7) ------------------------------------
+
+
+def _session(runtime, sink):
+    """A VoiceSession with the STT/TTS surfaces stubbed out."""
+    import asyncio
+
+    from hcag.logger import build_logger
+    from hcag.config import LogConfig
+    from hcag.voice.config import VoiceAgentConfig
+    from hcag.voice.session import VoiceSession
+
+    logger = build_logger(LogConfig(file_path="/tmp/hcag-voice-test.log"), name="test.voice")
+    cfg = VoiceAgentConfig(kb_root="/tmp/kb")
+    return VoiceSession(cfg, runtime, TranscriptionPublisher(sink=sink), logger)
+
+
+def _kinds(sink) -> list[str]:
+    return [json.loads(payload.decode())["kind"] for _topic, payload in sink.records]
+
+
+def test_voice_turn_streams_deltas_and_publishes_tool_events() -> None:
+    """Voice consumes `run_turn_stream` — the same iterator the HTTP route
+    serves — so the two transports cannot drift in what a turn emits."""
+    import asyncio
+
+    from hcag.runtime.events import EventStream
+
+    class _Runtime:
+        def run_turn_stream(self, user_text):  # noqa: ARG002
+            s = EventStream(turn_id="t_1")
+            yield s.emit("tool.start", tool="check_and_load_kb", requested=["billing"])
+            yield s.emit("tool.end", tool="check_and_load_kb", loaded=["billing"])
+            yield s.emit("assistant.delta", text="Refunds ")
+            yield s.emit("assistant.delta", text="settle in 5 days.")
+            yield s.emit("assistant.final", text="Refunds settle in 5 days.")
+
+    sink = CapturingSink()
+    session = _session(_Runtime(), sink)
+    asyncio.run(session.on_user_final("how long do refunds take?"))
+
+    kinds = _kinds(sink)
+    # The packet load is the longest silence in a voice turn, and now the one
+    # the client can name rather than merely fill (§5.7).
+    assert "tool.start" in kinds and "tool.end" in kinds
+    assert kinds.count("assistant.delta") == 2
+    assert kinds[-1] == "assistant.final"
+
+
+def test_voice_turn_reports_a_stream_that_ends_early() -> None:
+    """Never speak a truncated reply as if it were complete (§2.14.3)."""
+    import asyncio
+
+    from hcag.runtime.events import EventStream
+
+    class _Runtime:
+        def run_turn_stream(self, user_text):  # noqa: ARG002
+            s = EventStream(turn_id="t_1")
+            yield s.emit("assistant.delta", text="partial")
+
+    sink = CapturingSink()
+    session = _session(_Runtime(), sink)
+    asyncio.run(session.on_user_final("q"))
+
+    kinds = _kinds(sink)
+    assert kinds[-1] == "system.error"
+    assert "assistant.final" not in kinds

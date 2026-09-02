@@ -316,6 +316,7 @@ def _summarize_with_retries(
     folder_id: str,
     own_content: str,
     children_longs: list[tuple[str, str]],
+    kind: str = "",
 ) -> FolderMetadata:
     """Call the summarizer, retrying transient failures (§3.4.9).
 
@@ -331,6 +332,7 @@ def _summarize_with_retries(
                 cfg.llm,
                 own_content=own_content,
                 children_longs=children_longs,
+                kind=kind,
             )
         except Exception as e:  # noqa: BLE001
             last = e
@@ -555,6 +557,7 @@ def _process_folder(
             folder_id=folder_id,
             own_content=own_content,
             children_longs=children_longs,
+            kind=kind,
         )
     except LLMUnavailableError as e:
         # Systemic: every remaining folder needs the same call, so there is

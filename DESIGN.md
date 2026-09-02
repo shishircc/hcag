@@ -60,7 +60,11 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [2.13.6 Dependency Summary](#2136-dependency-summary)
     - [2.13.7 Credentials](#2137-credentials)
     - [2.13.8 Deliberate Non-Dependencies](#2138-deliberate-non-dependencies)
-  - [2.14 Open Questions / Future Work](#214-open-questions--future-work)
+  - [2.14 Turn API — Synchronous and Streaming](#214-turn-api--synchronous-and-streaming)
+    - [2.14.1 Event vocabulary](#2141-event-vocabulary)
+    - [2.14.2 Why both, and which is primitive](#2142-why-both-and-which-is-primitive)
+    - [2.14.3 Errors after the first byte](#2143-errors-after-the-first-byte)
+  - [2.15 Open Questions / Future Work](#215-open-questions--future-work)
 - [Part 3 — The `hcag` CLI Tool](#part-3--the-hcag-cli-tool)
   - [3.1 Purpose](#31-purpose)
   - [3.2 KB Input Model](#32-kb-input-model)
@@ -93,6 +97,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [4.4 Document Types](#44-document-types)
     - [4.4.1 HTML — main-content extraction](#441-html--main-content-extraction)
     - [4.4.2 PDF](#442-pdf)
+      - [Tech-stack decision: PyMuPDF4LLM](#tech-stack-decision-pymupdf4llm)
     - [4.4.3 Images](#443-images)
   - [4.5 Output Layout](#45-output-layout)
     - [4.5.1 Why placement is not just filing](#451-why-placement-is-not-just-filing)
@@ -733,7 +738,13 @@ Because the whole hierarchy is visible at bootstrap, **the agent does not naviga
 The agent is instructed to:
 
 - Treat the catalog as an **index, not a source** (D3b): its descriptions select packets to load and are never themselves an answer. Every factual claim must come from the `## Content` of a loaded packet; when none supports an answer, say so and load the packet that would.
-- Consult the catalog in the system prompt when planning a task, and select the **most specific** entries that cover the question — prefer `kind: leaf`/`mixed` entries over their ancestors, since ancestors carry no content a leaf does not.
+- Consult the catalog in the system prompt when planning a task, and select entries by **what their own content covers, not by how deep they sit**:
+  - `leaf` — documents, nothing below it.
+  - `mixed` — its own documents *and* children. **Its content is not repeated in those children**, so a deeper entry never supersedes it. When a mixed topic and one of its specialised children both look relevant, the parent usually carries the governing rule and the child the detail.
+  - `node` — a waypoint with no content of its own; go to its descendants instead.
+
+  An earlier version of this rule said to prefer the most specific entry, "since ancestors carry no content a leaf does not". That is true of a `node` ancestor and **false of a `mixed` one**, and the difference is not academic: on a real KB it sent the agent to `…eligibility.compass-c1-salary-benchmarks` (a `leaf`, whose description names *Insurance* and *45+* verbatim) instead of `…eligibility` (its `mixed` parent, holding the qualifying-salary floor that actually decides the question, and which the leaf does not contain). Depth is not specificity.
+- Beware an entry whose description matches the question's keywords but names a narrow sub-document: check whether the broader topic it sits under defines the governing rule. A specialised child's description is often the *stronger* lexical match precisely because it enumerates particulars.
 - Request deep IDs directly. Loading `auth` on the way to `auth.sso.saml` is never necessary and wastes budget.
 - Call `check_and_load_kb` **only when** its currently-loaded folders are insufficient — to add a leaf it has not loaded, or to jump to a different branch. The default on any turn is **no call**: answer from the active set, and call only when it can name a catalog entry that covers the gap and is not already active (§2.7.1).
 - Pass its currently-known active IDs and its requested IDs.
@@ -946,8 +957,8 @@ classDiagram
 
 | Class | Responsibility | Key references |
 |---|---|---|
-| `AgentRuntime` | Owns the conversation loop. On bootstrap calls `MemoryModule.get_catalog()` to inject the catalog into the system prompt (§2.7). On each user turn, invokes the LLM; forwards any `check_and_load_kb` tool calls to the memory module. | §1.9, §2.7, §2.10 |
-| `LLM` (interface) | Abstract chat interface. Any concrete binding (Anthropic SDK, framework SDK) implements this. | §1.5 (framework-agnostic) |
+| `AgentRuntime` | Owns the conversation loop. On bootstrap calls `MemoryModule.get_catalog()` to inject the catalog into the system prompt (§2.7). On each user turn, invokes the LLM; forwards any `check_and_load_kb` tool calls to the memory module. Exposes the turn twice — `run_turn_stream` (the primitive) and `run_turn` (drains it) — per §2.14. | §1.9, §2.7, §2.10, §2.14 |
+| `LLM` (interface) | Abstract chat interface, streaming and non-streaming. Any concrete binding (Anthropic SDK, framework SDK) implements this. A binding that cannot stream degrades to one `assistant.delta` carrying the whole answer, so §2.14's contract holds for every provider. | §1.5 (framework-agnostic) |
 | `MemoryModule` (interface) | The tool contract exposed to the LLM. Stateless across calls (D7). | §1.10, §2.3 |
 | `FileSystemMemoryModule` | Concrete implementation. Composes a `KBStorage`, an `EvictionPolicy`, and a `TokenBudget`. Assembles `Packet` objects from storage-returned bytes. | §2.5, §2.6 |
 | `KBStorage` (interface) | Backing-store abstraction. The seam that lets the KB move off local disk later (D4a). | §1.9, D4a |
@@ -1373,7 +1384,8 @@ Crawl (`crawl` CLI — §4):
   trafilatura>=2.0                               # main-content (reading-mode) extraction (Markdown output)
   beautifulsoup4                                 # DOM pre-pass: links + image src rewriting
   markdownify                                    # whole-DOM fallback conversion
-  pypdf                                          # PDF text + embedded images
+  pymupdf4llm                                    # PDF -> Markdown incl. GFM tables (§4.4.2)
+                                                 #   ^ AGPL-3.0 / Artifex commercial — see below
 
 Optional (feature-flagged by config):
   opentelemetry-api                              # tracing (enabled when a destination is configured)
@@ -1386,6 +1398,8 @@ Dev:
   pytest
   pytest-mock
 ```
+
+**Licensing.** Every dependency above is permissive (MIT / BSD / Apache-2.0) **except one**: `pymupdf4llm` and its PyMuPDF core are **AGPL-3.0 or an Artifex commercial licence**. It is called out here because AGPL's network clause reaches software offered as a *service*, not only software shipped as binaries, so it is a constraint on how HCAG may be deployed rather than merely on how it is redistributed. §4.4.2 records why it was chosen anyway — PDF tables are where a KB's most load-bearing content lives, and losing their structure inverts answers rather than degrading them — and names `pdfplumber` (MIT) as the fallback if the licence is a blocker. The seam is a single function, `convert_pdf`.
 
 ### 2.13.7 Credentials
 
@@ -1407,7 +1421,55 @@ The implementation does **not** import these libraries, and the design forbids a
 - **`boto3` at the call site** — Bedrock is reached via LiteLLM, not by direct `boto3.client('bedrock-runtime')` calls in HCAG code. (`boto3` may appear transitively via LiteLLM's Bedrock backend; that transitive presence is acceptable because it does not leak into HCAG's own API surface.)
 - **`langchain` / `llama-index`** — heavy retrieval frameworks. HCAG's retrieval pattern is agent-driven and controlled by the memory module (Part 2); a chain/graph framework would add layers without benefit here.
 
-## 2.14 Open Questions / Future Work
+## 2.14 Turn API — Synchronous and Streaming
+
+`AgentRuntime` exposes a turn two ways:
+
+| | Returns | For |
+|---|---|---|
+| `run_turn(user_message) -> str` | the finished answer | `eval` (Part 7), scripts, tests, anything that wants one value |
+| `run_turn_stream(user_message) -> Iterator[Event]` | events as they happen | the chat widget (Part 10), the voice session (Part 5) |
+
+Both are on the same object and both produce byte-identical conversation history, so a session can mix them turn to turn.
+
+### 2.14.1 Event vocabulary
+
+A turn is not just text arriving in pieces. An HCAG turn *loads packets*, and which packets it chose is the most interesting thing about it — for a user watching a spinner, and for anyone debugging a wrong answer. The stream therefore carries tool activity as first-class events, not only tokens:
+
+```json
+{ "seq": 1, "kind": "assistant.start",  "turn_id": "t_9" }
+{ "seq": 2, "kind": "tool.start",       "turn_id": "t_9", "tool": "check_and_load_kb",
+  "requested": ["…employment-pass.eligibility"], "context": "EP qualifying salary at 45" }
+{ "seq": 3, "kind": "tool.end",         "turn_id": "t_9", "tool": "check_and_load_kb",
+  "loaded": ["…employment-pass.eligibility"], "evicted": [], "redundant": false }
+{ "seq": 4, "kind": "assistant.delta",  "turn_id": "t_9", "text": "At 45, the " }
+{ "seq": 5, "kind": "assistant.delta",  "turn_id": "t_9", "text": "qualifying salary is " }
+{ "seq": 6, "kind": "assistant.final",  "turn_id": "t_9", "text": "At 45, the qualifying salary is …",
+  "active_after": ["…employment-pass.eligibility"] }
+```
+
+**This is deliberately the same vocabulary as the voice transcription channel (§5.7)** — `assistant.delta`, `assistant.final`, `system.*`, the monotonic `seq`, the grouping `turn_id`. One event schema, two transports: a LiveKit data channel for voice, SSE for chat. The widget renders both modes from one reducer, and a bug in delta handling is one bug rather than two. The alternative — a bespoke chat schema — would have made the widget's two modes structurally different for no reason beyond how the bytes arrive.
+
+`tool.*` events are new here and are added to §5.7's channel as well, so voice can show the same "consulting *Employment Pass eligibility*…" affordance while the packet loads. That pause is otherwise the most conspicuous silence in a voice turn.
+
+### 2.14.2 Why both, and which is primitive
+
+**Streaming is the primitive; synchronous is derived.** `run_turn` consumes `run_turn_stream` and returns the final text. Not the other way around, and not two parallel implementations — a runtime with two independent turn paths grows two sets of behaviour, and the one with fewer users rots. Whatever a streaming turn does about tool loops, eviction, budget, or history, the synchronous turn does identically, because it *is* the same code.
+
+**Both must exist.** Streaming is the right default for anything with a human waiting: an HCAG turn does a tool round trip before its first token, so time-to-first-token without streaming is the *whole* retrieval plus generation. But a streaming-only API would be actively worse for the things that consume this system programmatically. `eval` (§7.3) scores one answer per row and would gain nothing but a reassembly loop; the promptfoo provider (§7.4) wants a value; tests want a value.
+
+**Streaming changes nothing about history or the prompt cache.** Deltas are accumulated and the assistant message is appended once, byte-identical to the non-streaming case — so §2.12's cache-alignment rules hold unchanged, and a session that streamed turn 3 and did not stream turn 4 has the same prefix either way. Delta-only tool results (D6) are likewise unaffected: `tool.end` reports *what* was loaded, while the packet content still enters history exactly once, in the tool-result block.
+
+### 2.14.3 Errors after the first byte
+
+Once a stream has started, **the HTTP status is already sent**. A failure at token 300 cannot become a `500`, which is the one genuinely new failure mode streaming introduces and the reason it needs its own contract rather than inheriting the synchronous one:
+
+- Failures before the first event use ordinary HTTP status codes, exactly as the synchronous API does.
+- Failures after it emit `{"kind": "error", "detail": …}` in-band and then close.
+- A stream that ends **without** `assistant.final` is a failed turn, whatever the status line said. Clients must treat "closed early" as an error rather than as a short answer — a truncated answer that renders as a complete one is worse than a visible failure.
+- The turn is not retried server-side. Retrying would re-emit deltas the client has already rendered, and there is no way to un-render them.
+
+## 2.15 Open Questions / Future Work
 
 1. **Catalog scaling.** If the catalog itself grows beyond a comfortable system-prompt size, we may need a summarized catalog + on-demand `get_catalog_entry(id)` tool. Deferred.
 2. **Partial packet loading.** Packets are all-or-nothing today. If some packets become very large, section-level loading could be introduced without changing the tool surface (packet IDs would become `packet_id#section`).
@@ -1668,7 +1730,16 @@ The `## Sub-topics` section is what makes a folder's `compiled.md` navigate-able
 - this folder's own content (if any), and
 - the **`long_description`s** of its **immediate** children (if any).
 
-For a leaf folder the summary is drawn from the folder's own content alone. For a taxonomy node it is drawn from the children's long descriptions alone. For a mixed folder it is drawn from both. This bubble-up logic gives every level's summary meaningful roll-up prose — the root's `compiled.md` describes the KB in aggregate; a mid-tree folder describes its branch in aggregate; a leaf describes itself. Crucially, the *summarization* still looks one level down while the *index* rolls up the whole subtree: LLM cost stays at one call per folder, and the roll-up is pure record copying.
+**A folder's description must describe that folder's own content.** The scoping differs by kind, and the difference is load-bearing:
+
+- **`leaf` / `mixed`** — describe what *this* folder's `## Content` says. Children's descriptions are supplied as context, so the summarizer can tell what kind of branch it is looking at, but their **specifics must not be borrowed**. If the folder's own content states a rule, threshold, or definition, the description says so, because that is what callers route on.
+- **`node`** — a waypoint with no content of its own, so its children are all there is to describe. Summarize across them; the result must characterize the whole branch rather than its first or largest child.
+
+**Why a parent must not advertise its children's contents.** Before the subtree roll-up (D3a), it had to: a one-level catalog was the only way an agent could guess what lay below, so a parent's description doubled as a table of contents. After D3a every descendant has its own entry in the same catalog, so that duplication buys nothing — and it costs precision. A parent's entry that names its children's particulars matches questions its own `## Content` cannot answer, and it is often the *stronger* lexical match, because particulars are what queries contain.
+
+Observed on a real KB: an `…employment-pass.eligibility` folder whose description absorbed a child's *"sector-specific salary benchmark tables"* pulled the agent to that child — whose description named the query's terms *Insurance* and *45+* verbatim — and away from the parent, which held the qualifying-salary floor that actually decided the question and which the child does not contain. The catalog was describing the branch accurately and routing to it wrongly.
+
+For a leaf folder the summary is drawn from the folder's own content alone. For a taxonomy node it is drawn from the children's long descriptions alone. For a mixed folder it is drawn from its own content, with the children as framing only. This bubble-up logic gives every level's summary meaningful prose — the root's `compiled.md` describes the KB in aggregate; a mid-tree folder describes what it itself holds; a leaf describes itself. Crucially, the *summarization* still looks one level down while the *index* rolls up the whole subtree: LLM cost stays at one call per folder, and the roll-up is pure record copying.
 
 **Bubble up the long description, not the short one.** The input to a parent's summarizer is each child's `long_description` — the multi-sentence one — never its `short_description`. This is the single most consequential prompt-input choice in the build, because summarization is *iterated*: the root's description is a summary of summaries of summaries, and whatever is discarded at one level can never be recovered at the next.
 
@@ -2079,7 +2150,28 @@ A fallback page is a **loud** failure, not a silent one: it keeps whatever the p
 
 ### 4.4.2 PDF
 
-Linked `.pdf` documents are treated as first-class pages: fetched, converted to Markdown (extracted text with document structure preserved), and written to the same layout as HTML output. PDFs do not contribute outbound links for further traversal. Main-content extraction (§4.4.1) does not apply to them — a PDF has no site template around it.
+Linked `.pdf` documents are treated as first-class pages: fetched, converted to Markdown, and written to the same layout as HTML output. PDFs do not contribute outbound links for further traversal. Main-content extraction (§4.4.1) does not apply to them — a PDF has no site template around it.
+
+Each page is converted independently and grouped under a `## Page N` heading, so the coarse structure of the source survives and any extract stays traceable to a page. Embedded raster images are pulled out and written beside the Markdown (§4.4.3), referenced from the page they appear on.
+
+#### Tech-stack decision: PyMuPDF4LLM
+
+**Chosen library: `pymupdf4llm`.** The decisive property is **table reconstruction**: it emits GFM tables, and PDF tables are where the KB's most load-bearing content lives — salary bands by age, qualification lists, points matrices.
+
+This replaced `pypdf`'s `page.extract_text()`, and the reason is worth recording, because the failure it fixes is a correctness failure rather than a cosmetic one. `extract_text()` returns a flat glyph stream in reading order with no table model at all. On a two-column list that merely erases the column boundary:
+
+| | |
+|---|---|
+| `pypdf` | `Boston University United States of America` |
+| `pymupdf4llm` | `\|Boston University\|United States of America\|` |
+
+On a table with **vertically merged cells** it is worse than ugly. In MOM's COMPASS Criterion 2 list, eight business schools share one merged "Business Administration (MBAs only)" faculty cell and one "EDB" agency cell. Flattened, those rows arrive as bare institution + country — so an agent asked whether an ESSEC degree qualifies reads *no faculty restriction* and answers the opposite of the truth, with every appearance of being grounded. Losing a table's structure does not degrade an answer gracefully; it inverts it.
+
+Measured on that document: 32 GFM tables recovered where the previous path produced none, at comparable text volume (16.1k vs 16.5k characters). 24 documents in a single `mom.gov.sg` crawl are PDF-derived, so this is a property of the corpus, not one awkward file.
+
+**Known limitation, stated because it is not fully solved.** A vertically merged cell's text is distributed line-by-line down the rows it spans rather than repeated into each. The ESSEC row shows `master's` where the full qualifier is `Business Administration (for MBAs – master's degrees)`. The columns are now visible and the fragments are recognisably continuations, which is a large improvement on their being invisible — but a consumer must not assume each row's cells are independently complete.
+
+**Licence — read before shipping.** PyMuPDF (and therefore `pymupdf4llm`) is **AGPL-3.0 or an Artifex commercial licence**. Every other dependency in this project is permissive (§2.13.6), so this is the one that constrains distribution: AGPL's network clause reaches software offered as a service, not only software distributed as binaries. An operator running HCAG as a hosted product needs either the commercial licence or a different converter. The alternative evaluated was `pdfplumber` (MIT, `pdfminer.six`-based), which also recovers the table cells from the same document but returns raw cell grids rather than Markdown, so it would need its own GFM rendering and delimiter normalisation. It is the fallback if the licence is a blocker — the seam is one function, `convert_pdf`.
 
 ### 4.4.3 Images
 
@@ -2414,7 +2506,7 @@ A real-time voice interface to the HCAG agent, embeddable on a website. The user
 
 Two properties matter beyond the baseline agent (§1.4):
 
-1. **Fast first-turn latency.** A voice conversation cannot afford a cold-start `check_and_load_kb` round trip on the user's first sentence. The voice session is therefore started with a **configured set of initial packet IDs** that are loaded into the active set before the room opens (§5.4.1), so the very first user turn already has the relevant knowledge in memory.
+1. **Fast first-turn latency.** A voice conversation cannot afford a cold-start `check_and_load_kb` round trip on the user's first sentence. The voice session is therefore started with a **configured set of initial packet IDs** that are loaded into the active set before the room opens (§5.4.1), so the very first user turn already has the relevant knowledge in memory. When a mid-conversation load is unavoidable, the `tool.*` events of §2.14.1 at least let the client say what the pause is for.
 2. **Sub-second inter-turn latency.** After the first turn, subsequent LLM calls must ride the prompt cache. The voice session issues a synthetic **cache warm-up call** immediately after packet loading (§5.4.2), so the prefix that all real turns will share is committed to the provider's prompt cache before the user starts talking.
 
 ## 5.2 Component Boundary
@@ -2424,7 +2516,7 @@ The voice agent **wraps** the runtime defined in Parts 1–2 rather than replaci
 - A **LiveKit worker process** that joins a LiveKit room per user session.
 - A **STT adapter** (Deepgram or ElevenLabs) that streams partial and final transcripts from the user's audio track.
 - A **TTS adapter** (ElevenLabs or Deepgram) that streams synthesized audio from assistant text back to the room.
-- A **transcription publisher** that mirrors both sides of the conversation onto a LiveKit text/data channel so the browser can render live captions and streaming assistant text.
+- A **transcription publisher** that mirrors both sides of the conversation onto a LiveKit text/data channel so the browser can render live captions and streaming assistant text. It consumes `AgentRuntime.run_turn_stream` (§2.14) — the same iterator the HTTP streaming route serves — so voice and chat cannot drift in what a turn emits.
 - A **web client** (LiveKit JS SDK) that publishes the mic track, subscribes to the agent's audio track, and renders the transcription channel.
 
 The `AgentRuntime`, `MemoryModule`, and `compiled.md` artifacts are unchanged. Swapping the voice front-end for a text front-end does not touch the reasoning path.
@@ -2702,13 +2794,20 @@ sequenceDiagram
 
     S-->>V: final transcript
     V->>R: publish final (data channel)
-    V->>A: user_text = final
+    V->>A: run_turn_stream(user_text)
     A->>L: turn (cached prefix + user_text)
     Note over L: Cache hit on prefix<br/>Streams response tokens
 
+    opt agent needs a packet
+        A-->>V: tool.start
+        V->>R: publish tool.start (data channel)
+        R-->>B: caption: consulting <topic>
+        A-->>V: tool.end
+    end
+
     loop streaming
         L-->>A: token
-        A-->>V: token
+        A-->>V: assistant.delta
         V->>R: publish assistant partial (data channel)
         V->>T: token chunk
         T-->>R: audio frame
@@ -2747,7 +2846,7 @@ Each provider block additionally accepts:
 
 ## 5.7 Live Transcription Channel (Web Client Contract)
 
-Transcription and streaming text are published on a LiveKit **data channel** named `hcag.transcription`. Payloads are JSON, one message per event, monotonically increasing `seq`:
+Transcription and streaming text are published on a LiveKit **data channel** named `hcag.transcription`. Payloads are JSON, one message per event, monotonically increasing `seq`. **The event vocabulary is the one defined in §2.14.1** — the same schema the chat widget consumes over SSE, differing only in transport:
 
 ```json
 { "seq": 42, "kind": "user.partial",     "text": "how do partial ref",     "turn_id": "t_9" }
@@ -2760,6 +2859,7 @@ Transcription and streaming text are published on a LiveKit **data channel** nam
 
 - `kind` values are namespaced (`user.*`, `assistant.*`, `system.*`) so the client can render user captions and assistant text in different UI slots without keyword-matching text content.
 - `turn_id` groups deltas with their finalizing message and lets the client discard stale partials after an `assistant.interrupted`.
+- `tool.start` / `tool.end` (§2.14.1) are published here too. The packet load between the user's last word and the agent's first is the most conspicuous silence in a voice turn, and it is the one pause the client can explain rather than merely fill: the caption pane can say *"Consulting Employment Pass eligibility…"* while it happens. `user.*` events remain voice-only — a chat client has no partial transcript.
 - The `system.*` namespace carries session lifecycle events (`system.ready` once §5.4.2 completes; `system.error` on unrecoverable failure) so the browser can show a "connecting…" state until the room is warm.
 - Audio itself is **not** on the data channel — it flows through the standard LiveKit audio track. The data channel is text-only.
 
@@ -3875,6 +3975,19 @@ The intended narrative when scoring both: **`simple` and `medium`** questions (�
 
 `hcag-server` (the FastAPI backend from `hcag/server/`, exercised by the web widget in Part 10 and by `eval`) chooses which agent to instantiate at startup via a single flag. The wire contract on `POST /chat` is unchanged — clients and `eval` do not know or care which agent is answering.
 
+**Two routes, one turn (§2.14):**
+
+| Route | Response | Consumer |
+|---|---|---|
+| `POST /chat` | `{ text, session_id }` — one JSON object when the turn finishes | `eval` (§7.3), curl, any non-streaming client |
+| `POST /chat/stream` | `text/event-stream` — §2.14.1 events as SSE frames | the chat widget (§10.4) |
+
+Both take the same request body and share a session; a client may stream one turn and not the next.
+
+**A separate path, not content negotiation.** Switching on `Accept: text/event-stream` would have kept one route, and was rejected: `POST /chat`'s shape is depended on by `eval` and is the contract the RAG baseline implements identically (§9.4), so making its response type depend on a header risks silent divergence between the two agents and turns a mis-set header into what looks like an agent bug. A distinct path is greppable in logs, routable in a proxy, and impossible to hit by accident. The two also differ in more than framing — §2.14.3's post-first-byte error semantics have no equivalent in the synchronous route.
+
+**The RAG baseline implements `POST /chat` only.** It has no tool loop and retrieves once up front, so its stream would carry deltas and nothing else; the comparison in §9.4 is about retrieval architecture and is run by `eval`, which is synchronous anyway. A client asking `--agent rag` for `/chat/stream` gets `501`, not a degraded imitation.
+
 ```
 $ hcag-server serve --agent {hcag|rag} [options]
 ```
@@ -4090,9 +4203,18 @@ The widget is embedded in someone else's page, so Markdown styling cuts both way
 
 ## 10.4 Wire Contract
 
-`POST /chat` per §9.5: `{ session_id, message, history[] }` → `{ text, session_id }`, where `text` is Markdown. The widget is agent-agnostic — it renders identically against `--agent hcag` and `--agent rag` and cannot tell which answered.
+**The widget streams.** It posts to `POST /chat/stream` (§9.5) with `{ session_id, message, history[] }` and reads an SSE body of §2.14.1 events. `POST /chat` remains available and is what the widget falls back to when streaming is unavailable — a proxy that buffers, or the `--agent rag` backend, which returns `501` for the streaming route.
 
-The voice path is separate: `POST /livekit/token` mints a room token, after which the browser speaks LiveKit directly and consumes the `hcag.transcription` channel (§5.7).
+Streaming matters more here than in a typical chat UI because of what an HCAG turn does before it speaks. The first token cannot arrive until the model has chosen a packet, the memory module has read it, and the model has been re-invoked over it — on a large packet that is seconds of nothing. Synchronously, that whole interval is a blank panel. Streaming turns it into visible progress, and the `tool.*` events make the progress *specific*: **"Consulting Employment Pass eligibility…"** rather than a spinner. That the widget can name the source before the answer arrives is a property of taxonomic retrieval — it is one of the few places HCAG's structure is visible to an end user, and it would be wasted on a synchronous response.
+
+Rendering rules follow §10.3 unchanged, and §10.3.3 already specifies the one that matters: the panel re-renders the **accumulated** text on each delta rather than appending rendered fragments, because a Markdown fragment ending mid-table is not a document. Partial syntax is normal input, not an error.
+
+Two client obligations from §2.14.3, both easy to get wrong:
+
+- A stream that closes without `assistant.final` is a **failed turn**, not a short answer. The panel must show it as failed; a truncated answer rendered as complete is the worst outcome available.
+- An `error` event arrives *in-band*, after a `200`. The widget cannot infer failure from the status line.
+
+The voice path is separate transport, same events: `POST /livekit/token` mints a room token, after which the browser speaks LiveKit directly and consumes the `hcag.transcription` channel (§5.7) — which carries the §2.14.1 vocabulary. **One reducer serves both modes**: chat frames arrive over SSE, voice frames over the data channel, and the widget's state machine does not care which.
 
 ## 10.5 Non-Goals
 

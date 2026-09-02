@@ -12,7 +12,7 @@ from hcag.config import CliConfig
 from hcag.logger import build_logger
 
 
-def _fake_metadata(cfg, *, own_content="", children_longs=None, max_content_chars=20000, max_child_chars=1200):  # noqa: ARG001
+def _fake_metadata(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
     """Title derived from the folder's first heading so records stay identifiable."""
     first = (own_content.splitlines() or [""])[0].lstrip("# ").strip()
     name = first or "Node"

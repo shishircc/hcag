@@ -22,11 +22,10 @@ dependencies = [
     "beautifulsoup4>=4.12",
     "markdownify>=0.11",
     "trafilatura>=2.0",
-    # `crypto` pulls in `cryptography`, which pypdf needs for AES-encrypted
-    # PDFs. Not optional in practice: government forms are routinely AES
-    # encrypted, and 3 of the 21 PDFs in a single mom.gov.sg crawl failed to
-    # convert without it (§4.3.4 made these reachable).
-    "pypdf[crypto]>=4.0",
+    # PDF -> Markdown (DESIGN.md §4.4.2). PyMuPDF4LLM reconstructs tables as
+    # GFM; the pypdf text-layer path it replaced had no table model at all.
+    # NOTE: PyMuPDF is AGPL-3.0 or an Artifex commercial licence — see §4.4.2.
+    "pymupdf4llm>=0.0.17",
 ]
 
 [project.optional-dependencies]

@@ -61,7 +61,7 @@ def test_root_id_reaches_the_generated_artifacts(tmp_path: Path) -> None:
     from hcag.compiled_io import read_compiled
     from hcag.logger import build_logger
 
-    def _fake(cfg, *, own_content="", children_longs=None, max_content_chars=20000, max_child_chars=1200):  # noqa: ARG001
+    def _fake(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
         return FolderMetadata(title="T", short_description="s", long_description="l")
 
     kb = tmp_path / "kb"
@@ -94,7 +94,7 @@ def test_top_level_branches_found_regardless_of_root_id(tmp_path: Path) -> None:
     from hcag.logger import build_logger
     from hcag.memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 
-    def _fake(cfg, *, own_content="", children_longs=None, max_content_chars=20000, max_child_chars=1200):  # noqa: ARG001
+    def _fake(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
         return FolderMetadata(title="T", short_description="s", long_description="l")
 
     for i, toml in enumerate(['[compiled]\nroot_id = "_root"\n', "", 'root_id = "kb"\n']):

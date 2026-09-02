@@ -13,7 +13,7 @@ from hcag.memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 from hcag.models import CheckAndLoadRequest
 
 
-def _fake_metadata(cfg, *, own_content="", children_longs=None, max_content_chars=20000, max_child_chars=1200):  # noqa: ARG001
+def _fake_metadata(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
     first = (own_content.splitlines() or [""])[0].lstrip("# ").strip()
     name = first or "Node"
     return FolderMetadata(

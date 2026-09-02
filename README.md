@@ -396,6 +396,8 @@ reply = agent.run_turn("How do partial refunds work?")
 print(reply)
 ```
 
+Turns come two ways ([DESIGN.md §2.14](./DESIGN.md#214-turn-api--synchronous-and-streaming)): `run_turn()` returns the finished answer, and `run_turn_stream()` yields events as they happen — text deltas plus `tool.start`/`tool.end` naming the packets being loaded. Streaming is the primitive and `run_turn` drains it, so the two cannot drift. Over HTTP that is `POST /chat` (one JSON object) and `POST /chat/stream` (SSE); the chat widget and the voice session both consume the streaming form, and share one event vocabulary across their two transports.
+
 At bootstrap the agent reads the root `compiled.md` and injects its `## Sub-topics` section — the complete index of every folder in the KB, at every depth — into the system prompt. Because the whole hierarchy is visible from turn one, the agent does not navigate the taxonomy: it finds the matching leaf entry in the catalog and requests that id directly via `check_and_load_kb`, however deep it sits. Loading a packet delivers its `## Content` plus any images from `assets/`; a non-root packet's own `## Sub-topics` section is elided on the way out, since it is a verbatim subset of the catalog already in the system prompt. See [DESIGN.md §2.10](./DESIGN.md#210-sequence-diagrams) for the turn-by-turn sequence diagrams.
 
 ## Web Chat and Voice Widget

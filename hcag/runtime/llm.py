@@ -10,7 +10,7 @@ from __future__ import annotations
 import base64
 import os
 from dataclasses import dataclass, field
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 from ..config import LLMConfig
 from ..models import ImageBlock, Packet, TextBlock
@@ -59,8 +59,36 @@ class LLMResponse:
 # --- Protocol -------------------------------------------------------------
 
 
+@dataclass
+class TextDelta:
+    """A fragment of the assistant's answer, as it is generated."""
+
+    text: str
+
+
+@dataclass
+class Final:
+    """The completed response, closing a stream."""
+
+    response: "LLMResponse"
+
+
+StreamChunk = TextDelta | Final
+
+
 class LLM(Protocol):
     def chat(self, messages: list[Message], tools: list[dict[str, Any]]) -> LLMResponse: ...
+
+    def chat_stream(
+        self, messages: list[Message], tools: list[dict[str, Any]]
+    ) -> "Iterator[StreamChunk]":
+        """Yield `TextDelta`s as they arrive, then exactly one `Final`.
+
+        Optional. A binding that cannot stream is driven through `chat` and
+        surfaces the whole answer as a single delta (§2.14), so the streaming
+        contract holds for every provider.
+        """
+        ...
 
 
 # --- LiteLLM adapter ------------------------------------------------------
@@ -121,9 +149,7 @@ class LiteLLMAdapter:
             # Don't hard-fail — LiteLLM will raise a clear error on first call.
             pass
 
-    def chat(self, messages: list[Message], tools: list[dict[str, Any]]) -> LLMResponse:
-        import litellm
-
+    def _payload(self, messages: list[Message], tools: list[dict[str, Any]]) -> dict[str, Any]:
         payload = {
             "model": self.cfg.litellm_model(),
             "messages": [_msg_to_openai_dict(m) for m in messages],
@@ -134,8 +160,12 @@ class LiteLLMAdapter:
             payload["tools"] = tools
         if self.cfg.endpoint:
             payload["api_base"] = self.cfg.endpoint
+        return payload
 
-        raw = litellm.completion(**payload)
+    def chat(self, messages: list[Message], tools: list[dict[str, Any]]) -> LLMResponse:
+        import litellm
+
+        raw = litellm.completion(**self._payload(messages, tools))
 
         choice = raw.choices[0]
         msg = choice.message
@@ -160,6 +190,11 @@ class LiteLLMAdapter:
             model=str(getattr(raw, "model", "") or ""),
             usage=_extract_usage(raw),
         )
+
+    def chat_stream(
+        self, messages: list[Message], tools: list[dict[str, Any]]
+    ) -> Iterator[StreamChunk]:
+        return _stream_with(self, messages, tools)
 
 
 def _extract_usage(raw: Any) -> dict[str, int]:
@@ -222,3 +257,90 @@ def packet_to_content_blocks(packet: Packet) -> list[dict[str, Any]]:
                 }
             )
     return out
+
+
+# --- Streaming ------------------------------------------------------------
+
+
+def _accumulate_tool_calls(acc: dict[int, dict[str, Any]], deltas: Any) -> None:
+    """Fold streamed tool-call fragments into `acc`, keyed by choice index.
+
+    Providers split a tool call across chunks: the id and function name arrive
+    once, the JSON arguments a few characters at a time. Only the assembled
+    whole is a usable call, so nothing is emitted until the stream closes.
+    """
+    for delta in deltas or []:
+        idx = getattr(delta, "index", 0) or 0
+        slot = acc.setdefault(idx, {"id": "", "name": "", "arguments": ""})
+        if getattr(delta, "id", None):
+            slot["id"] = delta.id
+        fn = getattr(delta, "function", None)
+        if fn is not None:
+            if getattr(fn, "name", None):
+                slot["name"] = fn.name
+            if getattr(fn, "arguments", None):
+                slot["arguments"] += fn.arguments
+
+
+def _stream_with(adapter: "LiteLLMAdapter", messages, tools) -> Iterator[StreamChunk]:
+    import litellm
+
+    payload = adapter._payload(messages, tools)
+    payload["stream"] = True
+    # Usage is not reported on chunks unless asked for; without it a streamed
+    # turn would show no token counts in traces (§2.11.2).
+    payload["stream_options"] = {"include_usage": True}
+
+    text_parts: list[str] = []
+    tool_acc: dict[int, dict[str, Any]] = {}
+    model = ""
+    usage: dict[str, int] = {}
+
+    for chunk in litellm.completion(**payload):
+        model = model or str(getattr(chunk, "model", "") or "")
+        chunk_usage = _extract_usage(chunk)
+        if chunk_usage:
+            usage = chunk_usage
+        choices = getattr(chunk, "choices", None) or []
+        if not choices:
+            continue
+        delta = getattr(choices[0], "delta", None)
+        if delta is None:
+            continue
+        piece = getattr(delta, "content", None)
+        if piece:
+            text_parts.append(piece)
+            yield TextDelta(text=piece)
+        _accumulate_tool_calls(tool_acc, getattr(delta, "tool_calls", None))
+
+    tool_calls = [
+        ToolCall(id=slot["id"], name=slot["name"], arguments=_loads_args(slot["arguments"]))
+        for _, slot in sorted(tool_acc.items())
+        if slot["name"]
+    ]
+    yield Final(
+        response=LLMResponse(
+            text="".join(text_parts),
+            tool_calls=tool_calls,
+            raw=None,
+            model=model,
+            usage=usage,
+        )
+    )
+
+
+def stream_or_buffer(llm: LLM, messages, tools) -> Iterator[StreamChunk]:
+    """Stream from `llm` if it can, otherwise emit its answer as one delta.
+
+    Keeps §2.14's contract provider-independent: the runtime always consumes a
+    stream, and a binding that cannot produce one is not a special case for
+    every caller to handle.
+    """
+    streamer = getattr(llm, "chat_stream", None)
+    if streamer is not None:
+        yield from streamer(messages, tools)
+        return
+    response = llm.chat(messages, tools)
+    if response.text:
+        yield TextDelta(text=response.text)
+    yield Final(response=response)

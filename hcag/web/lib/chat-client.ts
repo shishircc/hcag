@@ -80,3 +80,103 @@ export function isApiEnabled(): boolean {
   const v = process.env.NEXT_PUBLIC_USE_API;
   return v === "1" || v === "true";
 }
+
+/**
+ * Turn events, per DESIGN.md §2.14.1.
+ *
+ * Deliberately the same vocabulary the voice transcription channel publishes
+ * (§5.7): one schema, two transports. The widget reduces both with the same
+ * code, so a delta-handling bug is one bug rather than two.
+ */
+export type TurnEvent = {
+  seq: number;
+  kind:
+    | "assistant.start"
+    | "assistant.delta"
+    | "assistant.final"
+    | "tool.start"
+    | "tool.end"
+    | "error";
+  turn_id: string;
+  text?: string;
+  tool?: string;
+  requested?: string[];
+  loaded?: string[];
+  active_after?: string[];
+  detail?: string;
+};
+
+export class StreamUnsupported extends Error {}
+
+/**
+ * Stream a turn, invoking `onEvent` as each event arrives.
+ *
+ * Resolves with the final answer. Throws `StreamUnsupported` when the backend
+ * does not stream (501 — the RAG baseline, §9.5) so the caller can fall back
+ * to `sendChat`, and throws on any other failure.
+ */
+export async function streamChat(
+  sessionId: string,
+  history: ChatMessage[],
+  message: string,
+  onEvent: (e: TurnEvent) => void,
+): Promise<string> {
+  const res = await fetch("/api/chat/stream", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: sessionId,
+      history: history.map((m) => ({ role: m.role, text: m.text ?? "" })),
+      message,
+    }),
+  });
+
+  if (res.status === 501) throw new StreamUnsupported("backend does not stream");
+  if (!res.ok || !res.body) {
+    const body = await res.text().catch(() => "");
+    throw new Error(`chat stream failed: ${res.status} ${body}`);
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let answer: string | null = null;
+
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+
+    // SSE frames are separated by a blank line. A chunk can split a frame, so
+    // only whole frames are consumed and the remainder is carried forward.
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const line = frame.split("\n").find((l) => l.startsWith("data: "));
+      if (!line) continue;
+      let event: TurnEvent;
+      try {
+        event = JSON.parse(line.slice(6)) as TurnEvent;
+      } catch {
+        continue;
+      }
+      onEvent(event);
+      // The 200 was committed before the failure, so an error arrives in-band
+      // and cannot be inferred from the status line (§2.14.3).
+      if (event.kind === "error") throw new Error(event.detail ?? "turn failed");
+      if (event.kind === "assistant.final") answer = event.text ?? "";
+    }
+  }
+
+  // A stream that ends without assistant.final is a FAILED turn, not a short
+  // answer. Rendering a truncated answer as a complete one is the worst
+  // outcome available (§2.14.3).
+  if (answer === null) throw new Error("stream ended before the answer was complete");
+  return answer;
+}
+
+/** Last dotted segment of a packet id — `…employment-pass.eligibility` → `eligibility`. */
+export function shortPacketName(id: string): string {
+  const seg = id.split(".").filter(Boolean).pop() ?? id;
+  return seg.replace(/-/g, " ");
+}

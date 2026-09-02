@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import json
-from typing import Any
+from typing import Any, Iterator
 
 from ..config import AgentConfig
 from ..logger import HcagLogger, build_logger
@@ -11,7 +11,17 @@ from ..memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 from ..memory.module import MemoryModule
 from ..models import CheckAndLoadRequest, Delta
 from ..tracing import build_tracer, json_payload, messages_payload, set_attrs, truncate_middle
-from .llm import LLM, LiteLLMAdapter, Message, ToolCall, packet_to_content_blocks
+from .events import Event, EventStream
+from .llm import (
+    LLM,
+    Final,
+    LiteLLMAdapter,
+    Message,
+    TextDelta,
+    ToolCall,
+    packet_to_content_blocks,
+    stream_or_buffer,
+)
 
 
 def _messages_for_trace(history: list[Message], max_message_chars: int) -> list[dict[str, Any]]:
@@ -153,6 +163,9 @@ class AgentRuntime:
         # that says whether the discipline is holding; healthy is at or near 0.
         self._reload_calls = 0
         self._redundant_reloads = 0
+        # Mirrors the delta's authoritative `active_after` so `assistant.final`
+        # can report what the turn ended up holding (§2.14.1).
+        self._active_ids: list[str] = []
 
     # ---- Bootstrap ------------------------------------------------------
 
@@ -182,19 +195,52 @@ class AgentRuntime:
     # ---- Turn loop ------------------------------------------------------
 
     def run_turn(self, user_message: str, max_tool_iters: int = 6) -> str:
+        """The finished answer.
+
+        Drains `run_turn_stream` rather than duplicating the loop (§2.14.2):
+        one turn implementation, so the synchronous and streaming paths cannot
+        grow different behaviour around tool loops, eviction, or history.
+        """
+        answer = ""
+        for event in self.run_turn_stream(user_message, max_tool_iters=max_tool_iters):
+            if event.kind == "assistant.final":
+                answer = event.data.get("text", "")
+            elif event.kind == "error":
+                raise RuntimeError(event.data.get("detail", "turn failed"))
+        return answer
+
+    def run_turn_stream(
+        self, user_message: str, max_tool_iters: int = 6
+    ) -> "Iterator[Event]":
+        """Yield §2.14.1 events as the turn happens — the primitive."""
         if self._system_prompt is None:
             self.bootstrap()
 
         self._turn_index += 1
         self.logger.info("turn.start", turn=self._turn_index, user_chars=len(user_message))
 
+        stream = EventStream(turn_id=f"t_{self._turn_index}")
         self._history.append(Message(role="user", content=user_message))
 
         # One root span per turn, so a trace is a conversation turn rather than
         # a loose pile of LLM calls (§2.11.2).
         with self.tracer.start_as_current_span("conversation.turn") as turn_span:
             set_attrs(turn_span, self._turn_attrs(user_message))
-            answer = self._run_tool_loop(max_tool_iters)
+            yield stream.emit("assistant.start")
+            answer = ""
+            try:
+                for event in self._run_tool_loop(stream, max_tool_iters):
+                    if event.kind == "assistant.final":
+                        answer = event.data.get("text", "")
+                    yield event
+            except Exception as e:  # noqa: BLE001
+                # Past the first event the HTTP status is already sent, so a
+                # failure has to travel in-band (§2.14.3).
+                self.logger.error(
+                    "turn.failed", turn=self._turn_index, error=f"{type(e).__name__}: {e}"
+                )
+                yield stream.emit("error", detail=f"{type(e).__name__}: {e}")
+                return
             set_attrs(
                 turn_span,
                 {
@@ -203,11 +249,17 @@ class AgentRuntime:
                     **self._content_attrs(inp=user_message, out=answer),
                 },
             )
-            return answer
 
-    def _run_tool_loop(self, max_tool_iters: int) -> str:
+    def _run_tool_loop(self, stream: EventStream, max_tool_iters: int) -> "Iterator[Event]":
         for _ in range(max_tool_iters):
-            response = self._chat()
+            response = None
+            for chunk in self._chat_stream():
+                if isinstance(chunk, TextDelta):
+                    yield stream.emit("assistant.delta", text=chunk.text)
+                elif isinstance(chunk, Final):
+                    response = chunk.response
+            if response is None:
+                raise RuntimeError("LLM stream closed without a final response")
 
             self._history.append(
                 Message(role="assistant", content=response.text or None, tool_calls=response.tool_calls)
@@ -222,13 +274,17 @@ class AgentRuntime:
                     redundant_reloads=self._redundant_reloads,
                     redundant_rate=round(self._redundant_reloads / self._turn_index, 3),
                 )
-                return response.text
+                yield stream.emit(
+                    "assistant.final", text=response.text, active_after=list(self._active_ids)
+                )
+                return
 
             for call in response.tool_calls:
-                self._handle_tool_call(call)
+                yield from self._handle_tool_call(call, stream)
 
         self.logger.warn("turn.tool_loop_exhausted", turn=self._turn_index)
-        return self._history[-1].content if isinstance(self._history[-1].content, str) else ""
+        tail = self._history[-1].content if isinstance(self._history[-1].content, str) else ""
+        yield stream.emit("assistant.final", text=tail, active_after=list(self._active_ids))
 
     # ---- Tracing --------------------------------------------------------
 
@@ -269,11 +325,13 @@ class AgentRuntime:
             "gen_ai.request.messages": len(self._history),
         }
 
-    def _chat(self):
-        """One LLM call, with the span populated on both sides of it.
+    def _chat_stream(self):
+        """One LLM call as a stream, with the span populated on both sides.
 
         Request attributes go on before the call so a failed call still carries
-        the model and parameters; usage and output go on after.
+        the model and parameters; usage and output go on after the stream
+        closes. `stream_or_buffer` means a non-streaming binding still arrives
+        here as a stream (§2.14).
         """
         llm_cfg = self.cfg.llm
         with self.tracer.start_as_current_span("gen_ai.chat") as span:
@@ -291,7 +349,13 @@ class AgentRuntime:
                     **self._prompt_attr(),
                 },
             )
-            response = self.llm.chat(self._history, tools=TOOL_DEFS)
+            response = None
+            for chunk in stream_or_buffer(self.llm, self._history, TOOL_DEFS):
+                if isinstance(chunk, Final):
+                    response = chunk.response
+                yield chunk
+            if response is None:
+                return
             set_attrs(
                 span,
                 {
@@ -304,11 +368,10 @@ class AgentRuntime:
                     **self._content_attrs(out=_response_for_trace(response)),
                 },
             )
-            return response
 
     # ---- Tool dispatch --------------------------------------------------
 
-    def _handle_tool_call(self, call: ToolCall) -> None:
+    def _handle_tool_call(self, call: ToolCall, stream: EventStream) -> "Iterator[Event]":
         """Dispatch one tool call, always inside a span.
 
         The span is opened here, around the dispatch, rather than inside each
@@ -318,6 +381,15 @@ class AgentRuntime:
         between two LLM calls. Every tool call leaves a trace, or the trace
         cannot be trusted to show what the turn did.
         """
+        args = call.arguments or {}
+        # Which packets a turn chose is the most interesting thing about it, so
+        # the client learns before the load, not after (§2.14.1).
+        yield stream.emit(
+            "tool.start",
+            tool=call.name,
+            requested=list(args.get("requested_packet_ids", []) or []),
+            context=str(args.get("context", ""))[:512],
+        )
         with self.tracer.start_as_current_span(f"tool.{call.name}") as span:
             set_attrs(
                 span,
@@ -325,12 +397,13 @@ class AgentRuntime:
                     "gen_ai.operation.name": "execute_tool",
                     "gen_ai.tool.name": call.name,
                     "langfuse.session.id": self.session_id,
-                    **self._content_attrs(inp=call.arguments or {}),
+                    **self._content_attrs(inp=args),
                 },
             )
-            self._dispatch_tool_call(call, span)
+            outcome = self._dispatch_tool_call(call, span)
+        yield stream.emit("tool.end", tool=call.name, **outcome)
 
-    def _dispatch_tool_call(self, call: ToolCall, span: Any) -> None:
+    def _dispatch_tool_call(self, call: ToolCall, span: Any) -> dict[str, Any]:
         if call.name == "get_catalog":
             catalog = self.memory.get_catalog()
             # §2.12 item 6: the injected catalog is complete, so a mid-session
@@ -349,7 +422,7 @@ class AgentRuntime:
                 },
             )
             self._append_tool_result(call.id, [{"type": "text", "text": catalog.raw_markdown}])
-            return
+            return {"entries": len(catalog.entries), "unnecessary": True}
 
         if call.name == "check_and_load_kb":
             args = call.arguments or {}
@@ -393,8 +466,15 @@ class AgentRuntime:
             self._reload_calls += 1
             if delta.redundant:
                 self._redundant_reloads += 1
+            self._active_ids = list(delta.active_after)
             self._append_tool_result(call.id, self._serialize_delta(delta))
-            return
+            return {
+                "loaded": [p.id for p in delta.loaded],
+                "evicted": list(delta.evicted),
+                "active_after": list(delta.active_after),
+                "redundant": delta.redundant,
+                "errors": len(delta.errors),
+            }
 
         # A name we do not serve. Traced and logged rather than silently
         # answered with an error string the model may or may not act on.
@@ -410,6 +490,7 @@ class AgentRuntime:
         except Exception:  # noqa: BLE001 — telemetry must not fail a turn
             pass
         self._append_tool_result(call.id, [{"type": "text", "text": message}])
+        return {"unknown": True}
 
     def _append_tool_result(self, tool_call_id: str, blocks: list[dict[str, Any]]) -> None:
         # LiteLLM's tool-result role accepts a string or content-block list depending on

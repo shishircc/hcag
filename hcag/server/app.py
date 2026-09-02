@@ -11,6 +11,7 @@ Both agents implement ``run_turn(str) -> str`` so the HTTP route is agent-agnost
 from __future__ import annotations
 
 import inspect
+import json
 import os
 import threading
 import time
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Any, Literal, Protocol
 
 from fastapi import FastAPI, HTTPException
+from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -57,6 +59,16 @@ class TokenReply(BaseModel):
 
 class _AgentLike(Protocol):
     def run_turn(self, user_message: str) -> str: ...
+
+    #: Optional. Absent on the RAG baseline, which retrieves once up front and
+    #: has no tool loop to report — it answers 501 rather than imitating a
+    #: stream that would carry deltas and nothing else (§9.5).
+    def run_turn_stream(self, user_message: str): ...
+
+
+def _sse(payload: dict[str, Any]) -> str:
+    """One SSE frame. `data:` then a blank line, per the event-stream format."""
+    return f"data: {json.dumps(payload, ensure_ascii=False)}\n\n"
 
 
 class _SessionEntry:
@@ -266,6 +278,45 @@ def create_app(
         except Exception as e:  # noqa: BLE001
             raise HTTPException(status_code=500, detail=str(e)) from e
         return ChatReply(text=text or "", session_id=req.session_id)
+
+    @app.post("/chat/stream")
+    def chat_stream(req: ChatRequest):
+        """SSE stream of §2.14.1 events.
+
+        A separate route rather than content negotiation on `/chat` (§9.5):
+        `/chat`'s shape is what `eval` depends on and what the RAG baseline
+        implements identically, so making its response type depend on a header
+        would risk silent divergence and turn a mis-set header into what looks
+        like an agent bug.
+        """
+        agent = get_agent(req.session_id)
+        streamer = getattr(agent, "run_turn_stream", None)
+        if streamer is None:
+            raise HTTPException(
+                status_code=501,
+                detail="this agent does not stream; use POST /chat",
+            )
+
+        def _frames():
+            # Failures BEFORE the first byte are still ordinary HTTP errors —
+            # this generator only starts once the 200 is committed, so from
+            # here on everything travels in-band (§2.14.3).
+            try:
+                for event in streamer(req.message):
+                    yield _sse(event.to_dict())
+            except Exception as e:  # noqa: BLE001
+                yield _sse({"kind": "error", "detail": f"{type(e).__name__}: {e}"})
+
+        return StreamingResponse(
+            _frames(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache, no-transform",
+                # Tells nginx and friends not to buffer; a proxy that buffers
+                # turns a stream back into a slow synchronous response.
+                "X-Accel-Buffering": "no",
+            },
+        )
 
     @app.post("/livekit/token", response_model=TokenReply)
     def token(req: TokenRequest) -> TokenReply:

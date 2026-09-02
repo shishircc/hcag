@@ -1,9 +1,16 @@
 """PDF → Markdown conversion for `crawl` (§4.4.2, §4.4.3).
 
-Uses `pypdf` to walk pages, extract text into per-page Markdown sections,
-and pull embedded raster images out into named byte buffers. Extracted
-images are reported to the caller alongside filenames so the crawl core
-can write them next to the Markdown output.
+Uses **PyMuPDF4LLM** (§4.4.2, tech-stack decision) to convert each page to
+Markdown, and PyMuPDF directly to pull embedded raster images out into named
+byte buffers. Extracted images are reported to the caller alongside filenames
+so the crawl core can write them next to the Markdown output.
+
+PyMuPDF4LLM reconstructs tables as GFM tables. That is the reason it is here:
+the previous `pypdf.extract_text()` path returned a flat glyph stream with no
+table model, so a ruled table arrived as prose with its column boundaries
+erased — and on a table with vertically merged cells, rows silently lost the
+qualifiers that applied to them, which inverts their meaning rather than merely
+uglifying them.
 
 PDFs do not contribute outbound links — the returned `links` list is empty
 by construction (§4.4.2).
@@ -12,7 +19,6 @@ by construction (§4.4.2).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from io import BytesIO
 
 
 _MAGIC = [
@@ -48,58 +54,72 @@ class ConvertedPdf:
 
 
 def convert_pdf(pdf_bytes: bytes, doc_basename: str) -> ConvertedPdf:
-    """Extract text and embedded images from a PDF.
+    """Extract Markdown and embedded images from a PDF.
 
-    Text is grouped by page as `## Page N` sections so the resulting
-    Markdown preserves at least the coarse structure of the source. Each
-    extracted image is emitted as a `![](local_filename)` reference on the
-    page it came from.
+    Text is converted per page by PyMuPDF4LLM and grouped under `## Page N`
+    headings, so the coarse structure of the source survives and every extract
+    stays traceable to a page. Each extracted image is emitted as a
+    `![](local_filename)` reference on the page it came from.
     """
-    from pypdf import PdfReader
+    import pymupdf
+    import pymupdf4llm
 
-    reader = PdfReader(BytesIO(pdf_bytes))
-    lines: list[str] = []
-    images: list[PdfImage] = []
-    taken: set[str] = set()
-
-    for page_idx, page in enumerate(reader.pages, start=1):
-        text = ""
+    doc = pymupdf.open(stream=pdf_bytes, filetype="pdf")
+    try:
         try:
-            text = page.extract_text() or ""
+            # page_chunks keeps the page boundaries the `## Page N` headings
+            # depend on; a single blob would lose them.
+            chunks = pymupdf4llm.to_markdown(doc, page_chunks=True, show_progress=False)
         except Exception:
+            chunks = []
+
+        lines: list[str] = []
+        images: list[PdfImage] = []
+        taken: set[str] = set()
+
+        for page_idx in range(1, doc.page_count + 1):
             text = ""
-        lines.append(f"## Page {page_idx}")
-        lines.append("")
-        if text.strip():
-            lines.append(text.strip())
+            if page_idx <= len(chunks):
+                chunk = chunks[page_idx - 1]
+                text = (chunk.get("text") if isinstance(chunk, dict) else str(chunk)) or ""
+            lines.append(f"## Page {page_idx}")
             lines.append("")
+            if text.strip():
+                lines.append(text.strip())
+                lines.append("")
 
-        page_images = []
-        try:
-            page_images = list(getattr(page, "images", []) or [])
-        except Exception:
-            page_images = []
-
-        for img_idx, img in enumerate(page_images, start=1):
-            data = getattr(img, "data", None)
-            if not data:
-                continue
-            raw_name = (getattr(img, "name", None) or f"p{page_idx}-img{img_idx}").lstrip("/")
-            if "." in raw_name:
-                stem = raw_name.rsplit(".", 1)[0]
-                ext = "." + raw_name.rsplit(".", 1)[1]
-            else:
-                stem = raw_name
-                ext = _guess_ext(data)
-            candidate = f"{doc_basename}-{stem}{ext}"
-            n = 2
-            while candidate in taken:
-                candidate = f"{doc_basename}-{stem}-{n}{ext}"
-                n += 1
-            taken.add(candidate)
-            images.append(PdfImage(data=data, local_filename=candidate))
-            lines.append(f"![]({candidate})")
-            lines.append("")
+            for name, data in _page_images(doc, page_idx - 1):
+                stem, ext = name
+                candidate = f"{doc_basename}-{stem}{ext}"
+                n = 2
+                while candidate in taken:
+                    candidate = f"{doc_basename}-{stem}-{n}{ext}"
+                    n += 1
+                taken.add(candidate)
+                images.append(PdfImage(data=data, local_filename=candidate))
+                lines.append(f"![]({candidate})")
+                lines.append("")
+    finally:
+        doc.close()
 
     md = "\n".join(lines).strip() + "\n"
     return ConvertedPdf(markdown=md, images=images, links=[])
+
+
+def _page_images(doc, page_index: int):
+    """Yield ((stem, ext), bytes) for each raster image placed on a page."""
+    try:
+        placements = doc.get_page_images(page_index, full=True)
+    except Exception:
+        return
+    for placement in placements:
+        xref = placement[0]
+        try:
+            info = doc.extract_image(xref)
+        except Exception:
+            continue
+        data = info.get("image")
+        if not data:
+            continue
+        ext = "." + (info.get("ext") or "").lstrip(".") if info.get("ext") else _guess_ext(data)
+        yield (f"Image{xref}", ext), data

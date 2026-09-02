@@ -21,6 +21,10 @@ TranscriptionKind = Literal[
     "assistant.delta",
     "assistant.final",
     "assistant.interrupted",
+    # Tool activity, shared with the HTTP stream (§2.14.1). The packet load is
+    # the longest silence in a voice turn and the one the client can name.
+    "tool.start",
+    "tool.end",
     "system.ready",
     "system.error",
 ]

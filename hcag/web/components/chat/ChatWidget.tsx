@@ -9,7 +9,15 @@ import PanelHeader from "./PanelHeader";
 import Thinking from "./Thinking";
 import VoiceOverlay from "./VoiceOverlay";
 import type { ChatMessage, Device, Feedback, View } from "./types";
-import { isApiEnabled, scriptedReply, sendChat } from "@/lib/chat-client";
+import {
+  isApiEnabled,
+  scriptedReply,
+  sendChat,
+  streamChat,
+  StreamUnsupported,
+  shortPacketName,
+  type TurnEvent,
+} from "@/lib/chat-client";
 import { useLiveKitVoice } from "@/lib/voice-client";
 
 function newId() {
@@ -74,6 +82,8 @@ export default function ChatWidget({
   const [view, setView] = useState<View>(initialView);
   const [device, setDevice] = useState<Device>("desktop");
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  // What the agent is doing right now, from tool.* events (§2.14.1).
+  const [activity, setActivity] = useState<string | null>(null);
   const [step, setStep] = useState(0);
   const [thinking, setThinking] = useState(false);
   const [voice, setVoice] = useState(false);
@@ -151,13 +161,91 @@ export default function ChatWidget({
       };
 
       if (apiEnabled) {
+        // Stream by default (§10.4). An HCAG turn loads a packet before its
+        // first token, so synchronously that whole interval is a blank panel;
+        // streaming turns it into visible — and, via tool events, *named* —
+        // progress.
+        const botId = newId();
+        let started = false;
+        let accumulated = "";
+
+        const onEvent = (e: TurnEvent) => {
+          if (e.kind === "tool.start") {
+            // The one place HCAG's structure is visible to an end user:
+            // "Consulting <packet>…" instead of a spinner.
+            const what = (e.requested ?? []).map(shortPacketName).join(", ");
+            setActivity(what ? `Consulting ${what}…` : "Looking things up…");
+            return;
+          }
+          if (e.kind === "tool.end") {
+            setActivity(null);
+            return;
+          }
+          if (e.kind !== "assistant.delta" || !e.text) return;
+          accumulated += e.text;
+          if (!started) {
+            started = true;
+            setThinking(false);
+            push({ id: botId, role: "bot", text: accumulated });
+            return;
+          }
+          // Replace the bubble's text rather than appending a new one: the
+          // Markdown renderer re-parses the accumulated document each time
+          // (§10.3.3), because a fragment ending mid-table is not a document.
+          setMessages((prev) =>
+            prev.map((m) => (m.id === botId ? { ...m, text: accumulated } : m)),
+          );
+        };
+
         try {
-          const reply = await sendChat(sessionId, messages, userText);
-          finalize(reply);
+          const answer = await streamChat(sessionId, messages, userText, onEvent);
+          setActivity(null);
+          if (started) {
+            setMessages((prev) =>
+              prev.map((m) => (m.id === botId ? { ...m, text: answer } : m)),
+            );
+            setThinking(false);
+            setStep(currentStep + 1);
+            if (voice) {
+              setVoiceStateLocal("Speaking");
+              setCaptionLocal(answer);
+              window.setTimeout(() => {
+                setVoiceStateLocal("Listening");
+                setCaptionLocal("Listening…");
+              }, 2400);
+            }
+          } else {
+            finalize({ text: answer });
+          }
         } catch (e) {
-          finalize({
-            text: `I couldn't reach the assistant service. ${(e as Error).message}`,
-          });
+          setActivity(null);
+          if (e instanceof StreamUnsupported) {
+            // A backend without a tool loop (§9.5) answers 501; fall back
+            // rather than showing the user a transport detail.
+            try {
+              finalize(await sendChat(sessionId, messages, userText));
+            } catch (e2) {
+              finalize({
+                text: `I couldn't reach the assistant service. ${(e2 as Error).message}`,
+              });
+            }
+          } else if (started) {
+            // A stream that ended without assistant.final is a FAILED turn,
+            // not a short answer (§2.14.3) — say so rather than leaving a
+            // truncated reply looking complete.
+            setThinking(false);
+            setMessages((prev) =>
+              prev.map((m) =>
+                m.id === botId
+                  ? { ...m, text: `${accumulated}\n\n_(interrupted — ${(e as Error).message})_` }
+                  : m,
+              ),
+            );
+          } else {
+            finalize({
+              text: `I couldn't reach the assistant service. ${(e as Error).message}`,
+            });
+          }
         }
       } else {
         // Scripted flow — matches the design prototype's four turns.
@@ -370,7 +458,9 @@ export default function ChatWidget({
                 />
               ))}
 
-              {thinking ? <Thinking /> : null}
+              {/* tool.* events name the packet being loaded, so the wait is
+                  specific rather than a spinner (§10.4). */}
+              {thinking || activity ? <Thinking label={activity ?? undefined} /> : null}
             </div>
           </div>
 
