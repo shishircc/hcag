@@ -82,3 +82,9 @@ exclude = [
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 asyncio_mode = "auto"
+
+# Prompt files ship with the package as the default layer an operator's
+# `prompts_dir` is layered over (DESIGN.md §2.15.2). They are data, not code —
+# the point of D11 is that no prompt is a string literal in a module.
+[tool.setuptools.package-data]
+hcag = ["prompts/**/*.md"]

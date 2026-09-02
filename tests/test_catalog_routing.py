@@ -95,7 +95,9 @@ def test_prompt_ranks_by_own_content_not_by_depth() -> None:
     """`mixed` holds content its children do not, so a deeper entry never
     supersedes it. The old 'prefer the most specific entry' rule was true for a
     `node` ancestor and false for a `mixed` one."""
-    prompt = AgentConfig(kb_root="/tmp/x").system_prompt_prefix
+    from hcag.prompting import load_prompts
+
+    prompt = load_prompts().get("agent.system", catalog="")
 
     assert "Prefer the most specific entries" not in prompt
     assert "not by how deep they sit" in prompt

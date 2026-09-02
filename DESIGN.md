@@ -64,7 +64,13 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [2.14.1 Event vocabulary](#2141-event-vocabulary)
     - [2.14.2 Why both, and which is primitive](#2142-why-both-and-which-is-primitive)
     - [2.14.3 Errors after the first byte](#2143-errors-after-the-first-byte)
-  - [2.15 Open Questions / Future Work](#215-open-questions--future-work)
+  - [2.15 Prompts — Loaded by Name, Not Hard-Coded](#215-prompts--loaded-by-name-not-hard-coded)
+    - [2.15.1 Name to filename](#2151-name-to-filename)
+    - [2.15.2 Resolution order and failure](#2152-resolution-order-and-failure)
+    - [2.15.3 Placeholders](#2153-placeholders)
+    - [2.15.4 Loaded once, at startup](#2154-loaded-once-at-startup)
+    - [2.15.5 The registry](#2155-the-registry)
+  - [2.16 Open Questions / Future Work](#216-open-questions--future-work)
 - [Part 3 — The `hcag` CLI Tool](#part-3--the-hcag-cli-tool)
   - [3.1 Purpose](#31-purpose)
   - [3.2 KB Input Model](#32-kb-input-model)
@@ -419,6 +425,13 @@ Images under a folder's `assets/` directory are loaded as multimodal content blo
 ### D10. Framework-agnostic contracts
 The design specifies interfaces (tool schemas, return shapes, active-set protocol) but not a specific SDK, language, or LLM binding. **Rationale:** Portable across Claude Agent SDK (Python/TS), raw Anthropic SDK, or any other agent runtime.
 
+### D11. Prompts are data, not code
+**No prompt text is written in a `.py` file.** Every string the model reads — system prompts, tool descriptions, the catalog delimiter, the build-time summarizer, judge rubrics — lives in a Markdown file under a prompts directory and is loaded by **name** at startup. Code refers to `"agent.system"`; it never contains the words that name resolves to.
+
+**Rationale:** prompts are the part of this system most often wrong and least often owned by whoever can fix it. Every prompt change in this design so far — the reload discipline (§2.7.1), the grounding rule (D3b), the summarizer's scoping (§3.4.4) — was a *content* change reasoned about in English, and each one required editing Python, a review, and a release. That is the wrong loop for the wrong people: the subject-matter expert who knows that "insurance" must be recognised as financial services should be able to change what the model is told without touching code or waiting for a deploy.
+
+Making prompts data also makes them diffable as prose, reviewable by non-engineers, and swappable per deployment — a KB about work passes and one about medical devices need different wording, not different builds.
+
 ## 1.9 Component Boundary
 
 ```
@@ -461,7 +474,7 @@ Two tools are exposed to the agent:
 | Tool | Purpose | When the agent calls it |
 |---|---|---|
 | `get_catalog` | Return the current catalog. | Rare — catalog is auto-injected. Used only if agent wants to re-examine metadata mid-session. |
-| `check_and_load_kb` | Given a natural-language description of what the agent needs and the current active-set IDs, load any missing packets (with eviction if needed) and return the delta. | **Rarely — most turns need no call.** Only when the catalog names a packet that covers the gap and that packet is not already active. Requesting already-active ids is an error, not a no-op worth making (§2.7.1). |
+| `check_and_load_kb` | Given a natural-language description of what the agent needs and the current active-set IDs, load any missing packets (with eviction if needed) and return the delta. The *schema* below is code; the *description* the model reads is a prompt, loaded from `tool/check_and_load_kb.md` (§2.15). | **Rarely — most turns need no call.** Only when the catalog names a packet that covers the gap and that packet is not already active. Requesting already-active ids is an error, not a no-op worth making (§2.7.1). |
 
 ## 1.11 Out of Scope
 
@@ -717,6 +730,8 @@ Given a packet ID (any folder in the KB, from the root down to a leaf), the modu
 Images are read from disk and passed as multimodal image content blocks to the agent runtime (encoding — base64, URL, file reference — is chosen by the runtime binding; the module contract is "multimodal content block").
 
 ## 2.7 System Prompt Composition (Bootstrap)
+
+The prompt text below is illustrative: it is **loaded from `agent/system.md` and `agent/catalog_delimiter.md` at startup**, not written in the runtime (D11, §2.15). What the runtime owns is the *composition* — that the catalog goes into the system prompt once, at bootstrap — not the wording.
 
 The agent runtime **never** reads the KB directly. At conversation start it obtains the catalog by calling `memory_module.get_catalog()` — which returns the `## Sub-topics` section of `<kb_root>/compiled.md`, i.e. the **full index of every folder in the KB at every depth** (D3a) — and injects the returned string into the system prompt:
 
@@ -1351,6 +1366,8 @@ The runtime's `LLM` interface (§2.9) is bound to LiteLLM by a single thin adapt
 
 Markdown content is treated as opaque UTF-8 text; no markdown-parser dependency is required for the memory module. The CLI concatenates source `.md` files verbatim between separators, so no round-tripping through a markdown AST.
 
+**Prompts.** `prompts_dir` (default `./prompts`) names the directory an operator's prompt overrides are read from (§2.15). Prompt files are Markdown, loaded by name at startup, and layered over the defaults packaged with `hcag`. No prompt text appears in a `.py` module (D11). Variable substitution is **stdlib `string.Template`** (`$name` / `${name}`) — no new dependency, and its single reserved character keeps the braces in a prompt's JSON examples as ordinary text (§2.15.3).
+
 ### 2.13.4 Observability
 
 | Layer | Library | Notes |
@@ -1469,7 +1486,132 @@ Once a stream has started, **the HTTP status is already sent**. A failure at tok
 - A stream that ends **without** `assistant.final` is a failed turn, whatever the status line said. Clients must treat "closed early" as an error rather than as a short answer — a truncated answer that renders as a complete one is worse than a visible failure.
 - The turn is not retried server-side. Retrying would re-emit deltas the client has already rendered, and there is no way to un-render them.
 
-## 2.15 Open Questions / Future Work
+## 2.15 Prompts — Loaded by Name, Not Hard-Coded
+
+Code names a prompt; a file supplies it (D11):
+
+```python
+prompts.get("agent.system")           # never a string literal in the module
+```
+
+### 2.15.1 Name to filename
+
+A prompt name is a dotted identifier — `agent.system`, `tool.check_and_load_kb`, `preprocess.folder_metadata`. It resolves to a path by a deliberately narrow rule:
+
+1. Lowercase.
+2. Dots become directory separators, so `agent.system` reads `agent/system.md` and names group into folders on disk.
+3. **Every character outside `[a-z0-9_-]` is stripped** from each segment — not escaped, not rejected, removed.
+4. Append `.md`.
+
+**Stripping rather than escaping is a security decision, not a cosmetic one.** A prompt name may one day come from configuration, an experiment matrix, or a per-tenant override; anything that survives into a path is a path-traversal primitive. `../../etc/passwd` and `prompts/../secrets` must not be able to name a file, and the only way to be certain is that the characters which make traversal possible — `.` as a segment, `/`, `\`, `~`, `%`, whitespace, control characters — cannot appear in a resolved segment at all. An allowlist that strips is verifiable by reading it; a denylist that escapes is a bet on having thought of everything.
+
+**The consequence must be stated because it is a real one: stripping is lossy, so distinct names can collide.** `folder.metadata` and `folder-metadata!` both resolve to `folder/metadata.md` and `folder-metadata.md` respectively — but `a.b` and `a..b` and `a. .b` all resolve to `a/b.md`. Two prompts whose names differ only in stripped characters are the *same prompt*, silently. The registry (§2.15.5) is therefore validated at startup: **if two registered names resolve to the same path, that is a startup error**, so a collision is caught once by whoever adds the name rather than repeatedly by whoever debugs the behaviour.
+
+An empty segment after stripping (a name that was entirely punctuation) is likewise a startup error rather than a file called `.md`.
+
+### 2.15.2 Resolution order and failure
+
+Two layers, checked in order:
+
+1. **`prompts_dir`** — the operator's directory, `./prompts` by default, configurable per §2.13. This is what a subject-matter expert edits.
+2. **The packaged defaults** shipped inside the `hcag` package.
+
+Packaged defaults are what keeps "no hard-coded prompts" from meaning "unusable on install". They are still data — Markdown files, diffable, overridable by dropping a same-named file into `prompts_dir` — and the distinction that matters is not where the bytes live but that no prompt is a string literal in a module, so changing one never means editing code.
+
+Overriding is **per prompt, not per directory**: an operator who supplies `agent/system.md` and nothing else gets their system prompt and the packaged everything-else. A directory that had to be complete would make a one-line change a fork.
+
+Failure is closed, consistent with §3.4.9:
+
+| Condition | Behavior |
+|---|---|
+| Name resolves in neither layer | **Startup error** naming the prompt, the resolved relative path, and both directories searched. Never an empty string — an agent running with a blank system prompt looks like a model quality problem and is not one. |
+| File is empty or whitespace | **Startup error.** Almost always a truncated edit, and the failure it causes is silent. |
+| File unreadable | **Startup error** with the OS error. |
+| Two registered names resolve to one path | **Startup error** (§2.15.1). |
+| Required variable missing, or an unsupplied one used | **Startup error** (§2.15.3). |
+| Unescaped `$` — e.g. `$11,800` where `$$11,800` was meant | **Startup error** via `Template.is_valid()`, naming the file and the text (§2.15.3). |
+
+### 2.15.3 Placeholders
+
+Prompt files are templates. A prompt author places a variable where a value should go, and the loader substitutes at render time:
+
+```markdown
+<!-- prompts/agent/system.md -->
+You are an HCAG agent grounded in a hierarchical knowledge base.
+
+--- KNOWLEDGE ---
+$packets
+--- END KNOWLEDGE ---
+
+GROUNDING. The catalog below is an INDEX, not a source. …
+
+$catalog
+
+Today's date is $today. Where the knowledge base distinguishes current rules
+from ones taking effect on a future date, use this to decide which applies.
+```
+
+**Substitution uses `string.Template` from the standard library** — `$name`, or `${name}` where the following character would otherwise run into the name. Not `str.format`, and not a templating engine.
+
+**Why `Template` and not `str.format`.** Prompts are Markdown written by non-programmers, and they are *full of braces*: JSON examples in tool descriptions, event schemas, code fences, `{"kind": "assistant.delta"}`. Under `str.format` every one of those is a substitution site — the prompt either raises on render or silently mangles an example. `Template` treats only `$` as special, so braces are ordinary text and an SME can paste a JSON sample without knowing that braces are magic. A full templating engine (Jinja and friends) was rejected in the other direction: conditionals and loops in a prompt file turn prose into a program, which is precisely the thing this design is moving *out* of the code.
+
+**The `$` hazard, stated because this KB is full of money.** `Template` reserves `$`, and a knowledge base about salary thresholds will have prompt authors writing `$11,800`. A literal dollar sign must be escaped as `$$`. This is not left to be discovered at runtime: `Template.is_valid()` is checked at load, so `$11,800` fails **at startup** with the file and the offending text, rather than raising on the first turn that renders that prompt — or, worse, being silently swallowed by `safe_substitute`. Strict `substitute` is used deliberately for the same reason.
+
+**Each prompt declares the variables it requires**, and the loader checks them at startup with `Template.get_identifiers()`:
+
+- A required variable **absent** from the file is a startup error.
+- A variable **used** in the file that is not supplied is a startup error.
+
+That declaration is the point of the whole mechanism. An SME editing `agent/system.md` who deletes `$catalog` — or renames it, or reflows it into a code fence — would otherwise produce an agent that starts cleanly, answers fluently, and has no knowledge base, with nothing in the logs to say why. Every failure mode of a hand-edited template is silent, so each one has to be converted into a loud startup failure.
+
+**Available variables:**
+
+| Variable | Value | Notes |
+|---|---|---|
+| `$catalog` | the root `## Sub-topics` index (§2.7) | The KB's shape. Required by `agent.system`. |
+| `$packets` | the content of any preloaded packets, concatenated | Empty unless the deployment warm-starts an active set (§5.4.1). Puts known-needed knowledge in the cached prefix instead of arriving as tool results — which is why the voice agent wants it, and why it cannot later be evicted (§2.5). |
+| `$today` | today's date, `YYYY-MM-DD` | See below. |
+| `$sections`, `$scope` | build-time summarizer inputs (§3.4.4) | |
+
+Operator-defined variables can be added through configuration; the registry check means an unused or misspelled one fails at startup rather than rendering as literal text in the model's context.
+
+**`$today` deserves its own note, because a date interacts with the prompt cache.** It earns its place: this KB states both a current qualifying salary and one that applies "from 1 Jan 2027", and an agent with no notion of today cannot tell which is in force — it will either answer with whichever number it read first or hedge unhelpfully. But the system prompt is the head of the cached prefix (§2.12), so anything varying inside it invalidates that prefix when it changes. Two consequences follow, and both are deliberate:
+
+- **Date granularity, never a timestamp.** A timestamp would change on every turn and destroy prompt caching entirely; a date changes once a day, so the cache is rebuilt at most daily.
+- **Resolved once, when the runtime is constructed** — like every other prompt value (§2.15.4), so a conversation is governed by one prompt from first turn to last. A runtime is created per `session_id` (§9.5), so a new conversation always sees the current date; only a single conversation held open across midnight will keep yesterday's, which is the right trade against re-rendering a cached prefix mid-session.
+
+### 2.15.4 Loaded once, at startup
+
+Prompts are read **once, when the runtime is constructed**, and held for the process's life. Not per turn.
+
+This is forced by §2.12: the system prompt is the head of the cached prefix, and re-reading a file per turn would let an edit change that prefix mid-session — invalidating the prompt cache for every subsequent turn of every live conversation, and worse, producing a session whose early turns were answered under different instructions than its later ones. A conversation must be governed by one set of prompts.
+
+**Changing a prompt therefore requires a restart**, and that is the intended contract rather than a limitation to be engineered away. It is worth stating plainly in operator documentation, because "edit the file and it takes effect" is the natural assumption and it is wrong here. The same applies to values: `$today` is resolved when the runtime is built, not read from the clock per turn (§2.15.3).
+
+### 2.15.5 The registry
+
+Every prompt the system can load is declared in one place, with its required placeholders. The registry is what makes the startup checks possible — collisions, missing files, and missing placeholders are all checked against it rather than discovered when a code path first runs, which for a rarely-taken branch could be weeks later.
+
+| Name | Used by | Required variables |
+|---|---|---|
+| `agent.system` | runtime system prompt (§2.7) | `$catalog` |
+| `agent.catalog_delimiter` | the `INDEX ONLY` block wrapping the injected catalog (D3b) | `$catalog` |
+| `tool.get_catalog` | `get_catalog` description (§1.10) | — |
+| `tool.check_and_load_kb` | `check_and_load_kb` description (§2.7.1) | — |
+| `memory.redundant_note` | the in-band note on a redundant call (§2.3.3) | `$requested` |
+| `voice.system` | voice system prompt (§5.8) | `$catalog` |
+| `preprocess.folder_metadata` | build-time folder summary (§3.4.4) | `$sections`, `$scope` |
+| `preprocess.scope_own` | scoping clause for a leaf/mixed folder (§3.4.4) | — |
+| `preprocess.scope_branch` | scoping clause for a taxonomy node (§3.4.4) | — |
+| `evalgen.*`, `eval.judge` | question generation and the LLM-judge rubric (Parts 6, 7) | per prompt |
+
+`$packets` and `$today` are available to any prompt and required by none — a deployment that wants them writes them into its file, and one that does not simply omits them.
+
+**Tool descriptions are prompts.** They are model-facing text that decides behaviour — §2.7.1's whole enforcement layer 1 is the wording of `tool.check_and_load_kb` — so they belong in the registry rather than in a Python dict. What stays in code is the tool *schema*: names, parameter types, required fields. The contract is code; the persuasion is data.
+
+**Operator-facing text is not a prompt.** Log messages, CLI output, and HTTP error details stay in code. The rule is "text the model reads", not "text that is written in English" — externalizing error strings would add indirection for people who are not the audience for this mechanism.
+
+## 2.16 Open Questions / Future Work
 
 1. **Catalog scaling.** If the catalog itself grows beyond a comfortable system-prompt size, we may need a summarized catalog + on-demand `get_catalog_entry(id)` tool. Deferred.
 2. **Partial packet loading.** Packets are all-or-nothing today. If some packets become very large, section-level loading could be introduced without changing the tool surface (packet IDs would become `packet_id#section`).
@@ -1870,9 +2012,12 @@ preflight = true                  # probe the LLM before the walk starts (§3.4.
 max_retries = 2                   # retries per folder, exponential backoff, before
                                   # the run aborts (or degrades under --allow-partial)
 
-[llm.prompts]
-# Paths to prompt template files, overridable
-folder_metadata  = "prompts/folder_metadata.md"   # summarizes a folder for its parent's catalog
+# Prompt overrides (§2.15). Files are looked up by NAME, not by path:
+# `preprocess.folder_metadata` reads `<prompts_dir>/preprocess/folder_metadata.md`,
+# falling back to the copy packaged with hcag when the operator has not
+# supplied one. Editing a file here is how a subject-matter expert changes what
+# the model is told without touching code (D11).
+prompts_dir = "./prompts"
 
 [tokenizer]
 kind = "tiktoken"                 # tiktoken | anthropic | rough

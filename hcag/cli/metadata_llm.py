@@ -26,6 +26,7 @@ import re
 from dataclasses import dataclass
 
 from ..config import LLMConfig
+from ..prompting import PromptLibrary, load_prompts
 
 
 @dataclass
@@ -132,18 +133,19 @@ def check_credentials(cfg: LLMConfig) -> None:
         )
 
 
-_PROMPT = """You will summarize one folder of a hierarchical knowledge base so
-a catalog can route to it.
+def _prompts(cfg: LLMConfig) -> PromptLibrary:
+    """Load the build-time prompts (D11, §2.15).
 
-{scope}
+    Cached per process: `preprocess` calls this once per folder and the files
+    do not change during a run.
+    """
+    global _LIB
+    if _LIB is None:
+        _LIB = load_prompts(getattr(cfg, "prompts_dir", None))
+    return _LIB
 
-Emit ONE compact JSON object with exactly these fields (no prose, no code fences):
-  "title": short human-readable title (<=60 chars)
-  "short_description": ONE line, no line breaks, <=180 chars
-  "long_description": 2-4 sentences describing scope, key concepts, and when
-                      this folder is relevant
 
-{sections}"""
+_LIB: PromptLibrary | None = None
 
 
 def _extract_json(text: str) -> dict:
@@ -173,28 +175,6 @@ def _complete(cfg: LLMConfig, prompt: str) -> str:
         **({"api_base": cfg.endpoint} if cfg.endpoint else {}),
     )
     return resp.choices[0].message.content or ""
-
-
-#: How the summary must be scoped, by folder kind (§3.4.4).
-#:
-#: A folder with its own content must be described by THAT content. Describing
-#: what its children hold makes its catalog entry match questions its own
-#: `## Content` cannot answer — and since the roll-up (D3a) already gives every
-#: descendant its own entry in the same catalog, advertising their contents
-#: buys nothing and costs precision. Observed: an "eligibility" folder whose
-#: description absorbed a child's "sector-specific salary benchmark tables"
-#: drew the agent to the child and away from the rule it needed.
-_SCOPE_OWN = """Describe what THIS folder's own content says — the text under
-OWN CONTENT below. Child topics are listed only as context so you can tell what
-kind of branch this is; do NOT describe their contents or borrow their
-specifics. Every descendant has its own catalog entry, so this entry only has
-to make THIS folder findable. If the folder's own content states a rule,
-threshold, or definition, say so explicitly — that is what callers route on."""
-
-_SCOPE_BRANCH = """This folder has no content of its own: it is a waypoint. Its
-child topics are all there is to describe, so summarize ACROSS them — the
-result must characterize the whole branch, not just its first or largest
-child."""
 
 
 def _compose_sections(
@@ -244,8 +224,13 @@ def generate_folder_metadata(
     # A `node` has nothing but its children to describe; anything else must be
     # described by its own content (§3.4.4).
     has_own = bool(trimmed.strip()) if not kind else kind in ("leaf", "mixed")
-    scope = _SCOPE_OWN if has_own else _SCOPE_BRANCH
-    raw = _complete(cfg, _PROMPT.format(sections=sections, scope=scope))
+    prompts = _prompts(cfg)
+    scope = prompts.get(
+        "preprocess.scope_own" if has_own else "preprocess.scope_branch"
+    )
+    raw = _complete(
+        cfg, prompts.get("preprocess.folder_metadata", sections=sections, scope=scope)
+    )
     data = _extract_json(raw)
     return FolderMetadata(
         title=str(data.get("title", "Untitled")).strip(),

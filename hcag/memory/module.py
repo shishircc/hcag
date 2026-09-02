@@ -25,6 +25,7 @@ from ..compiled_io import (
     strip_compiled_frontmatter,
 )
 from ..logger import HcagLogger
+from ..prompting import PromptLibrary, load_prompts
 from ..models import (
     Catalog,
     CatalogEntry,
@@ -114,6 +115,7 @@ class FileSystemMemoryModule:
         logger: HcagLogger | None = None,
         tracer=None,
         strip_subtopics_on_load: bool = True,
+        prompts: "PromptLibrary | None" = None,
     ) -> None:
         self.storage = storage
         self.budget = budget
@@ -121,6 +123,8 @@ class FileSystemMemoryModule:
         self.logger = logger
         self.tracer = tracer
         self.strip_subtopics_on_load = strip_subtopics_on_load
+        # Model-facing text, so a file rather than a literal (D11).
+        self.prompts = prompts or load_prompts()
         self._catalog: Catalog | None = None
         # Populated wholesale from the root catalog; only grows further for
         # KBs built with `catalog.max_depth` set, or by an older build.
@@ -239,12 +243,8 @@ class FileSystemMemoryModule:
         requested = list(request.requested_packet_ids)
         active = list(request.active_packet_ids)
         if requested and all(pid in active for pid in requested):
-            note = (
-                "no packets loaded: every requested id was already active "
-                f"({', '.join(requested)}). Their content is already in this "
-                "conversation — re-read it rather than requesting it again. "
-                "Call check_and_load_kb only for a catalog entry that is NOT "
-                "in active_after."
+            note = self.prompts.get(
+                "memory.redundant_note", requested=", ".join(requested)
             )
             if self.logger:
                 self.logger.warn(

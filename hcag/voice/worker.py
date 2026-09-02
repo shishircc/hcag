@@ -37,7 +37,7 @@ def build_agent_runtime(cfg: VoiceAgentConfig) -> AgentRuntime:
         llm=cfg.llm,
         catalog=cfg.catalog,
         observability=cfg.observability,
-        system_prompt_prefix=cfg.system_prompt_prefix,
+        prompts_dir=cfg.prompts_dir,
     )
     return AgentRuntime(cfg=agent_cfg)
 

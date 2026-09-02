@@ -472,6 +472,40 @@ When the user opens voice mode the browser calls `POST /api/livekit/token`, conn
 
 Full setup + env vars: [`hcag/web/README.md`](./hcag/web/README.md).
 
+## Prompts
+
+**No prompt text lives in the Python source.** Every string the model reads — system prompts, tool descriptions, the catalog delimiter, the build-time summarizer, judge rubrics — is a Markdown file loaded by name at startup ([DESIGN.md §2.15](./DESIGN.md#215-prompts--loaded-by-name-not-hard-coded)):
+
+```
+prompts/
+├── agent/system.md              # the runtime system prompt
+├── agent/catalog_delimiter.md   # the INDEX ONLY block around the catalog
+├── tool/check_and_load_kb.md    # what the model reads about the tool
+└── preprocess/folder_metadata.md
+```
+
+A name like `agent.system` resolves to `agent/system.md`; every character outside `[a-z0-9_-]` is **stripped** from each segment, so a name can never escape the prompts directory. Files in your `prompts_dir` override the copies packaged with `hcag`, per prompt — supply `agent/system.md` alone and you keep the packaged everything-else.
+
+Prompts are templates, substituted with stdlib `string.Template` (`$name`):
+
+```markdown
+--- KNOWLEDGE ---
+$packets
+--- END KNOWLEDGE ---
+
+$catalog
+
+Today's date is $today. Where the knowledge base distinguishes current rules
+from ones taking effect on a future date, use this to decide which applies.
+```
+
+`string.Template` rather than `str.format` because prompts are full of braces — JSON examples, code fences — and under `.format` every one is a substitution site. The trade is that `$` becomes reserved, which matters in a KB about salaries: a literal dollar sign is written `$$`, and an unescaped `$11,800` is caught at **startup** by `Template.is_valid()` rather than raising on the first turn that renders it.
+
+The point is who can change them: adjusting what the model is told should not require editing Python, a code review, and a release. Two consequences worth knowing:
+
+- **Prompts are read once, at startup.** A conversation must be governed by one set of instructions, and re-reading per turn would invalidate the prompt cache mid-session. Editing a file takes effect on restart.
+- **The loader fails closed.** A missing file, an empty file, two names colliding after stripping, or a template missing a required variable like `$catalog` are all startup errors — because every one of those failures is otherwise silent, and a blank system prompt looks like a model quality problem rather than a configuration one.
+
 ## Observability
 
 Two independent layers ([DESIGN.md §2.11](./DESIGN.md#211-observability)):

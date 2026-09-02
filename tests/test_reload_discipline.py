@@ -8,7 +8,8 @@ from pathlib import Path
 
 from hcag.memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 from hcag.models import CheckAndLoadRequest
-from hcag.runtime.agent import TOOL_DEFS, AgentRuntime
+from hcag.prompting import load_prompts
+from hcag.runtime.agent import AgentRuntime, build_tool_defs
 from hcag.config import AgentConfig
 from hcag.runtime.llm import LLMResponse, Message, ToolCall
 
@@ -140,9 +141,11 @@ def test_empty_request_is_not_treated_as_redundant(tmp_path: Path) -> None:
 
 
 def test_tool_description_states_both_rules() -> None:
+    """The description is a prompt file (§2.15.5) — the tool *schema* is code,
+    but the wording that enforces the discipline is data."""
     desc = next(
         t["function"]["description"]
-        for t in TOOL_DEFS
+        for t in build_tool_defs(load_prompts())
         if t["function"]["name"] == "check_and_load_kb"
     )
     # Grounding: the catalog routes, it never answers.
@@ -153,7 +156,7 @@ def test_tool_description_states_both_rules() -> None:
 
 
 def test_system_prompt_carries_the_decision_rule() -> None:
-    prompt = AgentConfig(kb_root="/tmp/x").system_prompt_prefix
+    prompt = load_prompts().get("agent.system", catalog="")
     assert "WHEN TO LOAD" in prompt
     assert "not an acknowledgement of a turn" in prompt
     assert "never needs re-requesting" in prompt
@@ -247,7 +250,7 @@ def test_system_prompt_forbids_answering_from_the_catalog() -> None:
     """The catalog's descriptions are build-tool summaries, not evidence. A
     model that answers from them produces confident, unsourced answers that
     look grounded — the worst failure this KB design can have."""
-    prompt = AgentConfig(kb_root="/tmp/x").system_prompt_prefix
+    prompt = load_prompts().get("agent.system", catalog="")
     assert "GROUNDING" in prompt
     assert "NEVER answer from the catalog" in prompt
     assert "not evidence" in prompt
@@ -276,8 +279,6 @@ def test_injected_catalog_is_labelled_as_an_index(tmp_path: Path) -> None:
 
 
 def test_voice_prompt_carries_the_same_grounding_rule() -> None:
-    from hcag.voice.config import VoiceAgentConfig
-
-    prompt = VoiceAgentConfig(kb_root="/tmp/x").system_prompt_prefix
+    prompt = load_prompts().get("voice.system", catalog="")
     assert "INDEX, not a source" in prompt
     assert "never evidence" in prompt

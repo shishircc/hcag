@@ -73,22 +73,13 @@ class VoiceAgentConfig(BaseModel):
 
     kb_root: str
     max_active_tokens: int = 32000
-    system_prompt_prefix: str = (
-        "You are an HCAG voice agent grounded in a hierarchical knowledge base. "
-        "The catalog below is an INDEX, not a source: its descriptions tell you "
-        "which packet to load and are never evidence. Every fact you state must "
-        "come from the content of a packet loaded into this conversation; if no "
-        "loaded packet supports an answer, say so and load the one that would. "
-        "The catalog indexes every folder in the KB at every depth, so "
-        "request the deepest matching ids directly rather than walking the "
-        "tree. Most turns need NO tool call: answer from the packets already "
-        "loaded, and call check_and_load_kb only when the catalog names an "
-        "entry that covers the gap and is absent from your active set. Never "
-        "call to refresh or to confirm what is loaded — in a voice "
-        "conversation every needless call is an audible pause. "
-        "Answer conversationally and concisely in plain prose with no Markdown "
-        "formatting — this response will be spoken aloud."
-    )
+    prompts_dir: str = "./prompts"
+    """Prompt overrides for the voice agent (D11, §2.15).
+
+    The voice system prompt is `voice.system`; it differs from the text agent's
+    in asking for spoken prose, which is a wording decision and therefore a
+    file rather than a constant.
+    """
     initial_packet_ids: list[str] = Field(default_factory=list)
 
     llm: LLMConfig = Field(default_factory=LLMConfig)

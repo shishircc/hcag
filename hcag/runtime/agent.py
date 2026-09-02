@@ -10,6 +10,7 @@ from ..logger import HcagLogger, build_logger
 from ..memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 from ..memory.module import MemoryModule
 from ..models import CheckAndLoadRequest, Delta
+from ..prompting import PromptLibrary, load_prompts
 from ..tracing import build_tracer, json_payload, messages_payload, set_attrs, truncate_middle
 from .events import Event, EventStream
 from .llm import (
@@ -65,67 +66,51 @@ def _response_for_trace(response) -> dict[str, Any]:
     }
 
 
-TOOL_DEFS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_catalog",
-            "description": (
-                "Return the full HCAG knowledge catalog. You should not need this: the "
-                "catalog in your system prompt already indexes every folder in the KB "
-                "at every depth. Provided only for re-inspection."
-            ),
-            "parameters": {"type": "object", "properties": {}, "required": []},
-        },
-    },
-    {
-        "type": "function",
-        "function": {
-            "name": "check_and_load_kb",
-            "description": (
-                "Loads a packet's actual content. The catalog in your system prompt "
-                "is an index: it tells you WHICH packet to load and is never itself an "
-                "answer, so a question the catalog appears to describe is a question "
-                "you must load a packet to answer. That said, MOST TURNS NEED NO CALL: "
-                "it acquires knowledge you do not have; it is not an acknowledgement of "
-                "a turn, not a refresh, and not a way to confirm what is loaded. Before "
-                "calling, check in order: "
-                "(1) can you answer from the CONTENT of packets already loaded? Then "
-                "answer — do not call. (2) Is the material inside a packet already in this "
-                "conversation? Then re-read it — do not call; a loaded packet never "
-                "needs re-requesting. (3) Only if the catalog names an entry that "
-                "covers the gap AND that entry is absent from your active set, call "
-                "with exactly those ids. Requesting ids that are already active is an "
-                "error: it loads nothing, costs a round trip, and disturbs eviction "
-                "order. Request the deepest matching ids straight from the catalog — "
-                "you never need to load a parent folder on the way to a child, and one "
-                "call can carry ids from several branches. Pass the ids you need in "
-                "`requested_packet_ids` and the ids you believe are currently active in "
-                "`active_packet_ids`. Returns delta (loaded + evicted)."
-            ),
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "context": {
-                        "type": "string",
-                        "description": "One-line description of what you need. Used for observability.",
-                    },
-                    "requested_packet_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Packet IDs to add to the active set.",
-                    },
-                    "active_packet_ids": {
-                        "type": "array",
-                        "items": {"type": "string"},
-                        "description": "Packet IDs you currently believe are active (LRU order, most recent last).",
-                    },
-                },
-                "required": ["context", "requested_packet_ids", "active_packet_ids"],
+def build_tool_defs(prompts: "PromptLibrary") -> list[dict[str, Any]]:
+    """Tool schemas, with their descriptions loaded from files (§2.15.5).
+
+    The schema — names, parameter types, required fields — is a contract and
+    stays in code. The description is model-facing text that decides behaviour
+    (the reload discipline of §2.7.1 *is* the wording of `check_and_load_kb`),
+    so it is a prompt.
+    """
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_catalog",
+                "description": prompts.get("tool.get_catalog"),
+                "parameters": {"type": "object", "properties": {}, "required": []},
             },
         },
-    },
-]
+        {
+            "type": "function",
+            "function": {
+                "name": "check_and_load_kb",
+                "description": prompts.get("tool.check_and_load_kb"),
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "context": {
+                            "type": "string",
+                            "description": "One-line description of what you need. Used for observability.",
+                        },
+                        "requested_packet_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Packet IDs to add to the active set.",
+                        },
+                        "active_packet_ids": {
+                            "type": "array",
+                            "items": {"type": "string"},
+                            "description": "Packet IDs you currently believe are active (LRU order, most recent last).",
+                        },
+                    },
+                    "required": ["context", "requested_packet_ids", "active_packet_ids"],
+                },
+            },
+        },
+    ]
 
 
 class AgentRuntime:
@@ -138,9 +123,14 @@ class AgentRuntime:
         llm: LLM | None = None,
         logger: HcagLogger | None = None,
         session_id: str | None = None,
+        prompts: PromptLibrary | None = None,
     ) -> None:
         self.cfg = cfg
         self.session_id = session_id
+        # Loaded once, here (§2.15.4). A prompt re-read per turn would change
+        # the cached prefix mid-session and leave a conversation whose early
+        # turns ran under different instructions than its later ones.
+        self.prompts = prompts or load_prompts(cfg.prompts_dir)
         self.logger = logger or build_logger(cfg.observability.log, name="hcag.runtime")
         # Pass the whole observability block so either trace-destination form
         # is honored (§2.11.1); a missing Langfuse key raises here, at startup.
@@ -153,6 +143,7 @@ class AgentRuntime:
                 logger=self.logger,
                 tracer=self.tracer,
                 strip_subtopics_on_load=cfg.catalog.strip_subtopics_on_load,
+                prompts=self.prompts,
             )
         self.memory = memory
         self.llm = llm or LiteLLMAdapter(cfg.llm)
@@ -166,24 +157,19 @@ class AgentRuntime:
         # Mirrors the delta's authoritative `active_after` so `assistant.final`
         # can report what the turn ended up holding (§2.14.1).
         self._active_ids: list[str] = []
+        self._tool_defs = build_tool_defs(self.prompts)
 
     # ---- Bootstrap ------------------------------------------------------
 
     def bootstrap(self) -> None:
         catalog = self.memory.get_catalog()
-        # The delimiter states the catalog's role again, right where the model
-        # reads it: an index whose descriptions route, never evidence that
-        # answers. A block of plausible prose is otherwise easy to mistake for
-        # source material.
-        self._system_prompt = (
-            f"{self.cfg.system_prompt_prefix}\n\n"
-            "--- KNOWLEDGE CATALOG (INDEX ONLY — every folder, all depths) ---\n"
-            "The entries below are routing metadata. Use them to choose packet "
-            "ids to load. Do NOT answer any question from the text below; "
-            "answers come only from the ## Content of packets you have loaded.\n\n"
-            f"{catalog.raw_markdown}\n"
-            "--- END CATALOG (nothing above is a source) ---"
+        # Both the wording and the delimiter come from files (D11): the
+        # runtime owns the *composition* — that the catalog is injected once,
+        # at bootstrap — not the words.
+        delimited = self.prompts.get(
+            "agent.catalog_delimiter", catalog=catalog.raw_markdown
         )
+        self._system_prompt = self.prompts.get("agent.system", catalog=delimited)
         self._history = [Message(role="system", content=self._system_prompt)]
         self.logger.info(
             "agent.bootstrap",
@@ -350,7 +336,7 @@ class AgentRuntime:
                 },
             )
             response = None
-            for chunk in stream_or_buffer(self.llm, self._history, TOOL_DEFS):
+            for chunk in stream_or_buffer(self.llm, self._history, self._tool_defs):
                 if isinstance(chunk, Final):
                     response = chunk.response
                 yield chunk
