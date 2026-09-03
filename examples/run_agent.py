@@ -8,7 +8,7 @@ Two modes:
   python examples/run_agent.py --config ./examples/agent.toml
 
 Prerequisites:
-  1. Build the KB:      hcag preprocess ./my-kb && hcag aggregate ./my-kb
+  1. Build the KB:      hcag ./my-kb
   2. Set credentials:   export ANTHROPIC_API_KEY=...   (or AWS_* for Bedrock)
   3. Edit agent.toml:   set kb_root to your KB path
 """

@@ -118,17 +118,27 @@ def test_scan_kb_drops_packets_without_paragraphs(tmp_path: Path) -> None:
 def test_csv_writer_schema_and_empty_columns(tmp_path: Path) -> None:
     out = tmp_path / "eval.csv"
     items = [
-        (question_id("q", 1), GeneratedItem("simple", "Q1?", "A1", ["p.a"])),
-        (question_id("q", 2), GeneratedItem("hard-2", "Q2?", "A2", ["p.b"])),
+        (question_id("q", 1), GeneratedItem("simple", "Q1?", "A1", ["p.a"], ["https://x/a"])),
+        # hard-2 lists the packet then the image it was grounded in (§6.7.1).
+        (
+            question_id("q", 2),
+            GeneratedItem("hard-2", "Q2?", "A2", ["p.b"], ["https://x/b", "https://x/b.png"]),
+        ),
+        # No provenance (hand-authored KB, or crawled before §4.5.3): the cell
+        # is empty rather than holding a packet id or a local path.
+        (question_id("q", 3), GeneratedItem("simple", "Q3?", "A3", ["p.c"])),
     ]
     n = write_csv(out, items)
-    assert n == 2
+    assert n == 3
 
     with out.open(encoding="utf-8", newline="") as f:
         rows = list(csv.reader(f))
     assert rows[0] == COLUMNS
-    assert rows[1] == ["q-0001", "simple", "Q1?", "A1", "", "", ""]
-    assert rows[2] == ["q-0002", "hard-2", "Q2?", "A2", "", "", ""]
+    assert rows[1] == ["q-0001", "simple", "Q1?", "A1", "https://x/a", "", "", ""]
+    assert rows[2] == [
+        "q-0002", "hard-2", "Q2?", "A2", "https://x/b https://x/b.png", "", "", ""
+    ]
+    assert rows[3] == ["q-0003", "simple", "Q3?", "A3", "", "", "", ""]
 
 
 def test_question_id_zero_padded() -> None:

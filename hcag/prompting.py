@@ -221,26 +221,49 @@ REGISTRY: list[PromptSpec] = [
     ),
     PromptSpec("preprocess.scope_own", description="leaf/mixed scoping clause (§3.4.4)"),
     PromptSpec("preprocess.scope_branch", description="node scoping clause (§3.4.4)"),
-    PromptSpec("evalgen.simple", frozenset({"content"}), "FAQ-style question (§6.4.1)"),
+    PromptSpec(
+        "evalgen.answer_rules",
+        description="completeness standard shared by every question kind (§6.4)",
+    ),
+    PromptSpec(
+        "evalgen.simple",
+        frozenset({"content", "answer_rules"}),
+        "FAQ-style question (§6.4.1)",
+    ),
     PromptSpec(
         "evalgen.medium",
-        frozenset({"packet_id", "paragraph"}),
+        frozenset({"packet_id", "paragraph", "answer_rules"}),
         "single-paragraph reasoning question (§6.4.2)",
     ),
     PromptSpec(
         "evalgen.complex",
-        frozenset({"packet_id", "paragraphs"}),
+        frozenset({"packet_id", "paragraphs", "answer_rules"}),
         "whole-packet reasoning question (§6.4.3)",
     ),
     PromptSpec(
         "evalgen.hard1",
-        frozenset({"packet_a_id", "packet_b_id", "paragraphs_a", "paragraphs_b"}),
+        frozenset({"packet_a_id", "packet_b_id", "paragraphs_a", "paragraphs_b", "answer_rules"}),
         "cross-packet question (§6.4.4)",
     ),
     PromptSpec(
         "evalgen.hard2",
-        frozenset({"packet_id", "content"}),
+        frozenset({"packet_id", "content", "answer_rules"}),
         "multimodal question (§6.4.5)",
+    ),
+    PromptSpec(
+        "eval.classify",
+        frozenset({"question", "reply"}),
+        "answer / clarify / refusal classifier (§7.4.2)",
+    ),
+    PromptSpec(
+        "eval.clarify",
+        frozenset({"question", "expected_answer", "transcript", "last_reply"}),
+        "clarifier playing the user role (§7.4.2)",
+    ),
+    PromptSpec(
+        "eval.score",
+        frozenset({"question", "expected_answer", "actual_answer", "transcript"}),
+        "LLM-judge rubric (§7.5)",
     ),
 ]
 

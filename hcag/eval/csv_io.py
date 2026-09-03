@@ -22,10 +22,17 @@ COLUMNS = [
     "kind",
     "question",
     "expected_answer",
+    "source",
     "actual_answer",
     "score",
     "remark",
 ]
+
+#: Columns an input CSV must contain. `source` (§6.7.1) is deliberately not
+#: required: eval sets generated before provenance existed have seven columns,
+#: and refusing to score them would strand every eval set already in use. A
+#: missing `source` reads as empty and is written back as empty.
+REQUIRED_COLUMNS = [c for c in COLUMNS if c != "source"]
 
 VALID_KINDS: set[str] = {"simple", "medium", "complex", "hard-1", "hard-2"}
 
@@ -38,6 +45,10 @@ class EvalRow:
     kind: str
     question: str
     expected_answer: str
+    #: Origin URLs the question was grounded in (§6.7.1). Carried through
+    #: untouched: `eval` reads it, writes it back, and never shows it to the
+    #: agent — feeding it in would measure retrieval-with-hints, not retrieval.
+    source: str = ""
     actual_answer: str = ""
     score: int | None = None
     remark: str = ""
@@ -65,10 +76,11 @@ def read_csv(path: Path) -> ReadResult:
     with path.open("r", encoding="utf-8", newline="") as f:
         reader = csv.DictReader(f)
         header = reader.fieldnames or []
-        missing = [c for c in COLUMNS if c not in header]
+        missing = [c for c in REQUIRED_COLUMNS if c not in header]
         if missing:
             raise ValueError(
                 f"input CSV is missing required columns: {missing}. Expected: {COLUMNS}"
+                " (`source` is optional — pre-provenance eval sets are accepted)"
             )
         for i, raw in enumerate(reader, start=2):  # line 1 is the header
             score_raw = (raw.get("score") or "").strip()
@@ -88,6 +100,7 @@ def read_csv(path: Path) -> ReadResult:
                 kind=(raw.get("kind") or "").strip(),
                 question=raw.get("question") or "",
                 expected_answer=raw.get("expected_answer") or "",
+                source=raw.get("source") or "",
                 actual_answer=raw.get("actual_answer") or "",
                 score=score,
                 remark=raw.get("remark") or "",
@@ -127,6 +140,7 @@ def write_csv(path: Path, rows: Iterable[EvalRow]) -> int:
                         row.kind,
                         row.question,
                         row.expected_answer,
+                        row.source,
                         row.actual_answer,
                         "" if row.score is None else str(row.score),
                         row.remark,

@@ -183,6 +183,9 @@ def test_the_whole_registry_loads_and_renders() -> None:
         "catalog": "C", "requested": "a, b", "sections": "S", "scope": "SC",
         "content": "X", "packet_id": "p", "paragraph": "P", "paragraphs": "PS",
         "packet_a_id": "a", "packet_b_id": "b", "paragraphs_a": "A", "paragraphs_b": "B",
+        "answer_rules": "RULES",
+        "question": "Q", "reply": "R", "expected_answer": "EA",
+        "actual_answer": "AA", "transcript": "T", "last_reply": "LR",
     }
     for spec in REGISTRY:
         rendered = lib.get(spec.name, **{k: values[k] for k in spec.required})

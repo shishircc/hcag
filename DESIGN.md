@@ -75,7 +75,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [3.1 Purpose](#31-purpose)
   - [3.2 KB Input Model](#32-kb-input-model)
   - [3.3 CLI Overview](#33-cli-overview)
-  - [3.4 `hcag preprocess` — Detailed Semantics](#34-hcag-preprocess--detailed-semantics)
+  - [3.4 `hcag` — Detailed Semantics](#34-hcag--detailed-semantics)
     - [3.4.1 DFS traversal](#341-dfs-traversal)
     - [3.4.2 Per-folder classification](#342-per-folder-classification)
     - [3.4.3 `compiled.md` assembly](#343-compiledmd-assembly)
@@ -134,6 +134,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [6.1 Purpose](#61-purpose)
   - [6.2 KB Input Model](#62-kb-input-model)
     - [6.2.1 Paragraphs — the grounding unit](#621-paragraphs--the-grounding-unit)
+    - [6.2.2 Startup — config visibility and LLM preflight](#622-startup--config-visibility-and-llm-preflight)
   - [6.3 Invocation](#63-invocation)
   - [6.4 Question Types](#64-question-types)
     - [6.4.1 `simple`](#641-simple)
@@ -144,12 +145,13 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [6.5 Quantity Control](#65-quantity-control)
   - [6.6 Generation Algorithm](#66-generation-algorithm)
   - [6.7 Output CSV Schema](#67-output-csv-schema)
+    - [6.7.1 The `source` column](#671-the-source-column)
   - [6.8 Configuration](#68-configuration)
   - [6.9 Failure Modes](#69-failure-modes)
   - [6.10 Observability (CLI)](#610-observability-cli)
   - [6.11 Non-Goals](#611-non-goals)
   - [6.12 Sequence Diagram](#612-sequence-diagram)
-- [Part 7 — The `eval` CLI Tool](#part-7--the-eval-cli-tool)
+- [Part 7 — The `evalrun` CLI Tool](#part-7--the-evalrun-cli-tool)
   - [7.1 Purpose](#71-purpose)
   - [7.2 Input Model](#72-input-model)
   - [7.3 Invocation](#73-invocation)
@@ -366,7 +368,7 @@ To realize the three properties above, the agent:
 |---|---|
 | **Knowledge Base (KB)** | A file-system tree of taxonomy folders rooted at a KB directory. Every folder — leaf, taxonomy node, mixed, and root — carries one `compiled.md`. |
 | **Packet** | A folder containing a `compiled.md` and an optional `assets/` subdirectory of images. Every folder is a packet in the runtime sense — leaves, taxonomy nodes, and the root alike are loadable via `check_and_load_kb`. |
-| **Catalog** | The `## Sub-topics` section inside every folder's `compiled.md`, indexing **every descendant folder in that folder's subtree** — not just its immediate children — with metadata (id, path, depth, parent, kind, title, short description, token size estimate; long description for the nearest levels). Catalogs are rolled up bottom-up by `hcag preprocess` (§3.4.4), so the **root**'s catalog section is a complete index of the entire KB. That is what the runtime injects at bootstrap. |
+| **Catalog** | The `## Sub-topics` section inside every folder's `compiled.md`, indexing **every descendant folder in that folder's subtree** — not just its immediate children — with metadata (id, path, depth, parent, kind, title, short description, token size estimate; long description for the nearest levels). Catalogs are rolled up bottom-up by `hcag` (§3.4.4), so the **root**'s catalog section is a complete index of the entire KB. That is what the runtime injects at bootstrap. |
 | **Active Set** | The set of packets currently loaded into the agent's working context in the current conversation. |
 | **Delta** | The pair `(loaded, evicted)` returned when the active set changes — only new packet content is transmitted; only evicted IDs are named. |
 | **Token Budget** | A hard upper bound on the total tokens the active set may occupy. Enforced by the memory module via LRU eviction. |
@@ -385,7 +387,7 @@ Each folder — leaf, taxonomy node, mixed, or root — has exactly one `compile
 No standalone catalog file. Each folder's `compiled.md` includes a `## Sub-topics` section describing what lives beneath it; loading a folder therefore exposes both its own content and its navigation index to the LLM in one step. The **root**'s `compiled.md` is what the runtime auto-injects at bootstrap. **Rationale:** One place to look at each level; no separate global index to reconcile at runtime; a standardized single-pass DFS build (Part 3) lets KB authors focus on extracting raw markdown from source documents.
 
 ### D3a. Catalogs roll up the **whole subtree**, not one level
-A folder's `## Sub-topics` section indexes **every descendant folder beneath it, at every depth** — not just its immediate children. The roll-up happens on the DFS return path in `hcag preprocess` (§3.4.1): each folder returns its own summary *plus its already-assembled subtree index* to its parent, the parent re-parents those records under itself and appends its own, and so on up to the root. The consequence is the property that matters at runtime: **the root's `compiled.md` contains the catalog of the entire KB** — every branch, every mid-tree node, and every leaf document — so the agent can locate any document anywhere in the hierarchy from the bootstrap catalog alone.
+A folder's `## Sub-topics` section indexes **every descendant folder beneath it, at every depth** — not just its immediate children. The roll-up happens on the DFS return path in `hcag` (§3.4.1): each folder returns its own summary *plus its already-assembled subtree index* to its parent, the parent re-parents those records under itself and appends its own, and so on up to the root. The consequence is the property that matters at runtime: **the root's `compiled.md` contains the catalog of the entire KB** — every branch, every mid-tree node, and every leaf document — so the agent can locate any document anywhere in the hierarchy from the bootstrap catalog alone.
 
 **Rationale:** The one-level-at-a-time alternative forces the agent to *walk* the tree — load `billing/`, read its children, load `billing/refunds/`, read its children, and so on — which costs one round trip per level of depth, burns context on intermediate taxonomy nodes it does not actually need to reason over, and (worst) makes the agent guess from a single-line parent summary whether the answer is somewhere down that branch at all. A deep KB turns a one-hop retrieval into a four- or five-hop search whose failure mode is silent: a wrong guess at level 1 hides everything below it. With the full index present from turn one, branch selection and leaf selection collapse into a single decision, and `check_and_load_kb` is called once with the exact leaf ID.
 
@@ -543,6 +545,8 @@ The `## Sub-topics` section is a **subtree index, not a child listing** (D3a): i
 | `token_size_estimate` | integer | Precomputed total token count for the assembled `compiled.md` + image blocks. Used for budgeting **without** loading. |
 | `kind` | enum | `leaf` \| `node` \| `mixed`. |
 | `source_files` | list<string> | Source `.md` filenames concatenated into `## Content`, **in reading order** (§3.4.3): `index.md` first, then the order the index page links them, then the rest alphabetically. Empty for pure taxonomy nodes. |
+| `source_urls` | list<string> | The origin URL of each entry in `source_files`, positionally aligned, read from the crawl sidecar (§4.5.3). An entry is the empty string where the origin is unknown — a hand-authored file, or a KB crawled before provenance was recorded. Omitted entirely when no source has a known origin. |
+| `image_urls` | map<string,string> | Origin URL per file under `assets/`, same source and same degradation. Lets a consumer cite the image a multimodal answer used (§6.7.1). |
 | `children` | list<string> | IDs of **immediate** child folders. Empty for pure leaves. |
 | `descendants` | integer | Count of folders in this folder's subtree, excluding itself — i.e. the number of entries in its `## Sub-topics` section. `0` for a pure leaf. |
 | `subtree_depth` | integer | Depth of the deepest descendant, relative to this folder. `0` for a pure leaf. |
@@ -811,7 +815,7 @@ Concretely forbidden, each a call that produces no new knowledge:
 | Image under `assets/` unreadable | Include the packet with a placeholder text block noting the missing image; add to `errors[]`. |
 | Single requested packet exceeds `MAX_ACTIVE_TOKENS` | Return `errors[]` entry with reason prefixed `budget_exceeded:` (followed by a short detail); do not load; active set unchanged. |
 | Root `compiled.md` missing at startup | Startup failure — the agent cannot function without a catalog. |
-| Root `compiled.md` present but its `## Sub-topics` section is missing or empty while the KB has subfolders | Startup failure — the roll-up (D3a) did not run or did not complete; a partial index would silently hide branches from the agent. Re-run `hcag preprocess --force`. |
+| Root `compiled.md` present but its `## Sub-topics` section is missing or empty while the KB has subfolders | Startup failure — the roll-up (D3a) did not run or did not complete; a partial index would silently hide branches from the agent. Re-run `hcag --force`. |
 | Requested ID appears in the catalog but its `compiled.md` is absent on disk | Treated as a stale-catalog condition: `errors[]` entry with reason prefixed `stale_catalog:`; other loads proceed. Indicates the KB tree changed without a `preprocess` re-run. |
 
 ## 2.9 Component Class Diagram
@@ -1357,7 +1361,7 @@ The runtime's `LLM` interface (§2.9) is bound to LiteLLM by a single thin adapt
 | Config schema and validation | **Pydantic v2** | `hcag.toml` (CLI) and `agent.toml` (runtime) are loaded into typed models |
 | TOML parsing | **`tomllib`** (stdlib) | Python 3.11+ |
 | YAML front-matter in `compiled.md` | **python-frontmatter** + **PyYAML** | Reading and writing |
-| CLI framework | **Typer** (built on Click) | Typed subcommands (`hcag preprocess`) |
+| CLI framework | **Typer** (built on Click) | Typed subcommands (`hcag`) |
 | Tokenization (build-time estimates) | **tiktoken** (default, `cl100k_base` proxy) | Runtime never re-tokenizes; the design's `token_size_estimate` is read from catalog |
 | Image MIME detection (CLI, optional) | **Pillow** | Runtime uses file extension only |
 | HTML fetch (`crawl`) | **httpx** | Sync client with retries and a redirect cap (§4.4.1) |
@@ -1445,7 +1449,7 @@ The implementation does **not** import these libraries, and the design forbids a
 
 | | Returns | For |
 |---|---|---|
-| `run_turn(user_message) -> str` | the finished answer | `eval` (Part 7), scripts, tests, anything that wants one value |
+| `run_turn(user_message) -> str` | the finished answer | `evalrun` (Part 7), scripts, tests, anything that wants one value |
 | `run_turn_stream(user_message) -> Iterator[Event]` | events as they happen | the chat widget (Part 10), the voice session (Part 5) |
 
 Both are on the same object and both produce byte-identical conversation history, so a session can mix them turn to turn.
@@ -1474,7 +1478,7 @@ A turn is not just text arriving in pieces. An HCAG turn *loads packets*, and wh
 
 **Streaming is the primitive; synchronous is derived.** `run_turn` consumes `run_turn_stream` and returns the final text. Not the other way around, and not two parallel implementations — a runtime with two independent turn paths grows two sets of behaviour, and the one with fewer users rots. Whatever a streaming turn does about tool loops, eviction, budget, or history, the synchronous turn does identically, because it *is* the same code.
 
-**Both must exist.** Streaming is the right default for anything with a human waiting: an HCAG turn does a tool round trip before its first token, so time-to-first-token without streaming is the *whole* retrieval plus generation. But a streaming-only API would be actively worse for the things that consume this system programmatically. `eval` (§7.3) scores one answer per row and would gain nothing but a reassembly loop; the promptfoo provider (§7.4) wants a value; tests want a value.
+**Both must exist.** Streaming is the right default for anything with a human waiting: an HCAG turn does a tool round trip before its first token, so time-to-first-token without streaming is the *whole* retrieval plus generation. But a streaming-only API would be actively worse for the things that consume this system programmatically. `evalrun` (§7.3) scores one answer per row and would gain nothing but a reassembly loop; the promptfoo provider (§7.4) wants a value; tests want a value.
 
 **Streaming changes nothing about history or the prompt cache.** Deltas are accumulated and the assistant message is appended once, byte-identical to the non-streaming case — so §2.12's cache-alignment rules hold unchanged, and a session that streamed turn 3 and did not stream turn 4 has the same prefix either way. Delta-only tool results (D6) are likewise unaffected: `tool.end` reports *what* was loaded, while the packet content still enters history exactly once, in the tool-result block.
 
@@ -1604,13 +1608,19 @@ Every prompt the system can load is declared in one place, with its required pla
 | `preprocess.folder_metadata` | build-time folder summary (§3.4.4) | `$sections`, `$scope` |
 | `preprocess.scope_own` | scoping clause for a leaf/mixed folder (§3.4.4) | — |
 | `preprocess.scope_branch` | scoping clause for a taxonomy node (§3.4.4) | — |
-| `evalgen.simple` | FAQ-style question (§6.4.1) | `$content` |
-| `evalgen.medium` | single-paragraph reasoning question (§6.4.2) | `$packet_id`, `$paragraph` |
-| `evalgen.complex` | whole-packet reasoning question (§6.4.3) | `$packet_id`, `$paragraphs` |
-| `evalgen.hard1` | cross-packet question (§6.4.4) | `$packet_a_id`, `$packet_b_id`, `$paragraphs_a`, `$paragraphs_b` |
-| `evalgen.hard2` | multimodal question (§6.4.5) | `$packet_id`, `$content` |
+| `evalgen.answer_rules` | the completeness standard every kind injects (§6.4.0) | — |
+| `evalgen.simple` | FAQ-style question (§6.4.1) | `$content`, `$answer_rules` |
+| `evalgen.medium` | single-paragraph reasoning question (§6.4.2) | `$packet_id`, `$paragraph`, `$answer_rules` |
+| `evalgen.complex` | whole-packet reasoning question (§6.4.3) | `$packet_id`, `$paragraphs`, `$answer_rules` |
+| `evalgen.hard1` | cross-packet question (§6.4.4) | `$packet_a_id`, `$packet_b_id`, `$paragraphs_a`, `$paragraphs_b`, `$answer_rules` |
+| `evalgen.hard2` | multimodal question (§6.4.5) | `$packet_id`, `$content`, `$answer_rules` |
+| `eval.classify` | answer / clarify / refusal classifier (§7.4.2) | `$question`, `$reply` |
+| `eval.clarify` | clarifier playing the user role (§7.4.2) | `$question`, `$expected_answer`, `$transcript`, `$last_reply` |
+| `eval.score` | LLM-judge rubric (§7.5) | `$question`, `$expected_answer`, `$actual_answer`, `$transcript` |
 
-What counts as a "hard" question about work-pass rules is a domain judgement, so `evalgen`'s wording belongs in files for the same reason the agent's does. **`eval`'s LLM-judge rubric (§7.5) is not yet in the registry** — it remains in `hcag/eval/` and is the last piece of model-facing text still written in Python.
+What counts as a "hard" question about work-pass rules is a domain judgement, so `evalgen`'s wording belongs in files for the same reason the agent's does. The same holds for `evalrun`'s judge rubric: what separates a score of 1 from a score of 2 on a given KB is a domain call, and a team that wants to tighten it should not need a release to do so.
+
+The three `eval.*` prompts are also the clearest demonstration of why `Template` and not `.format`. Each one instructs the model to answer with a literal JSON object, so each one contains braces as content — `{"score": 0 | 1 | 2 | 3, "remark": "..."}`. They were originally loaded by a separate ad-hoc loader that rendered with `str.format`, under which those braces are substitution sites: `eval.classify` and `eval.score` raised `KeyError` before emitting a character, so no reply was ever classified and no answer was ever scored. Being outside the registry is what let that ship — a registered prompt is rendered at startup by the same loader every other prompt uses, and this would have been a startup error on the first run.
 
 `$packets` and `$today` are available to any prompt and required by none — a deployment that wants them writes them into its file, and one that does not simply omits them.
 
@@ -1653,7 +1663,7 @@ A **leaf** in taxonomy terms is a folder that contains at least one `.md` file �
 
 **Every folder becomes a compiled unit.** A leaf folder's `compiled.md` carries its own content and an empty catalog section. A pure taxonomy node's `compiled.md` carries only a catalog section (summaries of every folder in its subtree, at every depth). A **mixed folder** — one that has both subfolders *and* source `.md` files at its own level — carries both. This is a first-class case, not an edge case: it lets a taxonomy node hold its own overview content (e.g., a `billing/` folder that contains `billing/refunds/`, `billing/invoices/`, **and** a top-level `billing.md` overview all in one `compiled.md`).
 
-Example raw KB before `hcag preprocess`:
+Example raw KB before `hcag`:
 
 ```
 raw_kb/
@@ -1684,16 +1694,18 @@ A single subcommand does the full build in one pass:
 
 | Command | Purpose |
 |---|---|
-| `hcag preprocess <root>` | Preflights the LLM (§3.4.9) and aborts before touching the tree if it is unusable, then walks the tree in **DFS post-order**. At every folder — leaf, taxonomy node, or mixed — assembles one `compiled.md` that concatenates a catalog section with the folder's own source content. Images are copied into a per-folder `assets/`. The recursion bubbles each folder's summary **and its already-assembled subtree index** up to its parent, so every level's catalog covers its entire subtree rather than one level down (D3a, §3.4.4). The root folder's `compiled.md` is written on the way back out and carries the complete KB index — no separate aggregate pass needed. |
+| `hcag <root>` | Preflights the LLM (§3.4.9) and aborts before touching the tree if it is unusable, then walks the tree in **DFS post-order**. At every folder — leaf, taxonomy node, or mixed — assembles one `compiled.md` that concatenates a catalog section with the folder's own source content. Images are copied into a per-folder `assets/`. The recursion bubbles each folder's summary **and its already-assembled subtree index** up to its parent, so every level's catalog covers its entire subtree rather than one level down (D3a, §3.4.4). The root folder's `compiled.md` is written on the way back out and carries the complete KB index — no separate aggregate pass needed. |
+
+**`hcag` takes no subcommand.** Building a KB is the only thing this CLI does, so a `preprocess` verb would be a word every invocation had to carry and no invocation could vary. It was there when a second command (`aggregate`) existed; that command is gone (§3.5), and the verb went with it. Flags still scope a run — `--only`, `--force`, `--allow-partial` — which is the axis that actually varies.
 
 **Design decisions embedded in this structure:**
 
-- One pass, not two. Because DFS naturally returns each child's assembled summary to its parent, a single traversal can populate every level's catalog section without a second top-down walk. The old two-command pipeline (`preprocess` → `aggregate`) is folded into `preprocess`; see §3.5 for the migration note.
+- One pass, not two. Because DFS naturally returns each child's assembled summary to its parent, a single traversal can populate every level's catalog section without a second top-down walk. The old two-command pipeline (`preprocess` → `aggregate`) is folded into the single `hcag` invocation; see §3.5 for the migration note.
 - Every folder is loadable. The old design gave taxonomy nodes a `catalog.md` and leaves a `packet.md` — two distinct file kinds that different code paths handled. With one `compiled.md` per folder, the memory module (§2.6) has exactly one file to open at any level and the runtime treats every folder as a first-class loadable unit.
 - Fail closed, and fail early. The build cannot do its job without the LLM, so it proves the LLM works before it writes anything and aborts rather than degrading if that stops being true mid-walk (§3.4.9). A half-built KB that resumes is a better outcome than a fully-built KB whose summaries are quietly placeholders.
-- No `hcag build` super-command needed. `hcag preprocess raw_kb` is the whole build. Editorial edits to a subtree re-run `preprocess` scoped with `--only <subpath>` (§3.4.7).
+- No super-command, and no subcommand either. `hcag raw_kb` is the whole build. Editorial edits to a subtree re-run it scoped with `--only <subpath>` (§3.4.7).
 
-## 3.4 `hcag preprocess` — Detailed Semantics
+## 3.4 `hcag` — Detailed Semantics
 
 ### 3.4.1 DFS traversal
 
@@ -1862,7 +1874,9 @@ For every folder that classifies as leaf, taxonomy node, or mixed, produce one `
 
    For a pure leaf (no subfolders), the `## Sub-topics` section is omitted. For a pure taxonomy node (no own `.md`), the `## Content` section is omitted. Frontmatter `kind` reflects the classification.
 
-5. **Preserve the original source files.** After assembly, the source `.md` files and the original image files remain untouched at their locations; they are the KB team's authoring surface and the source of truth for future re-runs. `compiled.md` and everything under `assets/` are derived artifacts. On the next `hcag preprocess --force`, the sources are re-read and both are regenerated.
+4a. **Carry provenance forward.** Read the folder's `.hcag-crawl.json` (§4.5.3) and record each source file's and image's origin URL in front-matter. `preprocess` does not fetch, verify, or rewrite these — it copies what `crawl` observed, so provenance stays a fact about the fetch rather than a claim made at build time. A missing sidecar is not an error: the fields are simply absent, and everything downstream degrades to empty (§6.7.1).
+
+5. **Preserve the original source files.** After assembly, the source `.md` files and the original image files remain untouched at their locations; they are the KB team's authoring surface and the source of truth for future re-runs. `compiled.md` and everything under `assets/` are derived artifacts. On the next `hcag --force`, the sources are re-read and both are regenerated.
 6. **Compute token size estimates** using a configured tokenizer (see §3.6) and store all three in front-matter: `content_token_estimate` (the `## Content` section + image count), `catalog_token_estimate` (the `## Sub-topics` section), and `token_size_estimate` (the whole file + images). The split exists because the runtime budgets against `content_token_estimate` — the catalog section is elided when a non-root packet is served (§2.6) — while `catalog_token_estimate` is what the build reports and what `catalog.max_depth` tuning targets.
 7. **Return the folder's summary *and its subtree index*** to the DFS caller (§3.4.1), so the parent can both render its own entry for this folder and inherit everything this folder indexed.
 
@@ -1915,7 +1929,7 @@ Three knobs bound the context cost when a KB is unusually large or deep (all in 
 | `catalog.max_depth` (default unlimited) | Caps roll-up depth. At `max_depth = 2` the root indexes two levels and the agent falls back to loading a node to see deeper — recovering the old one-level behavior as a degraded mode for KBs too large to index whole. |
 | `catalog.include_tree` (default `true`) | Emits the `#### Tree` outline. |
 
-`hcag preprocess` logs `catalog_token_estimate` for the root at INFO on every run (§3.9), so a KB that is outgrowing its budget is visible at build time rather than at the first agent turn.
+`hcag` logs `catalog_token_estimate` for the root at INFO on every run (§3.9), so a KB that is outgrowing its budget is visible at build time rather than at the first agent turn.
 
 ### 3.4.5 Packet ID scheme
 
@@ -1967,7 +1981,7 @@ If a `compiled.md` file exists without the HCAG marker, the tool errors — it w
 
 Every folder in the tree needs an LLM call (§3.4.4). A build that discovers the LLM is unusable only once it is halfway up the tree has already written artifacts, burned tokens, and — worse — produced a `compiled.md` set that *looks* complete. This section specifies fail-closed behavior at both ends: a preflight before the walk starts, and abort-not-degrade once it is running.
 
-**Preflight, before the traversal.** `hcag preprocess` issues one probe call to the configured provider **before scanning the tree and before writing anything**. It is deliberately a real `generate_folder_metadata`-shaped request against the configured `model` and `endpoint`, not a credentials-present check or a `/models` ping, so that it exercises the same path the build will: env-var resolution, provider dispatch, model-id validity, endpoint reachability, auth, and JSON-parseability of the reply. A probe that returns a well-formed object is the only evidence that the build's per-folder calls will work.
+**Preflight, before the traversal.** `hcag` issues one probe call to the configured provider **before scanning the tree and before writing anything**. It is deliberately a real `generate_folder_metadata`-shaped request against the configured `model` and `endpoint`, not a credentials-present check or a `/models` ping, so that it exercises the same path the build will: env-var resolution, provider dispatch, model-id validity, endpoint reachability, auth, and JSON-parseability of the reply. A probe that returns a well-formed object is the only evidence that the build's per-folder calls will work.
 
 If the probe fails, the command **exits non-zero immediately with the provider's own error text**, having created, modified, or deleted nothing. The distinction that matters to the operator is *which* thing is wrong, so the failure names it:
 
@@ -2002,7 +2016,7 @@ This is a deliberate reversal of the older "placeholder and continue" default, a
 
 The prior design had a separate `hcag aggregate` subcommand that ran after `preprocess` to merge per-level `catalog.md` intermediates into a root `catalog.md`. With the DFS-based single-artifact design, aggregation happens implicitly on the recursion's return path: each folder's summary **and its assembled subtree index** bubble up to its parent (§3.4.1), the parent re-parents and splices them into its own index, and the root folder's `compiled.md` — the final write of the traversal — carries the complete KB catalog. This is the aggregate step, absorbed into the traversal it always logically belonged to. No separate command exists in the current CLI.
 
-Callers migrating from the old pipeline should replace `hcag preprocess raw_kb && hcag aggregate raw_kb` with a single `hcag preprocess raw_kb`. The runtime memory module (§2.7) now reads `<root>/compiled.md` at bootstrap and injects its catalog section into the system prompt — there is no separate root catalog file.
+Callers migrating from the old pipeline should replace the former `hcag preprocess raw_kb && hcag aggregate raw_kb` with a single `hcag raw_kb` — both subcommands are gone. The runtime memory module (§2.7) now reads `<root>/compiled.md` at bootstrap and injects its catalog section into the system prompt — there is no separate root catalog file.
 
 ## 3.6 Configuration
 
@@ -2060,7 +2074,7 @@ level     = "INFO"
 ### `compiled.md` (per folder — leaf, taxonomy node, mixed, and root alike)
 
 - HTML comment marker: `<!-- HCAG:COMPILED id=<dotted-id> -->`
-- YAML front-matter: `id`, `title`, `short_description`, `long_description`, `token_size_estimate`, `content_token_estimate`, `catalog_token_estimate`, `kind` (`leaf` | `node` | `mixed`), `source_files` (in reading order per §3.4.3; empty for a pure taxonomy node), `children` (immediate only; empty for a pure leaf), `descendants`, `subtree_depth`.
+- YAML front-matter: `id`, `title`, `short_description`, `long_description`, `token_size_estimate`, `content_token_estimate`, `catalog_token_estimate`, `kind` (`leaf` | `node` | `mixed`), `source_files` (in reading order per §3.4.3; empty for a pure taxonomy node), `source_urls` and `image_urls` (crawl provenance, §4.5.3; absent when unknown), `children` (immediate only; empty for a pure leaf), `descendants`, `subtree_depth`.
 - Body:
   - `# <title>` heading and `<short_description>` preamble.
   - `## Sub-topics` — the rolled-up subtree index: an optional `#### Tree` outline followed by one `#### <id>` block per descendant **at every depth**, in DFS pre-order, each with `path`, `depth`, `parent`, `kind`, `title`, `short`, `tokens`, and `long` within `catalog.long_depth`. Omitted for pure leaves.
@@ -2078,7 +2092,7 @@ level     = "INFO"
    including the root). It preflights the LLM first and exits non-zero
    without touching the tree if the provider is unreachable or
    misconfigured (§3.4.9).
-   $ hcag preprocess raw_kb/
+   $ hcag raw_kb/
    # If it aborts partway, just re-run: the default skip-existing policy
    # resumes at the failure without re-spending what already succeeded.
 
@@ -2093,7 +2107,7 @@ level     = "INFO"
 ```
 # Edit refund_policy.md, add a new section
 $ vim raw_kb/billing/refunds/refund_policy.md   # edit sources and re-run
-$ hcag preprocess raw_kb/ --only billing/refunds/ --force
+$ hcag raw_kb/ --only billing/refunds/ --force
 # The DFS walk regenerates billing/refunds/compiled.md and then re-emits
 # every ancestor's compiled.md — billing/ and the root — so their rolled-up
 # `## Sub-topics` indexes pick up the changed record. Required, not optional:
@@ -2127,11 +2141,11 @@ One DFS post-order pass over a two-level tree (root with two children, one of th
 sequenceDiagram
     autonumber
     participant U as User
-    participant CLI as hcag preprocess
+    participant CLI as hcag (build)
     participant FS as Filesystem
     participant LLM as LLM (LiteLLM)
 
-    U->>CLI: hcag preprocess ./raw_kb
+    U->>CLI: hcag ./raw_kb
     CLI->>LLM: preflight probe (one metadata-shaped call)
     alt probe fails
         LLM-->>CLI: auth or model or endpoint error
@@ -2186,7 +2200,7 @@ sequenceDiagram
 
 ## 4.1 Purpose
 
-`crawl` takes a set of seed URLs and builds a local Markdown knowledge base from the pages they lead to. Each seed is fetched, reduced to its **main content**, converted to Markdown, and its outbound links are followed recursively — staying within the site regions defined by the seed URL prefixes. The output is a local `./kb/` tree whose directory shape mirrors the domains and URL paths of the crawled sites, ready to hand to `hcag preprocess` (Part 3) as raw KB input.
+`crawl` takes a set of seed URLs and builds a local Markdown knowledge base from the pages they lead to. Each seed is fetched, reduced to its **main content**, converted to Markdown, and its outbound links are followed recursively — staying within the site regions defined by the seed URL prefixes. The output is a local `./kb/` tree whose directory shape mirrors the domains and URL paths of the crawled sites, ready to hand to `hcag` (Part 3) as raw KB input.
 
 The page reduction is the load-bearing part. A fetched HTML document is mostly *not* the document: top navigation, mega-menus, breadcrumbs, sidebars, cookie banners, "related articles" rails, comment threads, and link-heavy footers routinely outweigh the prose an author actually wrote. `crawl` does not try to out-guess that template itself — it delegates the decision to a library purpose-built for it, **[trafilatura](https://trafilatura.readthedocs.io/)**, the same class of tool that powers browser reading modes (§4.4.1). What lands on disk is the article body with its structure intact — headings, **bold**/*italic*, lists, tables, code blocks, in-body links, and content images — and nothing of the chrome around it.
 
@@ -2249,7 +2263,7 @@ The prefix is the right tool for the wrong question here. `/-/media/…` is a *s
 - The existing image size filter (§4.4.3) still applies unchanged: off-prefix does not mean unfiltered.
 - Assets are deduplicated by the same visited-URL set as pages (§4.3.2), so a PDF cited by twenty pages is fetched once.
 
-**Where they land.** An off-prefix asset is written into the folder of the page that cited it (§4.5), *not* mirrored at its own URL path. Mirroring `/-/media/mom/documents/compass/c1-salary-benchmarks.pdf` would create `kb/www.mom.gov.sg/-/media/mom/documents/compass/…` — a parallel tree, disconnected from the taxonomy, whose folders `hcag preprocess` would turn into packets about nothing. A CMS media root is not an information architecture and must not be allowed to manufacture one. The asset has no taxonomy of its own; it inherits the topic of the page that cites it, and belongs in that page's packet.
+**Where they land.** An off-prefix asset is written into the folder of the page that cited it (§4.5), *not* mirrored at its own URL path. Mirroring `/-/media/mom/documents/compass/c1-salary-benchmarks.pdf` would create `kb/www.mom.gov.sg/-/media/mom/documents/compass/…` — a parallel tree, disconnected from the taxonomy, whose folders `hcag` would turn into packets about nothing. A CMS media root is not an information architecture and must not be allowed to manufacture one. The asset has no taxonomy of its own; it inherits the topic of the page that cites it, and belongs in that page's packet.
 
 With deduplication, the **first citer wins**: the asset is written into the folder of the first page that referenced it, and later citers keep the link as a remote URL. This trades a little locality for not duplicating a 5 MB PDF into twenty packets; the alternative is defensible, and if whole-packet self-containment turns out to matter more than size, this is the knob to revisit.
 
@@ -2273,7 +2287,7 @@ An HTML response goes through three stages: a DOM pre-pass that harvests links a
 | Option | Value | Why |
 |---|---|---|
 | `output_format` | `"markdown"` | Markdown is the KB's on-disk format (§4.5); no second conversion pass, no markdownify round-trip. |
-| `include_formatting` | `True` | Preserve headings, `**bold**`, `*italic*`, lists, and code blocks — structure `hcag preprocess` and downstream chunkers rely on. |
+| `include_formatting` | `True` | Preserve headings, `**bold**`, `*italic*`, lists, and code blocks — structure `hcag` and downstream chunkers rely on. |
 | `include_links` | `True` | In-body links are content: cross-references between KB pages and citations to sources. |
 | `include_tables` | `True` | Tables carry a large share of the facts on reference and policy sites (eligibility criteria, salary benchmarks, fee schedules). Dropping them is the single most damaging default in naive extractors. |
 | `include_images` | `True` | Emits `![alt](src)` for content images; the `src` is already the local filename from stage 1. Images outside the main content — logos, icon rails, social badges — are never emitted, and therefore never fetched (§4.4.3). |
@@ -2286,7 +2300,7 @@ What extraction removes, by construction: site header and top navigation, mega-m
 
 **Table repair.** One formatting fix is applied to the extracted Markdown: when a table run has no GFM delimiter row (`|---|---|`) under its first row — which happens whenever a site marks header cells up as `<td>` rather than `<th>` — one is inserted. Without it the rows are just pipe-separated text to every Markdown renderer and every Markdown-aware chunker, and the table's structure is lost exactly where it matters most. No cell content is touched.
 
-**Title.** The `<h1>` of a page frequently lives in the template header, outside the extracted body. If the extracted Markdown does not already begin with an H1, the page title from trafilatura's metadata is prepended as one. A KB packet whose first line names the topic is worth the special case — `hcag preprocess` (§3.4.3) and every downstream chunker key off it.
+**Title.** The `<h1>` of a page frequently lives in the template header, outside the extracted body. If the extracted Markdown does not already begin with an H1, the page title from trafilatura's metadata is prepended as one. A KB packet whose first line names the topic is worth the special case — `hcag` (§3.4.3) and every downstream chunker key off it.
 
 **Stage 3 — fallback.** Extraction is a heuristic and it does fail: JS-rendered shells, index pages that are genuinely nothing but links, and unusual templates. Each fetched HTML page is therefore classified:
 
@@ -2395,7 +2409,7 @@ Rules:
 
 ### 4.5.1 Why placement is not just filing
 
-The old layout put `subtopic.md` in `topic/` and the subtopic's children in `topic/subtopic/`. That splits one topic across two levels, and it is not a cosmetic problem: `hcag preprocess` treats **a folder as the unit of knowledge** (D2). Under the old layout the subtopic's own overview is concatenated into the *parent's* packet, where it describes a sibling rather than the folder it is in, while `subtopic/` — the folder the agent actually loads when it wants that topic — has no overview at all. Placing the page inside its own directory puts a topic's overview and its detail pages in the same packet, which is what a reader, and the agent, expect.
+The old layout put `subtopic.md` in `topic/` and the subtopic's children in `topic/subtopic/`. That splits one topic across two levels, and it is not a cosmetic problem: `hcag` treats **a folder as the unit of knowledge** (D2). Under the old layout the subtopic's own overview is concatenated into the *parent's* packet, where it describes a sibling rather than the folder it is in, while `subtopic/` — the folder the agent actually loads when it wants that topic — has no overview at all. Placing the page inside its own directory puts a topic's overview and its detail pages in the same packet, which is what a reader, and the agent, expect.
 
 It also makes the folder classification in §3.4.2 mean what it says. A URL that has both its own content and sub-pages should produce a **mixed** folder (own content + children); under the old layout it produced a pure taxonomy node with the content misfiled one level up.
 
@@ -2432,13 +2446,26 @@ It cannot recover it because extraction destroys it. A hub page's content *is* i
 // kb/www.mom.gov.sg/passes-and-permits/employment-pass/.hcag-crawl.json
 {
   "source_url": "https://www.mom.gov.sg/passes-and-permits/employment-pass",
-  "link_order": ["key-facts", "eligibility", "apply-for-a-pass", "documents-required", "…"]
+  "link_order": ["key-facts", "eligibility", "apply-for-a-pass", "documents-required", "…"],
+  "documents": {
+    "index.md":     "https://www.mom.gov.sg/passes-and-permits/employment-pass",
+    "key-facts.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts",
+    "compass-booklet.md": "https://www.mom.gov.sg/-/media/mom/documents/…/compass-booklet.pdf"
+  },
+  "images": {
+    "index-compass.png": "https://www.mom.gov.sg/-/media/mom/documents/…/compass.png"
+  }
 }
 ```
 
 - `link_order` holds the **child slugs** the index page linked, in first-mention document order, deduplicated. Only entries that correspond to something actually written in that folder are recorded — a link to a page that was never fetched (out of scope, over the depth limit, failed) is dropped, so the sidecar never names a file that does not exist.
 - `source_url` records which page the order came from, making the mapping auditable without re-fetching.
-- It is written in the finalize pass, after the collapse, so it describes the tree as it finally stands. Leaf folders get no sidecar: with no children there is nothing to order.
+- `documents` and `images` map **every file the crawl wrote into this folder** to the URL it came from — including PDFs pulled in from outside the prefix (§4.3.4), whose origin is otherwise unguessable from a filename like `compass-booklet.md`.
+- It is written in the finalize pass, after the collapse, so it describes the tree as it finally stands.
+
+**A sidecar is written for every folder holding documents, not only branch folders.** The link order needs one only where an `index.md` survives, but provenance is needed everywhere: a folder of collapsed leaves has no index page and still holds documents whose origin someone will want. `link_order` is simply absent from a sidecar that has no index page to derive it from.
+
+**Provenance is the reason this file exists as much as ordering is.** A mirrored tree loses the one fact that makes it checkable — where each document came from. Without it a KB is a snapshot with no way back to the source: a reviewer cannot verify a generated eval question (§6.7.1), an operator cannot tell whether a page has changed since the crawl, and a citation in an answer cannot be resolved to anything a user can open. The filename is a sanitized, collapsed, extension-stripped derivative of the URL and cannot be inverted.
 
 **Why a sidecar rather than front-matter in `index.md`.** Crawled Markdown is content — `preprocess` concatenates it verbatim into `## Content` (§3.4.3). Metadata written into that file would either surface as literal text in the packet or require every consumer to learn to strip it. A separate file keeps provenance out of content, which is the same reason `compiled.md` carries its metadata in front-matter that the packet loader strips (§2.6) rather than inline.
 
@@ -2446,11 +2473,11 @@ It cannot recover it because extraction destroys it. A hub page's content *is* i
 
 ## 4.6 Relationship to `hcag`
 
-`crawl` produces the raw markdown-and-image tree that `hcag preprocess` (§3.4) consumes. The two tools compose end-to-end:
+`crawl` produces the raw markdown-and-image tree that `hcag` (§3.4) consumes. The two tools compose end-to-end:
 
 ```
 $ crawl --depth 3 https://docs.example.com/api/
-$ hcag preprocess kb/
+$ hcag kb/
 ```
 
 `crawl` is responsible only for turning a set of remote sites into a mirrored local Markdown tree. It does not classify folders, produce `compiled.md`, call an LLM, or make any decisions about the KB's taxonomy — those remain `hcag`'s job.
@@ -2483,7 +2510,7 @@ That is the machine-readable record. The human-readable one — live progress wh
   - `crawl.extract.detail` at `DEBUG` adds `favor`, `title_synthesized`, `forms_unwrapped` (§4.4.1 stage 1), and the full feature counts.
   - `crawl.layout.collapsed` per leaf directory collapsed in the finalize pass (§4.5.2): the directory removed, the resulting Markdown path, and the number of images renamed with it.
   - `crawl.layout.link_order` per sidecar written (§4.5.3): the folder, its `source_url`, how many child slugs were recorded, and how many linked slugs were dropped because nothing was written for them. A branch folder whose recorded order is empty is the signal that extraction ate the hub's link list *and* the full-DOM order found no in-folder children — worth a look before trusting the resulting packet order.
-  - `crawl.layout.invariant_violated` at `ERROR` if the finalize pass leaves any `X/` + `X.md` pair (§4.5). It is the postcondition of the pass and cannot legitimately fail; if it does, the tree is mis-shaped in exactly the way this layout exists to prevent, and the operator needs to know before `hcag preprocess` builds packets on top of it.
+  - `crawl.layout.invariant_violated` at `ERROR` if the finalize pass leaves any `X/` + `X.md` pair (§4.5). It is the postcondition of the pass and cannot legitimately fail; if it does, the tree is mis-shaped in exactly the way this layout exists to prevent, and the operator needs to know before `hcag` builds packets on top of it.
   - Crawl end summary: totals for pages fetched, pages extracted vs. pages fallen back, pages written, `dirs_collapsed`, images extracted, images skipped for size, links skipped (out-of-scope / already-visited), wall-clock elapsed, and log-level counts.
 - `DEBUG`:
   - HTTP request/response headers, redirect chains, and retry attempts.
@@ -3147,13 +3174,24 @@ The tool is a **question / expected-answer generator only**. It does not run the
 
 ## 6.2 KB Input Model
 
-`evalgen` consumes a KB directory that has already been normalized by `hcag preprocess` (§3.4):
+`evalgen` consumes a KB directory that has already been normalized by `hcag` (§3.4):
 
 - Every folder (leaf, taxonomy node, mixed, and root) contains a `compiled.md` with HCAG front-matter (id, title, descriptions, `kind`, token estimate) and — when applicable — a `## Content` section carrying the folder's own source markdown.
 - Images referenced by a folder live in that folder's `assets/` subdirectory.
-- The root `compiled.md` — produced by `hcag preprocess` (§3) — is always available. Since the roll-up (D3a) makes its `## Sub-topics` section the index of the **entire** KB, with `depth` and `parent` on every entry, the full taxonomy tree is readable from that one file; `evalgen` uses taxonomic adjacency to bias cross-packet pairing (§6.4.4).
+- `source_urls` and `image_urls` in front-matter give each source file's and image's origin (§3.4.3). `evalgen` reads them for the `source` column (§6.7.1) and never fetches them — an eval set is generated offline against the KB as it stands.
+- The root `compiled.md` — produced by `hcag` (§3) — is always available. Since the roll-up (D3a) makes its `## Sub-topics` section the index of the **entire** KB, with `depth` and `parent` on every entry, the full taxonomy tree is readable from that one file; `evalgen` uses taxonomic adjacency to bias cross-packet pairing (§6.4.4).
 
 `evalgen` reads folders as-is; it does not modify the KB. Source `.md` files outside `compiled.md` and images outside `assets/` are ignored — the tool operates only on the artifacts the runtime actually serves.
+
+### 6.2.2 Startup — config visibility and LLM preflight
+
+`evalgen` makes one LLM call per question and writes its CSV at the end, so anything wrong with the LLM is discovered late and costs the whole run. Two checks run before generation starts, mirroring `hcag` (§3.4.9).
+
+**A missing `evalgen.toml` is announced, not silently absorbed.** The config resolves as `--config <path>`, else `<kb_root>/evalgen.toml`, else built-in defaults — and the fallback is deliberate, since `evalgen` is runnable without a config file. But the defaults resolve to a small, cheap model, and question quality tracks model strength: `hard-2` needs a **multimodal** model and produces nothing without one (§6.4.5), while the reasoning kinds degrade quietly into trivia. Getting that instead of the strong model an `evalgen.toml` would have named is invisible in the output, so the run says on stderr which path it looked for and which provider and model it fell back to. It is a warning rather than an error: running on defaults is legitimate, running on them *unknowingly* is not.
+
+**The LLM is preflighted.** One generation-shaped probe against the configured model, checked for a parseable JSON reply — the same contract the generators depend on. It exercises env-var resolution, provider dispatch, model-id validity, auth, and the model's ability to follow the output format. Systemic failures (bad key, unknown model) fail immediately; transient ones honour `llm.max_retries`. A reply that will not parse fails the probe, because a model too small to hold the output contract is far cheaper to detect on call one than on question forty.
+
+On failure `evalgen` exits non-zero having written nothing — there is no partial CSV to mistake for a complete eval set. `llm.preflight = false` disables the probe for offline runs with stubbed calls.
 
 ### 6.2.1 Paragraphs — the grounding unit
 
@@ -3179,7 +3217,7 @@ $ evalgen <kb_root> --out <output.csv> [--total <N> | --simple <n1> --medium <n2
 
 | Parameter | Required | Description |
 |---|---|---|
-| `<kb_root>` | yes | Path to the normalized KB directory (the same directory `hcag preprocess` was run on). |
+| `<kb_root>` | yes | Path to the normalized KB directory (the same directory `hcag` was run on). |
 | `--out <path>` | yes | Path to the output CSV file. Overwritten if it exists. |
 | `--total <N>` | one-of | Total number of question/answer pairs to generate, split equally across the five types (§6.5). |
 | `--simple <n>` | one-of | Explicit count of `simple` questions to generate. |
@@ -3210,12 +3248,26 @@ $ evalgen kb/ --out kb-eval.csv \
 
 Each row's `kind` column carries one of five string tags corresponding to how the question was constructed. The tags are stable — the evaluation pass filters and scores by `kind`.
 
+### 6.4.0 Expected answers must be complete
+
+**The kinds differ in how hard the question is. They do not differ in how complete the answer must be.** Every kind is generated with one shared completeness standard (`evalgen.answer_rules`, §2.15.5), and it is the single most consequential thing about a generated eval set.
+
+**Why: an incomplete reference answer certifies wrong behaviour as correct.** The expected answer is what an agent is scored against, so anything it omits is something the agent may also omit and still be marked fully correct. This is not a matter of style. Asked *"what is the minimum monthly salary an Employment Pass candidate needs?"*, an expected answer of *"Candidates need to earn at least $5,600 a month"* is **wrong**, not merely terse: in the source, $5,600 applies only below age 24, only outside financial services, and only to applications before a stated date — the figure rises to $10,700 by age 45, to $6,200–$11,800 in financial services, and again from 1 January 2027. An eval built on that reference answer scores an agent full marks for telling an applicant a number that does not apply to them, and it would never have caught the misrouting diagnosed in D3b.
+
+So a generated answer must state the fact **with every condition the source attaches to it**: what it varies by, the full range rather than one end of it, when a different value applies, the exceptions, and concrete worked values where the source gives them. Length follows completeness; there is no brevity target.
+
+**Comprehensive is not licence to invent.** The answer exhausts what the source says and stops there. If the source is itself incomplete, so is the answer.
+
+**One file, not five.** The standard lives in a single prompt shared by every kind, because a quality bar duplicated across five prompts is one that four of them silently drift from.
+
 ### 6.4.1 `simple`
 
-- **Definition.** Answerable verbatim from a single packet. FAQ-style factual question with no reasoning; the answer text appears literally in the packet body.
-- **Source.** One packet, one contiguous span (typically a sentence or short paragraph).
-- **Expected answer.** A verbatim or near-verbatim quote from the packet — the LLM extracts a self-contained fact; no rewording beyond trimming.
-- **Signal.** Measures whether the agent retrieved and read the correct packet at all. A `simple` failure usually means retrieval, not reasoning, is broken.
+- **Definition.** A question **requiring no reasoning** — the reader looks the answer up rather than working it out. FAQ-shaped.
+- **Source.** One packet. The answer may draw on several places within it; a looked-up fact is often stated in one sentence and qualified in another.
+- **Expected answer.** Complete, per §6.4.0. **Not a quote.** "No reasoning" describes the *question*, not the answer: a fact that is simple to locate is routinely conditional, and the item exists to test whether an agent states the whole of it rather than its first clause.
+- **Signal.** Measures whether the agent retrieved and read the correct packet, *and reported all of what it found*. A `simple` failure usually means retrieval is broken; a partially-correct `simple` usually means the agent stopped at the first true sentence.
+
+**This kind was previously specified as verbatim extraction**, with a validator requiring the answer to appear literally in the packet. That was the direct cause of inadequate reference answers: the only text guaranteed to appear verbatim in a packet is a fragment of it, so the constraint capped every `simple` answer at one clause. Grounding is now checked instead of extraction (§6.9).
 
 ### 6.4.2 `medium`
 
@@ -3277,6 +3329,7 @@ Kinds are generated in the fixed order `simple → medium → complex → hard-1
 | `kind` | yes | One of `simple`, `medium`, `complex`, `hard-1`, `hard-2`. |
 | `question` | yes | The generated question text, single-line where possible; multi-line values are quoted per RFC 4180. |
 | `expected_answer` | yes | The reference answer produced against the KB. |
+| `source` | yes | Space-separated source URLs the question and answer were grounded in — the packets' original pages first, then any images used, in the order the generator used them (§6.7.1). |
 | `actual_answer` | **empty** | Populated during evaluation by whatever harness runs the agent. |
 | `score` | **empty** | Integer 0–3, populated during evaluation. `0`=wrong, `1`=partially correct, `2`=mostly correct, `3`=fully correct. `evalgen` always writes this empty. |
 | `remark` | **empty** | Free-text notes from the evaluator (missing packet, wrong image, hallucination, etc.). `evalgen` always writes this empty. |
@@ -3285,15 +3338,27 @@ CSV formatting rules:
 
 - UTF-8, LF line endings, RFC 4180 quoting.
 - Header row is always present.
-- The final three columns (`actual_answer`, `score`, `remark`) are always emitted as empty fields — never omitted, so downstream tools can open the file with a fixed 7-column schema.
+- The final three columns (`actual_answer`, `score`, `remark`) are always emitted as empty fields — never omitted, so downstream tools can open the file with a fixed 8-column schema.
 
 Example (header + two rows):
 
 ```csv
-question_id,kind,question,expected_answer,actual_answer,score,remark
-q-0001,simple,"How long does a standard refund take to process?","5–7 business days.",,,
-q-0021,hard-2,"According to the refund state machine, which state immediately follows ""pending_review""?","approved",,,
+question_id,kind,question,expected_answer,source,actual_answer,score,remark
+q-0001,simple,"How long does a standard refund take to process?","5–7 business days.",https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts,,,
+q-0021,hard-2,"Which sector's qualifying salary is highest at age 45?","Financial services, at $11,800.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/compass.png,,,
 ```
+
+### 6.7.1 The `source` column
+
+**Why a URL and not the packet id.** The CSV already identifies a packet by id, which locates a folder in *this* KB. That is enough to regenerate a question and not enough to check one. An eval set outlives the snapshot it was built from: when MOM revises a salary table, every expected answer derived from it becomes silently wrong, and the row gives a reviewer no way to see that except by rebuilding the KB. A URL is the authoritative document — it is how a subject-matter expert validates a generated question, how a wrong expected answer is traced, and how a stale eval set is detected without re-crawling.
+
+It also makes review possible at all. `evalgen` output is LLM-generated and needs a human pass before it becomes a regression baseline; asking a reviewer to locate the grounding by packet id inside a mirrored tree is asking them not to bother.
+
+**Contents and order.** Packet URLs first, in the order the generator used them — so a `hard-1` row shows packet A then packet B, matching the question's structure — then any image URLs. `hard-2`'s image is the grounding for the question, so seeing which image was used is the difference between a reviewable row and a mystery. Separator is a single space, unambiguous because a URL cannot contain an unescaped one.
+
+**Unknown provenance is empty, never invented.** A hand-authored KB folder, or one crawled before provenance was recorded (§4.5.3), has no URL. The cell is then empty for that source. It is never filled with a local path or a packet id: a `source` column that sometimes contains URLs and sometimes something else is worse than one that is sometimes blank, because only the second is safe to feed to a link checker.
+
+**This depends on provenance the KB must carry.** URLs are not recoverable from `compiled.md` alone — the chain is `crawl` recording each document's and image's origin (§4.5.3), `preprocess` carrying it into front-matter (§3.4.3), and `evalgen` reading it here. A KB built before that chain existed yields empty `source` cells rather than an error, which is the correct degradation: an eval set without provenance is worse but still usable.
 
 ## 6.8 Configuration
 
@@ -3339,6 +3404,8 @@ Local model support mirrors `hcag` (§3.6): `provider = "ollama"` or `"llamacpp"
 | Config references a prompt template that does not exist | ERROR at startup. |
 
 If any `ERROR`-level event fires, `evalgen` exits with a non-zero status. `WARN`-level shortfalls do not affect exit status but are surfaced in the end-of-run summary.
+
+**Provenance missing for a chosen source.** The `source` cell omits that entry rather than substituting a packet id or a local path, and a `WARN` names the packet once per run (§6.10). A KB crawled before §4.5.3 existed produces rows with an empty `source` throughout — degraded, not broken: the questions are still valid, they are merely harder to review.
 
 ## 6.10 Observability (CLI)
 
@@ -3399,17 +3466,17 @@ sequenceDiagram
 
 ---
 
-# Part 7 — The `eval` CLI Tool
+# Part 7 — The `evalrun` CLI Tool
 
 ## 7.1 Purpose
 
-`eval` executes the question set produced by `evalgen` (Part 6) against a **live** chatbot backend and scores each answer with an LLM-as-judge. It closes the loop that `evalgen` deliberately leaves open (§6.11): where `evalgen` produces `(question, expected_answer)` pairs and stops, `eval` runs the agent, captures `actual_answer`, judges it against `expected_answer`, and writes the completed rubric row.
+`evalrun` executes the question set produced by `evalgen` (Part 6) against a **live** chatbot backend and scores each answer with an LLM-as-judge. It closes the loop that `evalgen` deliberately leaves open (§6.11): where `evalgen` produces `(question, expected_answer)` pairs and stops, `evalrun` runs the agent, captures `actual_answer`, judges it against `expected_answer`, and writes the completed rubric row.
 
-The tool is symmetric with `evalgen` in scope: `evalgen` is a **generator only**, `eval` is a **runner and scorer only**. Neither reads or mutates the KB directly. Together they form the KB-owner's regression harness: freeze a KB revision, generate an eval set once (§6.6), then re-run `eval` after each agent, prompt, or KB change to detect quality drift.
+The tool is symmetric with `evalgen` in scope: `evalgen` is a **generator only**, `evalrun` is a **runner and scorer only**. Neither reads or mutates the KB directly. Together they form the KB-owner's regression harness: freeze a KB revision, generate an eval set once (§6.6), then re-run `evalrun` after each agent, prompt, or KB change to detect quality drift.
 
 ## 7.2 Input Model
 
-`eval` consumes exactly the CSV `evalgen` emits (§6.7):
+`evalrun` consumes exactly the CSV `evalgen` emits (§6.7):
 
 | Column | Read | Written |
 |---|---|---|
@@ -3421,18 +3488,18 @@ The tool is symmetric with `evalgen` in scope: `evalgen` is a **generator only**
 | `score`           | no  | **populated** — integer `0`–`3` per the rubric (§7.5) |
 | `remark`          | no  | **populated** — one-sentence judge justification |
 
-The first four columns are the eval set's identity; `eval` treats them as read-only and copies them verbatim into the output. The last three columns are `eval`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption.
+The first four columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last three columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption.
 
 ## 7.3 Invocation
 
 ```
-$ eval <input.csv> --backend-url <url> --out <output.csv> --report <report.html> [options]
+$ evalrun <input.csv> --backend-url <url> --out <output.csv> --report <report.html> [options]
 ```
 
 | Parameter | Required | Description |
 |---|---|---|
 | `<input.csv>` | yes | Path to the CSV produced by `evalgen` (§6.7). |
-| `--backend-url <url>` | yes | Base URL of the chatbot backend. `eval` calls `POST <url>/chat` with each question (§7.4). |
+| `--backend-url <url>` | yes | Base URL of the chatbot backend. `evalrun` calls `POST <url>/chat` with each question (§7.4). |
 | `--out <path>` | yes | Path to the completed output CSV. Overwritten if it exists. |
 | `--report <path>` | yes | Path to the HTML report emitted from the promptfoo run (§7.6, §7.8). Overwritten if it exists. |
 | `--max-turns <N>` | no | Max chatbot turns per question before giving up (§7.4.3). Default `5`. |
@@ -3442,12 +3509,12 @@ $ eval <input.csv> --backend-url <url> --out <output.csv> --report <report.html>
 | `--kinds <list>` | no | Comma-separated subset of question kinds to run (e.g. `--kinds simple,hard-2`). Default: all five. |
 | `--skip-completed` | no | Skip input rows whose `score` column is already populated. Off by default so re-runs re-score deterministically. |
 | `--seed <int>` | no | Seed for the judge LLM's sampling and any tie-breaking in the clarification generator. Fixed seed → reproducible scoring. |
-| `--config <path>` | no | Path to `eval.toml` (§7.9). Defaults to `./eval.toml` if present. |
+| `--config <path>` | no | Path to `evalrun.toml` (§7.9). Defaults to `./evalrun.toml` if present. |
 
 Example invocation:
 
 ```
-$ eval kb-eval.csv \
+$ evalrun kb-eval.csv \
     --backend-url http://localhost:8000 \
     --out kb-eval-scored.csv \
     --report kb-eval-report.html \
@@ -3456,31 +3523,49 @@ $ eval kb-eval.csv \
 
 Runs every question from `kb-eval.csv` against `http://localhost:8000/chat` (the `hcag-server` behind the web widget in Part 10, or any compatible backend), writes the scored CSV to `kb-eval-scored.csv`, and emits an HTML summary to `kb-eval-report.html`.
 
+### 7.3.1 Startup — config visibility and LLM preflight
+
+`evalrun` performs four checks before the first row is dispatched, and aborts on any of them. Nothing has been written when they fire.
+
+**1. The backend must answer.** `GET <backend-url>/health` is probed once. A run against a backend that is not up produces a CSV of `[backend_error]` rows, which costs the judge nothing but reads like a catastrophic quality regression.
+
+**2. A missing config is announced.** With no `evalrun.toml`, the run proceeds on built-in defaults and says so on stderr, naming both models. This is the same reasoning as `evalgen` §6.2.2 with more at stake: **every score in the report comes from the judge model**, so which model ran is not a detail to reconstruct afterwards from a log file. A scored CSV carries no record of the judge that produced it.
+
+**3. Prompts are loaded in the parent process.** The classifier, clarifier and judge prompts are registry entries (§2.15.5), resolved against `prompts_dir` once, up front. Loading them here rather than lazily inside each promptfoo worker turns a missing or malformed override into one startup error instead of one identical failure per row — which would otherwise arrive as N `[judge_failed]` remarks and read as model flakiness.
+
+**4. Both eval LLMs are preflighted.** Each configured model gets one real, generation-shaped request whose reply must parse as the JSON the caller expects — exercising env-var resolution, provider dispatch, model-id validity, auth, and output shape.
+
+The preflight matters more here than in `evalgen`, because of *when* the eval LLMs are called. `evalgen` fails on its first generation. `evalrun` spends the entire run against the backend first — every row, every clarification turn, up to `max_turns` each — and only then invokes the judge. A bad judge key is discovered after the whole run has been paid for, and it fails *every* row identically, so the output is not a partial result to salvage but a total loss shaped like a bug report.
+
+Both roles are probed because they are separately configured and commonly separately keyed — a cheap classifier against one provider, a strong judge against another. Every preflight failure is labelled with the role that failed, the credential check included: with two models configured, "which one" is the entire question the message has to answer.
+
+Preflight is per-model and defaults to on; `preflight = false` under either `[classifier.llm]` or `[judge.llm]` skips that one.
+
 ## 7.4 Execution Loop
 
-For each input row, `eval` opens a conversation with the backend and drives it until the chatbot returns a scorable answer or the turn limit is hit. The exchange is captured verbatim so the judge (§7.5) and the report (§7.8) can inspect it.
+For each input row, `evalrun` opens a conversation with the backend and drives it until the chatbot returns a scorable answer or the turn limit is hit. The exchange is captured verbatim so the judge (§7.5) and the report (§7.8) can inspect it.
 
 ### 7.4.1 Single-turn exchange
 
 The happy path — one request, one answer:
 
-1. `eval` mints a `session_id` per the `--session-scope` policy.
-2. `eval` sends `POST <backend-url>/chat` with:
+1. `evalrun` mints a `session_id` per the `--session-scope` policy.
+2. `evalrun` sends `POST <backend-url>/chat` with:
    ```json
    { "session_id": "<sid>", "message": "<row.question>", "history": [] }
    ```
 3. The backend returns `{ "text": "<answer>", ... }`.
-4. `eval` classifies the response (§7.4.2). If it is an **answer**, the loop ends: `actual_answer` = `<answer>`.
+4. `evalrun` classifies the response (§7.4.2). If it is an **answer**, the loop ends: `actual_answer` = `<answer>`.
 
 ### 7.4.2 Multi-turn clarification
 
 When the chatbot responds with a clarifying question rather than an answer, the LLM judge fills the user role and the conversation continues:
 
-1. `eval` runs a lightweight **response classifier** over the chatbot's reply (a separate small LLM prompt, or a rule when the backend marks clarifications explicitly). Classification categories:
+1. `evalrun` runs a lightweight **response classifier** over the chatbot's reply (a separate small LLM prompt, or a rule when the backend marks clarifications explicitly). Classification categories:
    - `answer` — a substantive response to `question`. Terminate; assign this text to `actual_answer`.
    - `clarify` — a follow-up question or request for information. Continue.
    - `refusal` — an explicit refusal, safety block, or out-of-scope disclaimer. Terminate; assign this text to `actual_answer` (and the judge will score it accordingly).
-2. On `clarify`, `eval` calls the **judge LLM in clarifier mode**, giving it:
+2. On `clarify`, `evalrun` calls the **judge LLM in clarifier mode**, giving it:
    - The original `question` and `expected_answer` (so the judge knows what facts the user "has").
    - The full exchange so far.
    - A directive to answer the chatbot's clarification the way the real user would, using only information available in `expected_answer` or reasonable defaults. The clarifier is instructed to **never leak** `expected_answer` verbatim.
@@ -3508,13 +3593,13 @@ Additional termination conditions:
 
 ## 7.5 LLM-as-Judge Scoring
 
-Once `actual_answer` is populated, `eval` invokes the judge LLM once per row with:
+Once `actual_answer` is populated, `evalrun` invokes the judge LLM once per row with:
 
 - `question`
 - `expected_answer`
 - `actual_answer`
 - The full multi-turn transcript when clarification occurred (§7.4.2), so the judge can down-weight answers the chatbot only produced after being led there.
-- The scoring rubric (below), fixed and identical for every row.
+- The scoring rubric (below), fixed and identical for every row. It is the `eval.score` prompt (§2.15.5) — a Markdown file like every other model-facing string, overridable per-KB through `prompts_dir` without touching Python.
 
 Rubric — the judge must return exactly one of these integers:
 
@@ -3525,17 +3610,19 @@ Rubric — the judge must return exactly one of these integers:
 | `2` | **Partially correct, and includes the key points.** Covers the essential information but adds noise, extraneous detail, or minor imprecision. |
 | `3` | **Accurate and comprehensive answer.** Substantively equivalent to `expected_answer`; a reasonable user would consider the question fully answered. |
 
-The judge's structured output is `{ "score": <0|1|2|3>, "remark": "<one-sentence justification>" }`. `eval` writes `score` and `remark` into their columns unchanged. If the judge returns malformed output past the retry cap (§7.9), the row's `score` is left empty and `remark` is set to `[judge_failed] <reason>` — never a fabricated numeric score.
+The judge's structured output is `{ "score": <0|1|2|3>, "remark": "<one-sentence justification>" }`. `evalrun` writes `score` and `remark` into their columns unchanged. If the judge returns malformed output past the retry cap (§7.9), the row's `score` is left empty and `remark` is set to `[judge_failed] <reason>` — never a fabricated numeric score.
 
 The judge is deliberately **stateless per row**: it never sees another question's answer or score. This keeps scoring order-independent and lets `--concurrency` fan out safely.
 
+The classifier (§7.4.2) and clarifier (§7.4.2) are the registry's `eval.classify` and `eval.clarify`. All three render through `string.Template`, which is not incidental: these prompts instruct the model to reply with a literal JSON object, so their text contains `{"score": 0 | 1 | 2 | 3, ...}` and `{"category": "answer" | "clarify" | "refusal"}`. Under `str.format` every one of those braces is a substitution site and the render raises before producing a character — the precise failure §2.15 gives as the reason the whole system reserves only `$`.
+
 ## 7.6 Test Harness (promptfoo)
 
-`eval` is implemented on top of [promptfoo](https://www.promptfoo.dev/) — each CSV row becomes one promptfoo test case, and promptfoo drives the parallel execution, retry policy, assertion evaluation, and HTML report generation. This choice buys three things that would otherwise be one-off code: (a) concurrent test execution with a stable, well-tested rate limiter; (b) a mature HTML report renderer with pass/fail visualization and drill-down; (c) a plugin surface for custom assertions — `eval` registers the LLM-judge scorer (§7.5) as a promptfoo `assert` of type `llm-rubric`.
+`evalrun` is implemented on top of [promptfoo](https://www.promptfoo.dev/) — each CSV row becomes one promptfoo test case, and promptfoo drives the parallel execution, retry policy, assertion evaluation, and HTML report generation. This choice buys three things that would otherwise be one-off code: (a) concurrent test execution with a stable, well-tested rate limiter; (b) a mature HTML report renderer with pass/fail visualization and drill-down; (c) a plugin surface for custom assertions — `evalrun` registers the LLM-judge scorer (§7.5) as a promptfoo `assert` of type `llm-rubric`.
 
 The promptfoo integration is an implementation detail — the CLI surface, input CSV schema, and output CSV schema are stable. The mapping is:
 
-| `eval` concept | promptfoo concept |
+| `evalrun` concept | promptfoo concept |
 |---|---|
 | Input CSV row | `test` |
 | `question` | rendered into the `prompt` sent to the provider |
@@ -3543,19 +3630,23 @@ The promptfoo integration is an implementation detail — the CLI surface, input
 | Multi-turn clarification (§7.4.2) | handled inside the provider before returning — promptfoo sees one prompt → one final response |
 | LLM-as-judge scoring (§7.5) | a `llm-rubric` assertion with the rubric text and structured-output contract from §7.5 |
 | Per-kind breakdown (§7.8) | promptfoo `tags` set to `{ kind: <row.kind> }` |
-| HTML report | `promptfoo view --output <report.html>` invoked by `eval` after the run |
+| HTML report | `promptfoo view --output <report.html>` invoked by `evalrun` after the run |
 
-`eval` writes the completed CSV itself (§7.7) rather than deriving it from promptfoo's native output — CSV round-tripping is part of the tool's contract with `evalgen`, and decoupling it from promptfoo's output format shields callers from harness changes.
+`evalrun` writes the completed CSV itself (§7.7) rather than deriving it from promptfoo's native output — CSV round-tripping is part of the tool's contract with `evalgen`, and decoupling it from promptfoo's output format shields callers from harness changes.
+
+`source` (§6.7.1) is carried through untouched: `evalrun` reads it, writes it back, and never uses it to answer. It is provenance for a human reviewing a row, and feeding it to the agent would make the eval measure retrieval-with-hints rather than retrieval. It is absent from the promptfoo test `vars` for that reason — the prompt is `{{question}}` alone, so provenance cannot reach the model even by accident. Scoring mutates the input rows in place rather than rebuilding them from the harness's output, so the column survives a scored run without any merge logic having to know about it.
+
+**`source` is optional on input.** Eval sets generated before provenance existed have seven columns, and refusing them would strand every eval set already in use; a missing `source` reads as empty. Because `evalrun` always *writes* the full schema, reading a seven-column file and writing it back upgrades it in place — the column appears, empty, and fills in on the next `evalgen` run against a provenance-carrying KB.
 
 ## 7.7 Output — Completed CSV
 
-`eval` writes a CSV to `--out` with the same 7-column schema as the input (§6.7). Columns `question_id`, `kind`, `question`, and `expected_answer` are copied verbatim from the input row. Columns `actual_answer`, `score`, and `remark` are populated per §7.4 and §7.5.
+`evalrun` writes a CSV to `--out` with the same 8-column schema as the input (§6.7). Columns `question_id`, `kind`, `question`, `expected_answer`, and `source` are copied verbatim from the input row. Columns `actual_answer`, `score`, and `remark` are populated per §7.4 and §7.5.
 
 Row-level rules:
 
 - **Row order is preserved.** Even under `--concurrency > 1`, rows are emitted in input order so `diff` on two run outputs is meaningful.
 - **Same encoding as `evalgen`.** UTF-8, LF line endings, RFC 4180 quoting, header row always present.
-- **Never partial.** `eval` writes the output CSV atomically at the end of the run (temp file + rename). A crash mid-run leaves the previous output untouched; use `--skip-completed` on a fresh output for incremental resumption.
+- **Never partial.** `evalrun` writes the output CSV atomically at the end of the run (temp file + rename). A crash mid-run leaves the previous output untouched; use `--skip-completed` on a fresh output for incremental resumption.
 - **Score column is integer or empty.** Never a string, never a float. Empty means the judge failed for that row (§7.5); `remark` explains why.
 
 Example (header + three rows, one of each outcome shape):
@@ -3569,7 +3660,7 @@ q-0021,hard-2,"According to the refund state machine, which state immediately fo
 
 ## 7.8 Output — HTML Report
 
-`eval` emits an HTML report to `--report` generated by promptfoo's report renderer, extended with per-kind summary panels. The report includes:
+`evalrun` emits an HTML report to `--report` generated by promptfoo's report renderer, extended with per-kind summary panels. The report includes:
 
 - **Run summary.** Total questions, per-kind counts, overall pass rate (fraction scoring `≥ 2`), mean and median score, wall-clock elapsed, backend URL, seed, model IDs (chatbot + judge).
 - **Per-kind breakdown.** One panel each for `simple`, `medium`, `complex`, `hard-1`, `hard-2` showing count, mean score, score histogram (0/1/2/3 bars), and pass rate. Enables at-a-glance drift detection — a `hard-1` regression tells you retrieval selection broke; a `hard-2` regression tells you multimodal loading broke, mirroring the signal design in §6.4.
@@ -3578,14 +3669,19 @@ q-0021,hard-2,"According to the refund state machine, which state immediately fo
 - **Comparison bar** at the top when `--baseline <prior-output.csv>` is passed: side-by-side per-kind pass rates and a delta column, so regressions vs. a committed baseline are immediately visible.
 - **Regenerable and self-contained.** Single `.html` file — inlined CSS/JS, no external assets, safe to commit or attach to a PR.
 
-The report and the completed CSV are the two deliverables of an `eval` run. Both are always written when the run completes; a crash before completion leaves the previous versions of both untouched (§7.7).
+The report and the completed CSV are the two deliverables of a run. Both are always written when the run completes; a crash before completion leaves the previous versions of both untouched (§7.7).
 
 ## 7.9 Configuration
 
-`eval` reads an optional `eval.toml`. All values are overridable by CLI flags (§7.3):
+`evalrun` reads an optional `evalrun.toml`. All values are overridable by CLI flags (§7.3):
 
 ```toml
-# Chatbot under test — the backend `eval` calls.
+# Operator prompt overrides (§2.15.2), resolved per prompt against the copies
+# packaged with hcag. Drop in `eval/score.md` alone and the classifier and
+# clarifier keep their packaged text.
+prompts_dir = "./prompts"
+
+# Chatbot under test — the backend `evalrun` calls.
 [backend]
 url             = "http://localhost:8000"
 chat_path       = "/chat"           # POST endpoint under `url`
@@ -3598,23 +3694,22 @@ session_scope   = "per-question"    # per-question | per-run
 max_turns = 5
 
 # Response classifier — small LLM prompt that decides answer / clarify / refusal.
-[classifier]
+[classifier.llm]
 provider    = "anthropic"
 model       = "claude-haiku-4-5-20251001"
 api_key_env = "ANTHROPIC_API_KEY"
+preflight   = true                        # abort at startup if unreachable (§7.3.1)
 
 # LLM-as-judge (§7.5) and clarifier (§7.4.2) — same provider, distinct prompts.
-[judge]
+[judge.llm]
 provider          = "anthropic"
 model             = "claude-opus-4-7"     # scoring benefits from a strong model
 api_key_env       = "ANTHROPIC_API_KEY"
-max_output_tokens = 512
-retries           = 2                     # on malformed structured output
+max_tokens        = 512
+preflight         = true
 
-[judge.prompts]
-score     = "prompts/eval_score.md"       # rubric prompt (§7.5)
-clarify   = "prompts/eval_clarify.md"     # user-side clarification (§7.4.2)
-classify  = "prompts/eval_classify.md"    # answer / clarify / refusal classifier
+[judge]
+retries           = 2                     # on malformed structured output
 
 # Execution.
 [run]
@@ -3623,15 +3718,17 @@ seed        = 42
 
 # Reporting.
 [report]
-title    = "HCAG eval — <kb-name>"
+title    = "HCAG evalrun — <kb-name>"
 baseline = ""                             # optional path to a prior --out CSV
 
 [log]
-file_path = "./eval.log"
+file_path = "./evalrun.log"
 level     = "INFO"
 ```
 
-Local model support mirrors `evalgen` (§6.8): `provider = "ollama"` or `"llamacpp"` with a local `endpoint` runs classification, clarification, and scoring without cloud credentials. Judge quality bounds `eval` quality — the same guidance as `evalgen`'s generation-quality note applies.
+There is no per-role `prompt_path` setting. The three prompts are registry entries and are overridden the way every prompt in the system is overridden — by placing a file at the matching path under `prompts_dir` (§2.15.2). A bespoke path per role would be a second override mechanism for the same job, and the one an operator already knows would be the one that does not work here.
+
+Local model support mirrors `evalgen` (§6.8): `provider = "ollama"` or `"llamacpp"` with a local `endpoint` runs classification, clarification, and scoring without cloud credentials. Judge quality bounds `evalrun` quality — the same guidance as `evalgen`'s generation-quality note applies.
 
 ## 7.10 Failure Modes
 
@@ -3639,6 +3736,9 @@ Local model support mirrors `evalgen` (§6.8): `provider = "ollama"` or `"llamac
 |---|---|
 | `<input.csv>` missing or malformed | ERROR at startup — non-zero exit. |
 | Backend URL unreachable at run start (`GET /health` probe fails) | ERROR at startup — non-zero exit, no partial output written. |
+| A prompt file is missing, empty, or has an invalid `$` placeholder | ERROR at startup (§7.3.1) — raised once in the parent, not per row. |
+| Classifier or judge LLM unreachable at run start (preflight, §7.3.1) | ERROR at startup — non-zero exit, labelled with the failing role. |
+| No `evalrun.toml` found | WARN at startup — proceeds on defaults, naming both models on stderr. |
 | Backend returns 5xx on a single row past retries | Row's `actual_answer = [backend_error] ...`, judge scores it, run continues. |
 | Backend times out on a single row past retries | Row's `actual_answer = [backend_timeout]`, judge scores it, run continues. |
 | Judge LLM returns malformed structured output past `retries` | Row's `score` left empty, `remark = [judge_failed] <reason>`; run continues. |
@@ -3647,11 +3747,11 @@ Local model support mirrors `evalgen` (§6.8): `provider = "ollama"` or `"llamac
 | `--out` or `--report` path not writable | ERROR at startup — fail fast rather than partial write. |
 | `--baseline` file schema mismatch | ERROR at startup — the report can't render a comparison. |
 
-If any `ERROR`-level event fires, `eval` exits with a non-zero status. Per-row `WARN`s (backend errors, judge failures) do not affect exit status but are surfaced in the end-of-run summary and in the report.
+If any `ERROR`-level event fires, `evalrun` exits with a non-zero status. Per-row `WARN`s (backend errors, judge failures) do not affect exit status but are surfaced in the end-of-run summary and in the report.
 
 ## 7.11 Observability (CLI)
 
-`eval` writes a JSON-lines log to the path in `[log]` config (default `./eval.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), `crawl` (§4.7), and `evalgen` (§6.10):
+`evalrun` writes a JSON-lines log to the path in `[log]` config (default `./evalrun.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), `crawl` (§4.7), and `evalgen` (§6.10):
 
 - `INFO`: run start (input path, row count, per-kind counts, backend URL, resolved model IDs, concurrency, seed), per-row summary (`question_id`, `kind`, turn count, wall-clock elapsed, chatbot tokens, judge tokens, final `score`), run end summary (per-kind mean scores and pass rates, wall-clock elapsed).
 - `DEBUG`: full multi-turn transcripts per row, full judge prompt + response, classifier decisions, clarifier prompts + responses.
@@ -3662,15 +3762,15 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`eval.run`, `eval.row`, `eval.ch
 
 ## 7.12 Non-Goals
 
-- **Generating questions.** `eval` never fabricates test items; the input CSV is the authority. Curation is `evalgen`'s job (Part 6) and human review (§6.11).
-- **Editing the reference answer.** `expected_answer` is treated as ground truth. If it is wrong for a given KB revision, fix the source and re-run `evalgen`; `eval` does not rewrite the column.
-- **Running the KB or the agent directly.** `eval` only speaks to the backend over `POST /chat`. It does not import `AgentRuntime`, does not touch the KB, and does not care whether the backend is `hcag-server` (the widget's backend, Part 10), a mocked stub, a different agent, or a hosted service — the contract is the HTTP endpoint alone. This keeps `eval` usable as a black-box regression harness against any chatbot that speaks the same protocol.
-- **CI orchestration or threshold enforcement.** `eval` reports scores; it does not fail the CI job on a pass-rate drop. Callers wire the exit-code policy they want on top of the completed CSV (e.g., a wrapper script that parses the mean score per kind and gates a PR).
+- **Generating questions.** `evalrun` never fabricates test items; the input CSV is the authority. Curation is `evalgen`'s job (Part 6) and human review (§6.11).
+- **Editing the reference answer.** `expected_answer` is treated as ground truth. If it is wrong for a given KB revision, fix the source and re-run `evalgen`; `evalrun` does not rewrite the column.
+- **Running the KB or the agent directly.** `evalrun` only speaks to the backend over `POST /chat`. It does not import `AgentRuntime`, does not touch the KB, and does not care whether the backend is `hcag-server` (the widget's backend, Part 10), a mocked stub, a different agent, or a hosted service — the contract is the HTTP endpoint alone. This keeps `evalrun` usable as a black-box regression harness against any chatbot that speaks the same protocol.
+- **CI orchestration or threshold enforcement.** `evalrun` reports scores; it does not fail the CI job on a pass-rate drop. Callers wire the exit-code policy they want on top of the completed CSV (e.g., a wrapper script that parses the mean score per kind and gates a PR).
 - **Adversarial or safety evaluation.** Scoring is grounded strictly in `expected_answer`. Prompt-injection tests, jailbreak resistance, and toxicity checks are separate concerns and out of scope.
 
 ## 7.13 Sequence Diagram
 
-Whole-run view. `eval` writes a promptfoo config + JSON-serialized `EvalConfig` into a tempdir and hands off concurrent per-row execution to `npx promptfoo eval`. Each row's provider spawns the multi-turn conversation loop (§7.4), classifies each chatbot reply, drives clarifications via the judge LLM when the reply isn't a real answer, and — once an answer is captured — runs the judge one final time to score against `expected_answer`. The runner then atomically writes the completed CSV and renders the HTML report.
+Whole-run view. `evalrun` writes a promptfoo config + JSON-serialized `EvalConfig` into a tempdir and hands off concurrent per-row execution to `npx promptfoo eval`. Each row's provider spawns the multi-turn conversation loop (§7.4), classifies each chatbot reply, drives clarifications via the judge LLM when the reply isn't a real answer, and — once an answer is captured — runs the judge one final time to score against `expected_answer`. The runner then atomically writes the completed CSV and renders the HTML report.
 
 ```mermaid
 sequenceDiagram
@@ -3727,7 +3827,7 @@ The tool is a **one-shot indexer**. It does not serve queries, does not stand up
 
 ## 8.2 KB Input Model
 
-`rag` operates on a **raw** KB folder — the same layout `hcag preprocess` (§3.4) and `crawl` (§4) produce. It intentionally does **not** require the KB to have been normalized: `compiled.md` files may or may not exist, and the tool works on either shape.
+`rag` operates on a **raw** KB folder — the same layout `hcag` (§3.4) and `crawl` (§4) produce. It intentionally does **not** require the KB to have been normalized: `compiled.md` files may or may not exist, and the tool works on either shape.
 
 Two exclusion rules govern what gets indexed:
 
@@ -3929,7 +4029,7 @@ If any `ERROR`-level event fires, `rag` exits with a non-zero status. `WARN`-lev
 
 ## 8.9 Observability (CLI)
 
-`rag` writes a JSON-lines log to the path in `[log]` config (default `./rag.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), `crawl` (§4.7), `evalgen` (§6.10), and `eval` (§7.11):
+`rag` writes a JSON-lines log to the path in `[log]` config (default `./rag.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), `crawl` (§4.7), `evalgen` (§6.10), and `evalrun` (§7.11):
 
 - `INFO`: run start (kb root, index path, resolved embedding + image models, pinned dimension), per-file summary (`kb_path`, `source_kind`, chunk count, embed tokens, wall-clock elapsed), run end summary (files scanned / indexed / skipped, chunks written, images described, dropped counts, total wall-clock).
 - `DEBUG`: skip decisions with the matched exclusion rule, chunk boundaries and their heading paths, full image-description prompts and responses, embedding batch sizes and per-batch elapsed.
@@ -4013,7 +4113,7 @@ Without a competing agent, HCAG evaluation is either self-referential (score HCA
 
 1. Both agents implement the same `run_turn(user_message) -> str` interface (§9.2).
 2. Both agents are served through the same `hcag-server` process (§9.5) — a startup flag picks which one instantiates.
-3. `eval` (Part 7) scores them identically — the same CSV, the same judge, the same rubric. The only variable is the agent under test.
+3. `evalrun` (Part 7) scores them identically — the same CSV, the same judge, the same rubric. The only variable is the agent under test.
 
 The RAG agent is **not** intended to beat HCAG on knowledge-heavy tasks (that would defeat HCAG's own purpose per §1.3). It is intended to be a **credible** flat-RAG implementation — good enough that a win for HCAG is a real win, and a loss for HCAG is a real loss and worth investigating.
 
@@ -4141,26 +4241,26 @@ Both agents answer the same wire question and are scored on the same rubric. Wha
 | Latency | Higher when a load fires; near-zero on cached branches | ~constant per turn (one embed + one hybrid search + one generation) |
 | Prompt tokens per turn | Amortized down by cache hits (§2.12) — dominant cost is the packet(s) once | Full context re-sent every turn; scales with `max_context_tokens` |
 | Failure mode | Wrong classification → wrong packet → wrong answer, easy to spot in logs | Wrong retrieval ranking → chunks missing key context → subtle degradation |
-| KB build cost | `hcag preprocess` — single DFS pass (§3) | `rag` (§8) — usually faster; no taxonomy authoring needed |
+| KB build cost | `hcag` — single DFS pass (§3) | `rag` (§8) — usually faster; no taxonomy authoring needed |
 
 The intended narrative when scoring both: **`simple` and `medium`** questions (§6.4.1–2) should be roughly tied — a single well-retrieved packet or a single well-retrieved chunk both suffice. **`complex` and `hard-1`** (§6.4.3–4) should favor HCAG — whole-packet load and the cross-packet loading loop both help. **`hard-2`** (§6.4.5) should strongly favor HCAG — direct image attachment beats text-of-image. A run that contradicts this is a signal worth chasing, not a bug in the eval.
 
 ## 9.5 Backend Server Integration (`hcag-server --agent`)
 
-`hcag-server` (the FastAPI backend from `hcag/server/`, exercised by the web widget in Part 10 and by `eval`) chooses which agent to instantiate at startup via a single flag. The wire contract on `POST /chat` is unchanged — clients and `eval` do not know or care which agent is answering.
+`hcag-server` (the FastAPI backend from `hcag/server/`, exercised by the web widget in Part 10 and by `evalrun`) chooses which agent to instantiate at startup via a single flag. The wire contract on `POST /chat` is unchanged — clients and `evalrun` do not know or care which agent is answering.
 
 **Two routes, one turn (§2.14):**
 
 | Route | Response | Consumer |
 |---|---|---|
-| `POST /chat` | `{ text, session_id }` — one JSON object when the turn finishes | `eval` (§7.3), curl, any non-streaming client |
+| `POST /chat` | `{ text, session_id }` — one JSON object when the turn finishes | `evalrun` (§7.3), curl, any non-streaming client |
 | `POST /chat/stream` | `text/event-stream` — §2.14.1 events as SSE frames | the chat widget (§10.4) |
 
 Both take the same request body and share a session; a client may stream one turn and not the next.
 
-**A separate path, not content negotiation.** Switching on `Accept: text/event-stream` would have kept one route, and was rejected: `POST /chat`'s shape is depended on by `eval` and is the contract the RAG baseline implements identically (§9.4), so making its response type depend on a header risks silent divergence between the two agents and turns a mis-set header into what looks like an agent bug. A distinct path is greppable in logs, routable in a proxy, and impossible to hit by accident. The two also differ in more than framing — §2.14.3's post-first-byte error semantics have no equivalent in the synchronous route.
+**A separate path, not content negotiation.** Switching on `Accept: text/event-stream` would have kept one route, and was rejected: `POST /chat`'s shape is depended on by `evalrun` and is the contract the RAG baseline implements identically (§9.4), so making its response type depend on a header risks silent divergence between the two agents and turns a mis-set header into what looks like an agent bug. A distinct path is greppable in logs, routable in a proxy, and impossible to hit by accident. The two also differ in more than framing — §2.14.3's post-first-byte error semantics have no equivalent in the synchronous route.
 
-**The RAG baseline implements `POST /chat` only.** It has no tool loop and retrieves once up front, so its stream would carry deltas and nothing else; the comparison in §9.4 is about retrieval architecture and is run by `eval`, which is synchronous anyway. A client asking `--agent rag` for `/chat/stream` gets `501`, not a degraded imitation.
+**The RAG baseline implements `POST /chat` only.** It has no tool loop and retrieves once up front, so its stream would carry deltas and nothing else; the comparison in §9.4 is about retrieval architecture and is run by `evalrun`, which is synchronous anyway. A client asking `--agent rag` for `/chat/stream` gets `501`, not a degraded imitation.
 
 ```
 $ hcag-server serve --agent {hcag|rag} [options]
@@ -4274,7 +4374,7 @@ level     = "INFO"
 | Generation call fails past provider retries | Turn returns `[generation_error] <reason>`. Same session-survives semantics. |
 | `max_context_tokens` set below `token_estimate` of even the top hit | Include that one hit anyway, log a `WARN` — refusing the query is worse than crowding the budget. |
 
-`hcag-server`'s HTTP layer maps these to `500` with the error string in the JSON body, so `eval` (§7.4.3) captures them as `[backend_error]` and the judge scores them appropriately.
+`hcag-server`'s HTTP layer maps these to `500` with the error string in the JSON body, so `evalrun` (§7.4.3) captures them as `[backend_error]` and the judge scores them appropriately.
 
 ## 9.8 Observability
 
@@ -4292,7 +4392,7 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`rag_agent.turn`, `rag_agent.emb
 - **Replacing HCAG in production.** The RAG agent exists to be a serious baseline for measuring HCAG. If a KB's workload is genuinely a fit for flat RAG (small corpus, short queries, few multi-hop questions per §1.3.3), then RAG is the right choice — but that's an operator decision made on the eval evidence, not a claim this design makes for it.
 - **Tool use / dynamic reload.** The RAG agent does not expose tools to the LLM. There is no equivalent of `check_and_load_kb` (§2.3.2) — retrieval happens once, up front, with no re-issuance mid-turn. Adding tools would make it a different agent design; the point of the baseline is to be a faithful representation of *flat* RAG.
 - **Query rewriting or HyDE.** Retrieval uses the raw user turn as the query. Common flat-RAG add-ons — HyDE-style hypothetical-answer expansion, LLM-based query rewriting, multi-query fanout — are deliberately omitted from the baseline so the eval comparison isolates the *architecture* (taxonomy vs. flat index), not the *tuning*.
-- **Cross-agent state.** An HCAG session and a RAG session never share state. Migrating a conversation between them is out of scope; `eval` fresh-sessions per row anyway (§7.3 `--session-scope`).
+- **Cross-agent state.** An HCAG session and a RAG session never share state. Migrating a conversation between them is out of scope; `evalrun` fresh-sessions per row anyway (§7.3 `--session-scope`).
 - **Multimodal generation.** Images are consulted only through their §8.4.3 text description. Passing the original image bytes to the generation model at answer time is a future-work item for a "RAG-with-vision" variant; it is not what the baseline models.
 
 

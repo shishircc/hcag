@@ -1,7 +1,7 @@
 """Fixed 7-column CSV output per §6.7.
 
 Columns, in order:
-  question_id, kind, question, expected_answer, actual_answer, score, remark
+  question_id, kind, question, expected_answer, source, actual_answer, score, remark
 
 `evalgen` always writes the last three columns empty — they are populated by
 a downstream evaluation pass.
@@ -21,6 +21,7 @@ COLUMNS = [
     "kind",
     "question",
     "expected_answer",
+    "source",
     "actual_answer",
     "score",
     "remark",
@@ -45,6 +46,9 @@ def write_csv(path: Path, rows: Iterable[tuple[str, GeneratedItem]]) -> int:
                 item.kind,
                 item.question,
                 item.expected_answer,
+                # Space-separated: unambiguous because a URL cannot
+                # contain an unescaped space (§6.7.1).
+                " ".join(item.source_urls),
                 "",  # actual_answer — populated during evaluation
                 "",  # score — populated during evaluation
                 "",  # remark — populated during evaluation

@@ -5,7 +5,7 @@ Two config files for the two entry points into HCAG:
 | File | Loaded by | Placement |
 |---|---|---|
 | [`agent.toml`](./agent.toml) | Runtime `AgentRuntime` — the LLM that answers user turns | Anywhere; pass path explicitly: `load_agent_config(Path("./agent.toml"))` |
-| [`kb/hcag.toml`](./kb/hcag.toml) | CLI `hcag preprocess` / `hcag aggregate` — build-time metadata generation | Must sit at the **root of the KB directory**; auto-discovered |
+| [`kb/hcag.toml`](./kb/hcag.toml) | CLI `hcag` — build-time metadata generation | Must sit at the **root of the KB directory**; auto-discovered |
 
 ## Two configs, two models
 

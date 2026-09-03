@@ -4,7 +4,7 @@
 # ==============================================================================
 
 # KB root — the directory that holds the root compiled.md (produced by
-# `hcag preprocess`) and the per-packet folders.
+# `hcag`) and the per-packet folders.
 kb_root = "./kb"
 
 # Token budget for the active packet set. When adding new packets would exceed

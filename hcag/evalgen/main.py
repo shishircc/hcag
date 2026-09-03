@@ -15,7 +15,9 @@ from pathlib import Path
 
 import typer
 
+from ..cli.metadata_llm import LLMUnavailableError
 from ..config import load_evalgen_config
+from .generators import preflight
 from ..logger import build_logger
 from .runner import EvalGenRequest, KIND_ORDER, run_evalgen, split_total
 
@@ -85,6 +87,32 @@ def _cli(
     cfg = load_evalgen_config(cfg_path)
 
     logger = build_logger(cfg.log, name="evalgen", console=verbose)
+
+    if not cfg_path.exists():
+        # Question quality tracks model strength, and `hard-2` needs a
+        # multimodal model — silently running the small default is the
+        # difference between an eval set and a waste of tokens (§6.2.2).
+        logger.warn(
+            "evalgen.config.missing",
+            path=str(cfg_path),
+            provider=cfg.llm.provider,
+            model=cfg.llm.litellm_model(),
+            detail="using built-in defaults; create evalgen.toml to choose the model",
+        )
+        typer.echo(
+            f"No {cfg_path} — using defaults: {cfg.llm.provider} / "
+            f"{cfg.llm.litellm_model()}. Question quality tracks model strength, "
+            "and hard-2 needs a multimodal model.",
+            err=True,
+        )
+
+    if cfg.llm.preflight:
+        try:
+            preflight(cfg.llm, logger)
+        except LLMUnavailableError as e:
+            logger.error("evalgen.preflight.failed", error=str(e))
+            typer.echo(f"evalgen aborted, nothing written: {e}", err=True)
+            raise typer.Exit(code=1) from e
 
     request = EvalGenRequest(
         kb_root=kb_root,

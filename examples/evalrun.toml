@@ -1,10 +1,21 @@
 # ==============================================================================
-# HCAG `eval` CLI — sample config (DESIGN §7.9)
+# HCAG `evalrun` CLI — sample config (DESIGN §7.9)
 #
 # Score an evalgen-produced CSV against a live chatbot backend. Every field
-# below has a CLI override (see `eval --help`) with precedence:
+# below has a CLI override (see `evalrun --help`) with precedence:
 #   CLI > env > this file > defaults.
+#
+# The CLI is `evalrun`, not `eval`, because `eval` is a POSIX shell builtin
+# and would shadow the command on any sh/bash/zsh.
 # ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Operator prompt overrides (§2.15.2). Drop `eval/score.md`, `eval/classify.md`
+# or `eval/clarify.md` in here to override just that one; the rest keep the
+# copies packaged with hcag. Variables are `$name` (string.Template), so a
+# literal dollar sign is written `$$`.
+# ------------------------------------------------------------------------------
+prompts_dir = "./prompts"
 
 # ------------------------------------------------------------------------------
 # The chatbot backend under test.
@@ -35,8 +46,9 @@ api_key_env = "ANTHROPIC_API_KEY"
 max_tokens  = 64
 temperature = 0.0
 
-# Optional — override the packaged default prompt.
-# classifier.prompt_path = "prompts/classify.md"
+# Refuse to start if this model is unreachable, rather than discovering it
+# after every row has been run against the backend (§7.3.1).
+preflight   = true
 
 # ------------------------------------------------------------------------------
 # LLM-as-judge (§7.5). Also plays the clarifier role (§7.4.2), with distinct
@@ -48,16 +60,11 @@ model       = "claude-opus-4-7"
 api_key_env = "ANTHROPIC_API_KEY"
 max_tokens  = 512
 temperature = 0.0
+preflight   = true
 
 # On malformed structured output, retry up to N times before leaving score empty.
 [judge]
 retries = 2
-
-# Optional — override the packaged default prompts.
-# [judge.prompts]
-# score    = "prompts/eval_score.md"
-# clarify  = "prompts/eval_clarify.md"
-# classify = "prompts/eval_classify.md"
 
 # ------------------------------------------------------------------------------
 # Execution.
@@ -70,12 +77,12 @@ concurrency = 4                # parallel test cases (--max-concurrency in promp
 # Reporting.
 # ------------------------------------------------------------------------------
 [report]
-title    = "HCAG eval — work-pass KB"
+title    = "HCAG evalrun — work-pass KB"
 baseline = ""                  # path to a prior --out CSV; renders per-kind deltas when set
 
 # ------------------------------------------------------------------------------
 # Local file log — JSON-lines, symmetric with the other CLIs (§7.11).
 # ------------------------------------------------------------------------------
 [log]
-file_path = "./eval.log"
+file_path = "./evalrun.log"
 level     = "INFO"             # DEBUG | INFO | WARN | ERROR

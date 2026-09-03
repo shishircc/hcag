@@ -1,4 +1,4 @@
-"""Configuration models for the `eval` CLI (§7.9)."""
+"""Configuration models for the `evalrun` CLI (§7.9)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 from ..config import LLMConfig, LogConfig
+from ..prompting import DEFAULT_PROMPTS_DIR
 
 
 SessionScope = Literal["per-question", "per-run"]
@@ -41,13 +42,6 @@ class ClassifierConfig(BaseModel):
             max_tokens=64,
         )
     )
-    prompt_path: str = ""  # empty => use packaged default
-
-
-class JudgePromptsConfig(BaseModel):
-    score: str = ""
-    clarify: str = ""
-    classify: str = ""
 
 
 class JudgeConfig(BaseModel):
@@ -62,7 +56,6 @@ class JudgeConfig(BaseModel):
         )
     )
     retries: int = 2
-    prompts: JudgePromptsConfig = Field(default_factory=JudgePromptsConfig)
 
 
 class RunConfig(BaseModel):
@@ -76,15 +69,20 @@ class ReportConfig(BaseModel):
 
 
 class EvalConfig(BaseModel):
-    """Top-level `eval.toml` schema (§7.9)."""
+    """Top-level `evalrun.toml` schema (§7.9)."""
 
+    #: Operator prompt overrides, resolved per prompt against the packaged
+    #: copies (§2.15.2). The judge rubric and the classifier are the two knobs
+    #: most worth turning per KB, and they are turned the same way as every
+    #: other prompt in the system rather than through bespoke path settings.
+    prompts_dir: str = DEFAULT_PROMPTS_DIR
     backend: BackendConfig = Field(default_factory=BackendConfig)
     loop: LoopConfig = Field(default_factory=LoopConfig)
     classifier: ClassifierConfig = Field(default_factory=ClassifierConfig)
     judge: JudgeConfig = Field(default_factory=JudgeConfig)
     run: RunConfig = Field(default_factory=RunConfig)
     report: ReportConfig = Field(default_factory=ReportConfig)
-    log: LogConfig = Field(default_factory=lambda: LogConfig(file_path="./eval.log"))
+    log: LogConfig = Field(default_factory=lambda: LogConfig(file_path="./evalrun.log"))
 
 
 def load_eval_config(path: Path | str) -> EvalConfig:

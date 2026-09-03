@@ -25,7 +25,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from ..config import CatalogConfig, CliConfig
-from ..crawl.urls import SIDECAR_NAME, read_link_order
+from ..crawl.urls import SIDECAR_NAME, read_link_order, read_sidecar
 from ..logger import HcagLogger
 from ..compiled_io import (
     CatalogRecord,
@@ -534,6 +534,10 @@ def _process_folder(
         copied_images = []
         own_content = ""
 
+    sidecar = read_sidecar(folder)
+    provenance = {str(k): str(v) for k, v in (sidecar.get("documents") or {}).items()}
+    sidecar_images = {str(k): str(v) for k, v in (sidecar.get("images") or {}).items()}
+
     # 5) Summarize this folder via LLM — from its own content plus its
     #    IMMEDIATE children's LONG descriptions (§3.4.4). Long, not short:
     #    summarization is iterated up the tree, so feeding one-line labels
@@ -622,6 +626,10 @@ def _process_folder(
         catalog_token_estimate=catalog_tokens,
         kind=kind,
         source_files=[name for name, _ in body_sections],
+        # Copied, never fetched or verified: provenance stays a fact about the
+        # crawl rather than a claim made at build time (§3.4.3 step 4a).
+        source_urls=[provenance.get(name, "") for name, _ in body_sections],
+        image_urls={n: sidecar_images[n] for n in copied_images if n in sidecar_images},
         children=[r.summary.id for _, r in children],
         descendants=len(rendered),
         subtree_depth=subtree_depth,

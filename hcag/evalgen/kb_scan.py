@@ -43,10 +43,22 @@ class PacketRecord:
     body: str
     paragraphs: list[str]
     assets: list[Path] = field(default_factory=list)
+    #: Origin URLs from `compiled.md` front-matter (§3.4.3), for the eval CSV's
+    #: `source` column. Empty on a hand-authored KB, or one crawled before
+    #: provenance was recorded — degraded, not broken (§6.7.1).
+    source_urls: list[str] = field(default_factory=list)
+    image_urls: dict[str, str] = field(default_factory=dict)
 
     @property
     def has_images(self) -> bool:
         return bool(self.assets)
+
+    def url(self) -> str:
+        """The packet's own origin — its first known source URL."""
+        return next((u for u in self.source_urls if u), "")
+
+    def image_url(self, asset: Path) -> str:
+        return self.image_urls.get(asset.name, "")
 
 
 def _strip_body(text: str) -> str:
@@ -175,6 +187,8 @@ def scan_kb(root: Path, paragraph_min_chars: int, logger: HcagLogger | None = No
                 body=body,
                 paragraphs=paragraphs,
                 assets=assets,
+                source_urls=list(fm.source_urls),
+                image_urls=dict(fm.image_urls),
             )
         )
     return packets

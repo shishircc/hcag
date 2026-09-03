@@ -4,7 +4,8 @@ Flow (§7.3 + §7.6):
 
 1. Read + validate input CSV.
 2. Filter rows by ``--kinds`` and ``--skip-completed`` if requested.
-3. Probe the backend once with ``GET /health``; abort at startup on failure.
+3. Probe the backend once with ``GET /health``, load the prompt registry, and
+   preflight both eval LLMs; abort at startup on any failure (§7.3.1).
 4. Serialize the resolved ``EvalConfig`` to a temp JSON file the provider
    will read at test time (via ``HCAG_EVAL_CONFIG_JSON``).
 5. Emit a ``promptfooconfig.yaml`` in the tempdir; invoke
@@ -26,10 +27,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from ..cli.metadata_llm import LLMUnavailableError
 from ..logger import HcagLogger
+from ..prompting import PromptError, load_prompts
 from .backend import BackendClient
 from .config import EvalConfig
 from .csv_io import EvalRow, VALID_KINDS, read_csv, write_csv
+from .llm_calls import preflight
 from .promptfoo_config import PROVIDER_MODULE_PATH, write_config
 from .report import render_report
 
@@ -139,7 +143,7 @@ def _apply_results(rows: list[EvalRow], results: dict[str, dict[str, Any]]) -> l
         if entry is None:
             row.actual_answer = "[no_result] promptfoo did not return a result for this row"
             row.score = None
-            row.remark = "[no_result] see eval.log for details"
+            row.remark = "[no_result] see evalrun.log for details"
             out.append(RowResult(row=row, metadata={}))
             continue
         meta = entry.get("metadata") or {}
@@ -198,8 +202,27 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
     if not ok:
         raise RunError(
             f"backend health check failed: {err}. Start the chatbot at {cfg.backend.url} "
-            "before running `eval`."
+            "before running `evalrun`."
         )
+
+    # Prompts are files (§2.15). Load them here, in the parent, so a missing or
+    # malformed override is one startup error rather than one identical failure
+    # per row inside a promptfoo worker, where it surfaces as N judge failures.
+    try:
+        load_prompts(cfg.prompts_dir)
+    except PromptError as e:
+        raise RunError(str(e)) from e
+
+    # §7.3.1 — a run costs the backend before either eval model is called, so a
+    # bad key must fail now and not after every row has been paid for.
+    if cfg.classifier.llm.preflight or cfg.judge.llm.preflight:
+        for role, llm in (("classifier", cfg.classifier.llm), ("judge", cfg.judge.llm)):
+            if not llm.preflight:
+                continue
+            try:
+                preflight(llm, role, logger)
+            except LLMUnavailableError as e:
+                raise RunError(f"LLM preflight failed: {e}") from e
 
     with tempfile.TemporaryDirectory(prefix="hcag-eval-") as workdir_s:
         workdir = Path(workdir_s)
@@ -244,7 +267,7 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
                 stderr=proc.stderr[-2000:],
             )
             raise RunError(
-                f"promptfoo eval exited with {proc.returncode}. See eval.log for stderr."
+                f"promptfoo eval exited with {proc.returncode}. See evalrun.log for stderr."
             )
 
         if not results_json_path.is_file():

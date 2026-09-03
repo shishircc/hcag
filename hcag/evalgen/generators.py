@@ -12,11 +12,20 @@ import base64
 import json
 import random
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import PurePosixPath
 from typing import Any, Literal
 
+import time
+
 from ..config import LLMConfig
+from ..logger import HcagLogger
+from ..cli.metadata_llm import (
+    LLMUnavailableError,
+    check_credentials,
+    classify,
+    describe_failure,
+)
 from ..prompting import load_prompts
 from .kb_scan import PacketRecord, taxonomy_prefix
 
@@ -39,6 +48,11 @@ class GeneratedItem:
     question: str
     expected_answer: str
     source_packet_ids: list[str]
+    #: Origin URLs the question was grounded in — packets first, in the order
+    #: used, then images (§6.7.1). Empty entries are dropped rather than
+    #: substituted: a `source` column that sometimes holds a local path is
+    #: worse than one that is sometimes blank.
+    source_urls: list[str] = field(default_factory=list)
 
 
 class GenerationError(Exception):
@@ -64,6 +78,16 @@ def _extract_json(text: str) -> dict:
 
 
 _LIB = None
+
+
+def _rules(cfg) -> str:
+    """The completeness standard every kind's answer must meet (§6.4).
+
+    One file rather than five copies: the reference answer's quality bar is a
+    single editorial decision, and duplicating it across kinds is how four of
+    them silently drift from the fifth.
+    """
+    return _prompts(cfg).get("evalgen.answer_rules")
 
 
 def _prompts(cfg):
@@ -169,6 +193,66 @@ def _trim(text: str, max_chars: int) -> str:
 # --- Per-kind generators --------------------------------------------------
 
 
+
+#: Frequent words that carry no evidence, excluded from the grounding check so
+#: connective prose in a complete answer cannot dilute it.
+_STOPWORDS = frozenset(
+    """that this then than with from into over under also more most must need
+    when where which while what your their there these those they them will would
+    should could been being have has had are was were the and for not but any all
+    each per may can does depends applies apply based only same such other""".split()
+)
+
+
+def _check_grounded(answer: str, body: str) -> None:
+    """Reject an expected answer whose facts are not in the packet.
+
+    This replaced a verbatim-substring test. That test was not a grounding
+    check at all — it was an *extraction* check, and it is what forced answers
+    to be short: the only text guaranteed to appear literally in a packet is a
+    fragment of it. A complete answer to a conditional question is assembled
+    from several places and phrased to join them, so it can be perfectly
+    grounded and appear nowhere verbatim (§6.4.1).
+
+    What matters is that the answer invents nothing:
+
+    - **Every number must come from the packet.** Figures are the facts an
+      expected answer is most likely to get wrong and the ones a wrong answer
+      does the most damage with, so this is exact and unforgiving.
+    - **Most distinctive words must come from the packet**, ignoring
+      connectives. A comprehensive answer reuses the source's terminology; one
+      that does not is describing something else.
+    """
+    normalized_body = re.sub(r"\s+", " ", body).lower()
+    normalized_answer = re.sub(r"\s+", " ", answer).lower()
+    if not normalized_answer.strip():
+        raise GenerationError("empty expected answer")
+
+    # Trailing punctuation is part of the sentence, not the figure: "45." in
+    # the packet and "45," in the answer are the same number.
+    def _numbers(text: str) -> list[str]:
+        return [n.rstrip(".,") for n in re.findall(r"\d[\d,.]*", text)]
+
+    body_numbers = set(_numbers(normalized_body))
+    invented = [n for n in _numbers(normalized_answer) if n not in body_numbers]
+    if invented:
+        raise GenerationError(
+            f"expected answer cites numbers absent from the packet: {invented[:3]}"
+        )
+
+    # Calibrated against a real packet: a comprehensive conditional answer
+    # scores 0.85, a short one 1.00, and an off-topic hallucination 0.50. The
+    # floor on word count keeps a three-word answer from being judged on a
+    # ratio that is mostly noise.
+    words = [
+        w for w in re.findall(r"[a-z]{5,}", normalized_answer) if w not in _STOPWORDS
+    ]
+    if len(words) >= 6:
+        present = sum(1 for w in words if w in normalized_body)
+        if present / len(words) < 0.6:
+            raise GenerationError("expected answer is not grounded in the packet")
+
+
 def gen_simple(
     cfg: LLMConfig,
     packet: PacketRecord,
@@ -176,23 +260,16 @@ def gen_simple(
     max_content_chars: int = 20000,
 ) -> GeneratedItem:
     content = _trim(packet.body, max_content_chars)
-    prompt = _prompts(cfg).get("evalgen.simple", content=content)
+    prompt = _prompts(cfg).get("evalgen.simple", content=content, answer_rules=_rules(cfg))
     raw = _complete(cfg, prompt)
     question, answer = _parse_question_answer(raw)
-    # Validation: the answer must appear verbatim in the packet (allowing
-    # whitespace normalization).
-    normalized_body = re.sub(r"\s+", " ", packet.body).lower()
-    normalized_answer = re.sub(r"\s+", " ", answer).lower().strip('"').strip("'")
-    if normalized_answer and normalized_answer not in normalized_body:
-        # Try a looser check: at least 60% of answer's non-trivial tokens present
-        tokens = [t for t in re.findall(r"\w+", normalized_answer) if len(t) > 3]
-        if not tokens or sum(1 for t in tokens if t in normalized_body) / len(tokens) < 0.6:
-            raise GenerationError("simple answer not found verbatim in packet")
+    _check_grounded(answer, packet.body)
     return GeneratedItem(
         kind="simple",
         question=question,
         expected_answer=answer,
         source_packet_ids=[packet.id],
+        source_urls=[u for u in [packet.url()] if u],
     )
 
 
@@ -204,7 +281,10 @@ def gen_medium(
 ) -> GeneratedItem:
     idx = rng.randrange(len(packet.paragraphs))
     paragraph = _trim(packet.paragraphs[idx], max_paragraph_chars)
-    prompt = _prompts(cfg).get("evalgen.medium", packet_id=packet.id, paragraph=paragraph)
+    prompt = _prompts(cfg).get(
+        "evalgen.medium", packet_id=packet.id, paragraph=paragraph,
+        answer_rules=_rules(cfg),
+    )
     raw = _complete(cfg, prompt)
     question, answer = _parse_question_answer(raw)
     return GeneratedItem(
@@ -212,6 +292,7 @@ def gen_medium(
         question=question,
         expected_answer=answer,
         source_packet_ids=[packet.id],
+        source_urls=[u for u in [packet.url()] if u],
     )
 
 
@@ -224,7 +305,10 @@ def gen_complex(
         raise GenerationError(f"packet {packet.id} has <3 paragraphs")
     indices = _choose_paragraphs(packet.paragraphs, 3, rng)
     formatted = _format_indexed_paragraphs(packet.paragraphs, indices)
-    prompt = _prompts(cfg).get("evalgen.complex", packet_id=packet.id, paragraphs=formatted)
+    prompt = _prompts(cfg).get(
+        "evalgen.complex", packet_id=packet.id, paragraphs=formatted,
+        answer_rules=_rules(cfg),
+    )
     raw = _complete(cfg, prompt)
     data = _extract_json(raw)
     question = str(data.get("question", "")).strip()
@@ -239,6 +323,7 @@ def gen_complex(
         question=question,
         expected_answer=answer,
         source_packet_ids=[packet.id],
+        source_urls=[u for u in [packet.url()] if u],
     )
 
 
@@ -272,6 +357,7 @@ def gen_hard1(
         packet_b_id=other.id,
         paragraphs_a=_format_indexed_paragraphs(packet.paragraphs, a_indices),
         paragraphs_b=_format_indexed_paragraphs(other.paragraphs, b_indices),
+        answer_rules=_rules(cfg),
     )
     raw = _complete(cfg, prompt)
     data = _extract_json(raw)
@@ -288,6 +374,8 @@ def gen_hard1(
         question=question,
         expected_answer=answer,
         source_packet_ids=[packet.id, other.id],
+        # Packet A then packet B, matching the question's structure.
+        source_urls=[u for u in [packet.url(), other.url()] if u],
     )
 
 
@@ -301,7 +389,10 @@ def gen_hard2(
         raise GenerationError(f"packet {packet.id} has no image assets")
     image_path = rng.choice(packet.assets)
     content = _trim(packet.body, max_content_chars)
-    text_prompt = _prompts(cfg).get("evalgen.hard2", packet_id=packet.id, content=content)
+    text_prompt = _prompts(cfg).get(
+        "evalgen.hard2", packet_id=packet.id, content=content,
+        answer_rules=_rules(cfg),
+    )
     message_content = [
         {"type": "text", "text": text_prompt},
         _image_block(image_path),
@@ -320,4 +411,64 @@ def gen_hard2(
         question=question,
         expected_answer=answer,
         source_packet_ids=[packet.id],
+        # Packet first, then the image — for hard-2 the image *is* the
+        # grounding, so which one was used is the difference between a
+        # reviewable row and a mystery (§6.7.1).
+        source_urls=[u for u in [packet.url(), packet.image_url(image_path)] if u],
     )
+
+
+# --- Preflight (§6.2.2, mirroring §3.4.9) ---------------------------------
+
+
+_PREFLIGHT_PROMPT = (
+    "Reply with ONE compact JSON object and nothing else: "
+    '{"title": "ok", "short_description": "ok", "long_description": "ok"}'
+)
+
+
+def preflight(cfg: LLMConfig, logger: HcagLogger, max_retries: int | None = None) -> None:
+    """Prove the LLM works before generating anything.
+
+    `evalgen` makes one call per question and writes the CSV at the end, so a
+    bad key discovered on question 40 of 50 costs the whole run and every token
+    spent on the 39 that succeeded. The probe is a real generation-shaped
+    request against the configured model — env-var resolution, provider
+    dispatch, model-id validity, auth, and whether the reply parses as the JSON
+    the generators expect.
+
+    Raises `LLMUnavailableError`. Nothing has been written when it fires.
+    """
+    check_credentials(cfg)
+    attempts = max(0, cfg.max_retries if max_retries is None else max_retries) + 1
+    last: BaseException | None = None
+    started = time.monotonic()
+
+    for attempt in range(attempts):
+        try:
+            _extract_json(_complete(cfg, _PREFLIGHT_PROMPT))
+            logger.info(
+                "evalgen.preflight.ok",
+                provider=cfg.provider,
+                model=cfg.litellm_model(),
+                latency_ms=int((time.monotonic() - started) * 1000),
+            )
+            return
+        except Exception as e:  # noqa: BLE001
+            last = e
+            kind = classify(e)
+            if kind == "unavailable":
+                raise LLMUnavailableError(describe_failure(cfg, e)) from e
+            if attempt + 1 < attempts:
+                logger.warn(
+                    "evalgen.preflight.retry",
+                    attempt=attempt + 1,
+                    of=attempts,
+                    classification=kind,
+                    error=f"{type(e).__name__}: {e}",
+                )
+                continue
+
+    # A reply that will not parse is a model too small to follow the output
+    # contract — far cheaper to learn now than on question 40.
+    raise LLMUnavailableError(f"preflight reply was not usable — {describe_failure(cfg, last)}")

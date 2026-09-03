@@ -11,9 +11,8 @@
 # ------------------------------------------------------------------------------
 [llm]
 provider    = "anthropic"
-model       = "claude-opus-4-7"
+model       = "claude-opus-4-6"
 api_key_env = "ANTHROPIC_API_KEY"
-max_tokens  = 2048
 temperature = 0.0
 
 # --- Ollama (local, multimodal via e.g. llama3.2-vision) ---

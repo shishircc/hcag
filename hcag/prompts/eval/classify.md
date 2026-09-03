@@ -15,7 +15,7 @@ Return ONLY a JSON object of this shape:
 No prose, no markdown fencing, no extra keys.
 
 --- Original user question ---
-{question}
+$question
 
 --- Chatbot's most recent reply ---
-{reply}
+$reply

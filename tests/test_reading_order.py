@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from hcag.cli.preprocess import order_sources
-from hcag.crawl.urls import SIDECAR_NAME, read_link_order, write_link_order
+from hcag.crawl.urls import SIDECAR_NAME, read_link_order, write_sidecar
 
 HOST = "https://d.com/topic"
 
@@ -52,7 +52,7 @@ def test_sidecar_drives_the_order(tmp_path: Path) -> None:
     """The sidecar carries full-DOM link order, so it works on a hub page whose
     link list extraction removed — the case index.md alone cannot cover."""
     d = _folder(tmp_path, "apply", "cancel", "key-facts", index="# Topic\n\nNo links here.\n")
-    write_link_order(d, f"{HOST}", [f"{HOST}/key-facts", f"{HOST}/apply", f"{HOST}/cancel"])
+    write_sidecar(d, f"{HOST}", [f"{HOST}/key-facts", f"{HOST}/apply", f"{HOST}/cancel"])
 
     assert _names(order_sources(d, _sources(d))) == [
         "index.md", "key-facts.md", "apply.md", "cancel.md",
@@ -64,14 +64,14 @@ def test_sidecar_wins_over_the_indexs_own_links(tmp_path: Path) -> None:
         tmp_path, "apply", "cancel",
         index=f"# T\n[c]({HOST}/cancel) [a]({HOST}/apply)\n",
     )
-    write_link_order(d, HOST, [f"{HOST}/apply", f"{HOST}/cancel"])
+    write_sidecar(d, HOST, [f"{HOST}/apply", f"{HOST}/cancel"])
     assert _names(order_sources(d, _sources(d))) == ["index.md", "apply.md", "cancel.md"]
 
 
 def test_unmentioned_files_follow_alphabetically(tmp_path: Path) -> None:
     """A page the index never links to still belongs to the packet."""
     d = _folder(tmp_path, "apply", "cancel", "orphan-b", "orphan-a", index="# T\n")
-    write_link_order(d, HOST, [f"{HOST}/cancel", f"{HOST}/apply"])
+    write_sidecar(d, HOST, [f"{HOST}/cancel", f"{HOST}/apply"])
 
     assert _names(order_sources(d, _sources(d))) == [
         "index.md", "cancel.md", "apply.md", "orphan-a.md", "orphan-b.md",
@@ -131,7 +131,7 @@ def test_writer_records_only_pages_that_exist(tmp_path: Path) -> None:
     """A link that was out of scope, past the depth limit, or failed to fetch
     must not appear — the sidecar can never name a missing file."""
     d = _folder(tmp_path, "apply", index="# T\n")
-    recorded = write_link_order(d, HOST, [f"{HOST}/apply", f"{HOST}/never-fetched"])
+    recorded = write_sidecar(d, HOST, [f"{HOST}/apply", f"{HOST}/never-fetched"])
     assert recorded == ["apply"]
     assert json.loads((d / SIDECAR_NAME).read_text())["source_url"] == HOST
 
@@ -139,15 +139,28 @@ def test_writer_records_only_pages_that_exist(tmp_path: Path) -> None:
 def test_writer_records_child_directories_too(tmp_path: Path) -> None:
     d = _folder(tmp_path, index="# T\n")
     (d / "sub").mkdir()
-    assert write_link_order(d, HOST, [f"{HOST}/sub"]) == ["sub"]
+    assert write_sidecar(d, HOST, [f"{HOST}/sub"]) == ["sub"]
 
 
-def test_no_sidecar_for_a_collapsed_leaf(tmp_path: Path) -> None:
-    """A leaf has no children to order, so it gets no sidecar."""
+def test_a_leaf_records_no_link_order(tmp_path: Path) -> None:
+    """No index page means nothing to order — but provenance still applies."""
     d = tmp_path / "leaf"
     d.mkdir()
-    assert write_link_order(d, HOST, [f"{HOST}/x"]) is None
-    assert not (d / SIDECAR_NAME).exists()
+    assert write_sidecar(d, HOST, [f"{HOST}/x"]) == []
+    assert "link_order" not in json.loads((d / SIDECAR_NAME).read_text())
+
+
+def test_a_leaf_folder_still_gets_provenance(tmp_path: Path) -> None:
+    """A folder of collapsed leaves has no index page and still holds files
+    whose origin someone will want (§4.5.3)."""
+    d = tmp_path / "leaf"
+    d.mkdir()
+    write_sidecar(d, documents={"a.md": f"{HOST}/a"}, images={"a-x.png": f"{HOST}/x.png"})
+
+    data = json.loads((d / SIDECAR_NAME).read_text())
+    assert data["documents"] == {"a.md": f"{HOST}/a"}
+    assert data["images"] == {"a-x.png": f"{HOST}/x.png"}
+    assert "link_order" not in data
 
 
 def test_sidecar_is_not_treated_as_content_or_a_stray(tmp_path: Path) -> None:
@@ -155,7 +168,7 @@ def test_sidecar_is_not_treated_as_content_or_a_stray(tmp_path: Path) -> None:
     from hcag.cli.preprocess import scan_folder
 
     d = _folder(tmp_path, "apply", index="# T\n")
-    write_link_order(d, HOST, [f"{HOST}/apply"])
+    write_sidecar(d, HOST, [f"{HOST}/apply"])
 
     info = scan_folder(d)
     assert sorted(p.name for p in info.source_md_files) == ["apply.md", "index.md"]

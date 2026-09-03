@@ -4,10 +4,12 @@ Task: Produce ONE question whose answer requires **significant deduction across 
 
 You will be given three or more paragraphs from the same packet. Your JSON must cite which paragraph each supporting concept came from, using the paragraph's index (0-based) as shown.
 
+$answer_rules
+
 Return a single JSON object, no prose, no code fences:
 {{
   "question": "<the question>",
-  "expected_answer": "<a synthesized answer combining all cited concepts>",
+  "expected_answer": "<the complete synthesized answer, with all its conditions>",
   "cited_paragraph_indices": [<int>, <int>, <int>, ...]
 }}
 

@@ -1,5 +1,5 @@
 # ==============================================================================
-# HCAG CLI (`hcag preprocess`) — sample config
+# HCAG CLI (`hcag <kb-root>`) — sample config
 # Place this file as `hcag.toml` at the ROOT of your KB directory. The CLI
 # discovers it automatically. If missing, the defaults below apply.
 # ==============================================================================

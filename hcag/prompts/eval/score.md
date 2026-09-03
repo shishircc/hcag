@@ -23,13 +23,13 @@ Return ONLY a JSON object of this shape:
 No prose outside the JSON, no markdown fencing, no extra keys.
 
 --- Question ---
-{question}
+$question
 
 --- Reference (expected) answer ---
-{expected_answer}
+$expected_answer
 
 --- Chatbot's actual answer ---
-{actual_answer}
+$actual_answer
 
 --- Full conversation transcript ---
-{transcript}
+$transcript

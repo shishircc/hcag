@@ -164,20 +164,27 @@ def collapse_leaf_dirs(kb_root: Path, on_collapse=None) -> int:
 
         text = own_page.read_text(encoding="utf-8")
         renamed = []
+        moves: dict[Path, Path] = {}
         for asset in assets:
             new_name = f"{name}-{asset.name[len(OWN_PAGE_STEM) + 1:]}"
-            asset.rename(directory.parent / new_name)
+            target = directory.parent / new_name
+            asset.rename(target)
             # The Markdown references images by bare filename (§4.4.1 stage 1),
             # so moving one without rewriting its reference breaks the image.
             text = text.replace(asset.name, new_name)
             renamed.append(new_name)
+            moves[asset] = target
 
         target_md.write_text(text, encoding="utf-8")
         own_page.unlink()
         directory.rmdir()
+        moves[own_page] = target_md
         collapsed += 1
         if on_collapse is not None:
-            on_collapse(directory, target_md, renamed)
+            # `moves` lets a caller follow provenance recorded against the
+            # pre-collapse paths (§4.5.3) — every fact about where a file came
+            # from was learned before the tree took its final shape.
+            on_collapse(directory, target_md, renamed, moves)
 
     return collapsed
 
@@ -212,35 +219,71 @@ def _slug_of(url: str) -> str:
     return _sanitize_segment(stem)
 
 
-def write_link_order(folder: Path, source_url: str, links: list[str]) -> list[str] | None:
-    """Write `folder`'s link-order sidecar; return the slugs recorded (§4.5.3).
+def write_sidecar(
+    folder: Path,
+    source_url: str | None = None,
+    links: list[str] | None = None,
+    documents: dict[str, str] | None = None,
+    images: dict[str, str] | None = None,
+) -> list[str]:
+    """Write `folder`'s crawl sidecar (§4.5.3); return the link order recorded.
 
-    `links` is what the page linked, in full-DOM document order — the order that
-    survives extraction dropping a hub page's link list. Only slugs naming
-    something actually written in `folder` are kept, so the sidecar can never
-    point at a file that does not exist: a link that was out of scope, past the
-    depth limit, or failed to fetch simply does not appear.
+    Two jobs, and provenance is the one that applies everywhere:
 
-    Returns ``None`` when `folder` has no ``index.md`` — it collapsed to a leaf
-    (§4.5.2), so it has no children to order and gets no sidecar.
+    - `documents` / `images` map each file the crawl wrote here to the URL it
+      came from. A filename is a sanitized, collapsed, extension-stripped
+      derivative of its URL and cannot be inverted, so without this a mirrored
+      tree has no way back to its sources — nothing can verify a generated
+      eval question (§6.7.1), or tell whether a page has changed since.
+    - `link_order` records the child slugs the folder's index page linked, in
+      full-DOM document order (§3.4.3). Only meaningful where an `index.md`
+      survives, so it is simply absent otherwise.
+
+    A sidecar is written for **every folder holding documents**, not only those
+    that kept an index page: a folder of collapsed leaves still holds files
+    whose origin someone will want.
     """
-    if not (folder / f"{OWN_PAGE_STEM}.md").is_file():
-        return None
-
-    present = {p.stem for p in folder.glob("*.md") if p.name != f"{OWN_PAGE_STEM}.md"}
-    present |= {p.name for p in folder.iterdir() if p.is_dir()}
-
+    own_page = folder / f"{OWN_PAGE_STEM}.md"
     recorded: list[str] = []
-    for link in links:
-        slug = _slug_of(link)
-        if slug and slug in present and slug not in recorded:
-            recorded.append(slug)
+    if own_page.is_file() and links:
+        present = {p.stem for p in folder.glob("*.md") if p.name != f"{OWN_PAGE_STEM}.md"}
+        present |= {p.name for p in folder.iterdir() if p.is_dir()}
+        for link in links:
+            slug = _slug_of(link)
+            # A slug naming nothing that was written is dropped, so the sidecar
+            # can never point at a file that does not exist.
+            if slug and slug in present and slug not in recorded:
+                recorded.append(slug)
 
-    payload = {"source_url": source_url, "link_order": recorded}
+    payload: dict[str, object] = {}
+    if source_url:
+        payload["source_url"] = source_url
+    if recorded:
+        payload["link_order"] = recorded
+    if documents:
+        payload["documents"] = dict(sorted(documents.items()))
+    if images:
+        payload["images"] = dict(sorted(images.items()))
+    if not payload:
+        return recorded
+
     (folder / SIDECAR_NAME).write_text(
         json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
     )
     return recorded
+
+
+def read_sidecar(folder: Path) -> dict:
+    """Read a folder's sidecar, or ``{}``. Never raises — provenance is a
+    convenience, and a malformed one must not fail a build."""
+    path = folder / SIDECAR_NAME
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+        return data if isinstance(data, dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
 
 
 def read_link_order(folder: Path) -> list[str]:
@@ -250,14 +293,7 @@ def read_link_order(folder: Path) -> list[str]:
     unreadable or malformed one degrades to no signal rather than failing a
     build over provenance.
     """
-    path = folder / SIDECAR_NAME
-    if not path.is_file():
-        return []
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        return [str(x) for x in data.get("link_order", [])]
-    except Exception:  # noqa: BLE001
-        return []
+    return [str(x) for x in read_sidecar(folder).get("link_order", [])]
 
 
 PDF_EXTS = frozenset({".pdf"})

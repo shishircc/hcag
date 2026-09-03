@@ -129,7 +129,7 @@ def check_credentials(cfg: LLMConfig) -> None:
         raise LLMUnavailableError(
             f"environment variable {cfg.api_key_env!r} is unset or empty; "
             f"the {cfg.provider} provider reads its API key from the environment, "
-            "not from hcag.toml"
+            "never from a config file"
         )
 
 

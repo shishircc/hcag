@@ -46,6 +46,11 @@ class CompiledFrontMatter:
     kind: FolderKind
     source_files: list[str] = field(default_factory=list)  # empty for pure nodes
     children: list[str] = field(default_factory=list)      # IMMEDIATE children only
+    # Crawl provenance (§4.5.3), copied not verified. `source_urls` is
+    # positionally aligned with `source_files`; an entry is "" where the origin
+    # is unknown — a hand-authored file, or a KB crawled before provenance.
+    source_urls: list[str] = field(default_factory=list)
+    image_urls: dict[str, str] = field(default_factory=dict)
     # Subtree roll-up metadata (D3a).
     descendants: int = 0            # entries in this folder's ## Sub-topics section
     subtree_depth: int = 0          # depth of the deepest descendant, relative to here
@@ -191,6 +196,8 @@ def write_compiled_md(
             "catalog_token_estimate": fm.catalog_token_estimate,
             "kind": fm.kind,
             "source_files": fm.source_files,
+            "source_urls": fm.source_urls,
+            "image_urls": fm.image_urls,
             "children": fm.children,
             "descendants": fm.descendants,
             "subtree_depth": fm.subtree_depth,
@@ -235,6 +242,8 @@ def _frontmatter_to_model(m: dict) -> CompiledFrontMatter:
         token_size_estimate=total,
         kind=kind,  # type: ignore[arg-type]
         source_files=list(m.get("source_files", []) or []),
+        source_urls=[str(u or "") for u in (m.get("source_urls") or [])],
+        image_urls={str(k): str(v) for k, v in (m.get("image_urls") or {}).items()},
         children=list(m.get("children", []) or []),
         descendants=int(m.get("descendants", 0) or 0),
         subtree_depth=int(m.get("subtree_depth", 0) or 0),

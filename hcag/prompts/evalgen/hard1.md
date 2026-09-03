@@ -4,10 +4,12 @@ Task: Produce ONE question whose answer requires **two packets** to answer corre
 
 Your JSON must cite which packet each supporting paragraph came from (by packet id).
 
+$answer_rules
+
 Return a single JSON object, no prose, no code fences:
 {{
   "question": "<the question>",
-  "expected_answer": "<a synthesized answer combining facts from both packets>",
+  "expected_answer": "<the complete synthesized answer, with all its conditions>",
   "cited_packet_ids": ["<packet_id_1>", "<packet_id_2>"]
 }}
 

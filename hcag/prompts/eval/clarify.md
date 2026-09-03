@@ -17,15 +17,15 @@ STRICT RULES:
 Return ONLY the user's reply text — no JSON, no headers, no quotation marks.
 
 --- Original user question ---
-{question}
+$question
 
 --- Reference answer (your source of truth — DO NOT LEAK) ---
-{expected_answer}
+$expected_answer
 
 --- Conversation so far ---
-{transcript}
+$transcript
 
 --- The chatbot just asked ---
-{last_reply}
+$last_reply
 
 Your reply as the user:

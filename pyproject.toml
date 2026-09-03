@@ -66,7 +66,10 @@ crawl = "hcag.crawl.main:main"
 hcag-voice = "hcag.voice.main:main"
 hcag-server = "hcag.server.main:main"
 evalgen = "hcag.evalgen.main:main"
-eval = "hcag.eval.main:main"
+# `eval` is a POSIX shell builtin, so an installed script of that name is
+# shadowed by the shell and never runs. The module stays `hcag.eval` — a Python
+# module path collides with nothing.
+evalrun = "hcag.eval.main:main"
 rag = "hcag.rag.main:main"
 
 [tool.hatch.build.targets.wheel]

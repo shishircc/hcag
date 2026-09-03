@@ -2,7 +2,7 @@
 
 promptfoo spawns a worker per test case; each worker imports this module and
 calls ``call_api(prompt, options, context)``. Everything the provider needs
-from `eval.toml` is passed via ``HCAG_EVAL_CONFIG_JSON`` (a file path written
+from `evalrun.toml` is passed via ``HCAG_EVAL_CONFIG_JSON`` (a file path written
 by the runner), so this file has no dependency on the CLI parsing layer.
 
 Contract with promptfoo (v0.6+ Python provider protocol):
@@ -24,7 +24,8 @@ from typing import Any
 # `ImportError: attempted relative import with no known parent package`.
 from hcag.eval.config import EvalConfig
 from hcag.eval.csv_io import EvalRow
-from hcag.eval.llm_calls import load_prompt, score_answer
+from hcag.eval.llm_calls import score_answer
+from hcag.prompting import load_prompts
 from hcag.eval.loop import RowExchange, run_row
 
 
@@ -88,10 +89,9 @@ def call_api(prompt: str, options: dict, context: dict) -> dict:  # noqa: ARG001
 
     exchange: RowExchange = run_row(row, cfg, shared_session_id=shared)
 
-    score_prompt = load_prompt(cfg.judge.prompts.score, "score.md")
     judge = score_answer(
         llm=cfg.judge.llm,
-        prompt_template=score_prompt,
+        prompts=load_prompts(cfg.prompts_dir),
         question=row.question,
         expected_answer=row.expected_answer,
         actual_answer=exchange.actual_answer,

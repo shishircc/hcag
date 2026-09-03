@@ -50,7 +50,8 @@ from .urls import (
     is_asset_url,
     normalize_url,
     url_to_output_paths,
-    write_link_order,
+    write_sidecar,
+    OWN_PAGE_STEM,
 )
 
 
@@ -159,6 +160,11 @@ def crawl(
         # The order is the FULL DOM's, captured before extraction discards a
         # hub page's link list.
         page_links: dict[Path, tuple[str, list[str]]] = {}
+        # Absolute path -> the URL it came from (§4.5.3). Keyed by path, not by
+        # folder, because the finalize pass moves files: provenance is learned
+        # before the tree takes its final shape and has to survive the collapse.
+        doc_urls: dict[Path, str] = {}
+        image_urls: dict[Path, str] = {}
         # (url, depth, write_into). `write_into` is set for an off-prefix asset
         # (§4.3.4): it lands in the folder of the page that cited it, never
         # mirrored at its own URL path.
@@ -184,6 +190,8 @@ def crawl(
                 logger,
                 stats,
                 page_links,
+                doc_urls,
+                image_urls,
                 console,
                 report,
                 write_into=write_into,
@@ -194,7 +202,7 @@ def crawl(
                 min_image_bytes=min_image_bytes,
             )
 
-        _finalize_layout(kb_root, logger, stats, page_links)
+        _finalize_layout(kb_root, logger, stats, page_links, doc_urls, image_urls)
         console.report(report)
 
         logger.info(
@@ -225,15 +233,21 @@ def _finalize_layout(
     logger: HcagLogger,
     stats: CrawlStats,
     page_links: dict[Path, tuple[str, list[str]]] | None = None,
+    doc_urls: dict[Path, str] | None = None,
+    image_urls: dict[Path, str] | None = None,
 ) -> None:
-    """Flatten leaf directories, write link-order sidecars, assert the invariant.
+    """Flatten leaf directories, write sidecars, assert the invariant.
 
     Runs once, after the traversal, because whether a page has children is only
     knowable when the crawl is done (§4.5.2), and a sidecar describes the tree
     as it finally stands (§4.5.3).
     """
+    doc_urls = dict(doc_urls or {})
+    image_urls = dict(image_urls or {})
+    moved: dict[Path, Path] = {}
 
-    def _log(directory: Path, md_path: Path, renamed: list[str]) -> None:
+    def _log(directory: Path, md_path: Path, renamed: list[str], moves: dict[Path, Path]) -> None:
+        moved.update(moves)
         logger.debug(
             "crawl.layout.collapsed",
             directory=str(directory),
@@ -243,22 +257,41 @@ def _finalize_layout(
 
     stats.dirs_collapsed = collapse_leaf_dirs(kb_root, on_collapse=_log)
 
-    for folder, (source_url, links) in sorted((page_links or {}).items()):
-        recorded = write_link_order(folder, source_url, links)
-        if recorded is None:
-            continue  # collapsed to a leaf: no children, nothing to order
+    # Provenance was recorded against pre-collapse paths; follow the moves so a
+    # fact learned at fetch time survives the tree being reshaped.
+    def _rebase(urls: dict[Path, str]) -> dict[Path, str]:
+        return {moved.get(path, path): url for path, url in urls.items()}
+
+    doc_urls = _rebase(doc_urls)
+    image_urls = _rebase(image_urls)
+
+    # A sidecar per folder holding documents, not only branch folders: a folder
+    # of collapsed leaves has no index page and still holds files whose origin
+    # someone will want (§4.5.3).
+    folders = {p.parent for p in doc_urls} | {p.parent for p in image_urls}
+    folders |= set(page_links or {})
+    for folder in sorted(folders):
+        if not folder.is_dir():
+            continue
+        source_url, links = (page_links or {}).get(folder, (None, None))
+        documents = {p.name: u for p, u in doc_urls.items() if p.parent == folder and p.exists()}
+        images = {p.name: u for p, u in image_urls.items() if p.parent == folder and p.exists()}
+        recorded = write_sidecar(folder, source_url, links, documents, images)
+        if not (documents or images or recorded):
+            continue
         stats.sidecars_written += 1
         logger.debug(
-            "crawl.layout.link_order",
+            "crawl.layout.sidecar",
             folder=str(folder),
             source_url=source_url,
-            recorded=len(recorded),
-            links_seen=len(links),
+            link_order=len(recorded),
+            documents=len(documents),
+            images=len(images),
         )
-        if not recorded:
-            # The hub's link list did not survive, AND the full-DOM order found
-            # no in-folder children — `preprocess` will fall back to
-            # alphabetical for this packet (§3.4.3).
+        if (folder / f"{OWN_PAGE_STEM}.md").is_file() and links and not recorded:
+            # The hub's link list did not survive extraction AND the full-DOM
+            # order found no in-folder children — `preprocess` will fall back
+            # to alphabetical for this packet (§3.4.3).
             stats.warnings += 1
             logger.warn(
                 "crawl.layout.link_order_empty",
@@ -295,6 +328,8 @@ def _process(
     logger: HcagLogger,
     stats: CrawlStats,
     page_links: dict[Path, tuple[str, list[str]]],
+    doc_urls: dict[Path, str],
+    image_urls: dict[Path, str],
     console: Console,
     report: CrawlReport,
     *,
@@ -425,6 +460,7 @@ def _process(
                 stats,
                 report,
                 console,
+                image_urls,
                 source_doc=url,
                 min_image_bytes=min_image_bytes,
                 asset_hosts=asset_hosts,
@@ -438,6 +474,7 @@ def _process(
             byte_size=len(result.content), elapsed_ms=result.elapsed_ms,
             report=report, kind="html",
         )
+        doc_urls[md_path] = url
         # Retain what the page linked, in document order (§4.5.3). Stage 1 read
         # the whole DOM, so this survives extraction dropping the link list.
         page_links[md_path.parent] = (url, list(converted.links))
@@ -482,12 +519,15 @@ def _process(
             byte_size=len(result.content), elapsed_ms=result.elapsed_ms,
             report=report, kind="pdf",
         )
+        doc_urls[md_path] = url
 
         for image in kept_images:
             target = md_path.parent / image.local_filename
             try:
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(image.data)
+                # Embedded in the PDF, so the PDF is where it came from.
+                image_urls[target] = url
                 stats.images_extracted += 1
                 logger.info(
                     "crawl.image.extract",
@@ -553,6 +593,7 @@ def _process_html_image(
     stats: CrawlStats,
     report: CrawlReport,
     console: Console,
+    image_urls: dict[Path, str],
     *,
     source_doc: str,
     min_image_bytes: int,
@@ -627,6 +668,7 @@ def _process_html_image(
         return IMG_FAILED
 
     stats.images_extracted += 1
+    image_urls[target] = remote_url
     report.include("img", remote_url)
     logger.info(
         "crawl.image.extract",

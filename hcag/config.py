@@ -257,6 +257,14 @@ def load_cli_config(path: Path) -> CliConfig:
 
 
 def load_evalgen_config(path: Path) -> EvalGenConfig:
+    """Load `evalgen.toml`, falling back to defaults when it is absent.
+
+    The fallback is deliberate — `evalgen` is runnable without a config file —
+    but the caller is expected to say so (§6.2.2). Defaults resolve to a small,
+    cheap model, which produces weak questions and no multimodal ones, and
+    silently getting that instead of the strong model an `evalgen.toml` would
+    have named is the failure this is meant to make visible.
+    """
     if not path.exists():
         return EvalGenConfig()
     return EvalGenConfig.model_validate(load_toml(path))

@@ -1,4 +1,4 @@
-"""`eval` CLI entry point (§7.3).
+"""`evalrun` CLI entry point (§7.3).
 
 Flags map 1:1 to the parameter table in DESIGN.md §7.3. Everything below
 `serve` is a thin translation layer over ``runner.run_eval``.
@@ -49,7 +49,7 @@ def run(
     backend_url: str = typer.Option(
         None,
         "--backend-url",
-        help="Base URL of the chatbot backend. Overrides eval.toml [backend].url.",
+        help="Base URL of the chatbot backend. Overrides evalrun.toml [backend].url.",
     ),
     out: Path = typer.Option(
         ...,
@@ -97,10 +97,10 @@ def run(
         help="Seed for judge sampling / clarifier tie-breaking.",
     ),
     config: Path = typer.Option(
-        Path("./eval.toml"),
+        Path("./evalrun.toml"),
         "--config",
         "-c",
-        help="Path to eval.toml. Falls back to defaults if the file is missing.",
+        help="Path to evalrun.toml. Falls back to defaults if the file is missing.",
     ),
     baseline: Path = typer.Option(
         None,
@@ -138,6 +138,23 @@ def run(
 
     logger = build_logger(cfg.log, name="hcag.eval", console=verbose)
 
+    if not config.exists():
+        # §7.3.1 — the judge model decides every score in the report, so which
+        # model ran is not a detail to discover afterwards from a log file.
+        logger.warn(
+            "evalrun.config.missing",
+            path=str(config),
+            classifier_model=cfg.classifier.llm.litellm_model(),
+            judge_model=cfg.judge.llm.litellm_model(),
+            detail="using built-in defaults; create evalrun.toml to choose the models",
+        )
+        typer.echo(
+            f"No {config} — using defaults: judge {cfg.judge.llm.litellm_model()}, "
+            f"classifier {cfg.classifier.llm.litellm_model()}. "
+            "Every score in the report comes from the judge model.",
+            err=True,
+        )
+
     resolved = ResolvedRun(
         input_path=input_csv,
         out_path=out,
@@ -149,11 +166,11 @@ def run(
     try:
         summary = run_eval(cfg, resolved, logger)
     except RunError as e:
-        typer.echo(f"eval failed: {e}", err=True)
+        typer.echo(f"evalrun failed: {e}", err=True)
         logger.error("eval.aborted", reason=str(e))
         raise typer.Exit(code=1) from e
     except Exception as e:  # noqa: BLE001
-        typer.echo(f"eval crashed: {type(e).__name__}: {e}", err=True)
+        typer.echo(f"evalrun crashed: {type(e).__name__}: {e}", err=True)
         logger.error("eval.crash", error=str(e), kind=type(e).__name__)
         raise typer.Exit(code=2) from e
 

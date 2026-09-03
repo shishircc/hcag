@@ -17,11 +17,11 @@ from dataclasses import dataclass, field
 from .backend import BackendClient, ChatSession, ChatTurn
 from .config import EvalConfig
 from .csv_io import EvalRow
+from ..prompting import load_prompts
 from .llm_calls import (
     ClassifyResult,
     classify_response,
     generate_clarification,
-    load_prompt,
 )
 
 
@@ -75,8 +75,7 @@ def run_row(
     ``shared_session_id`` is set when ``run.session_scope == "per-run"`` — the
     caller allocates one session id up front and threads it through every row.
     """
-    classify_prompt = load_prompt(cfg.classifier.prompt_path, "classify.md")
-    clarify_prompt = load_prompt(cfg.judge.prompts.clarify, "clarify.md")
+    prompts = load_prompts(cfg.prompts_dir)
 
     session_id = _mk_session_id(row.question_id, shared_session_id)
     backend = BackendClient(
@@ -120,7 +119,7 @@ def run_row(
 
         cls = classify_response(
             llm=cfg.classifier.llm,
-            prompt_template=classify_prompt,
+            prompts=prompts,
             question=row.question,
             reply=resp.text,
         )
@@ -144,7 +143,7 @@ def run_row(
 
         clarification = generate_clarification(
             llm=cfg.judge.llm,
-            prompt_template=clarify_prompt,
+            prompts=prompts,
             question=row.question,
             expected_answer=row.expected_answer,
             transcript=exchange.transcript_text(),
