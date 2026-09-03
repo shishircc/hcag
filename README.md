@@ -26,6 +26,8 @@ See [DESIGN.md §1.3](./DESIGN.md#13-when-to-use-hcag-vs-alternatives) for the f
 
 A complete run of the whole pipeline against two real seed URLs — Singapore MOM's Employment Pass and Overseas Networks & Expertise Pass sections. Crawl → build → generate an eval set → score it → explore in the browser. Every command below is meant to be run in order from an empty directory.
 
+**In a hurry?** The repo ships the output of steps 1–3 in [`sample-kb/`](./sample-kb). Jump to [the shortcut](#shortcut--start-from-the-bundled-sample-kb) and start at step 4.
+
 ### 0. Prerequisites
 
 | Need | Why | Required for |
@@ -44,6 +46,31 @@ export ANTHROPIC_API_KEY=sk-ant-...  # every LLM step reads this from the enviro
 ```
 
 The provider is config, not code — `provider = "bedrock"` or `"ollama"` in the files below runs the same pipeline without an Anthropic key ([LLM Provider Configuration](#llm-provider-configuration)).
+
+### Shortcut — start from the bundled `sample-kb/`
+
+Steps 1–3 crawl a live site and then make one LLM call per folder. Both take time and the build costs money, and neither is where the interesting part is. `sample-kb/` in this repo is **the finished output of those three steps** for exactly the two seed URLs above — already crawled, already built:
+
+```
+sample-kb/
+├── compiled.md            # root packet: indexes all 22 descendants (~7.3k catalog tokens)
+├── hcag.toml              # the step-2 config, already in place
+├── evalgen.toml           # the step-4 config, already in place
+└── www.mom.gov.sg/
+    └── passes-and-permits/{employment-pass,overseas-networks-expertise-pass}/
+```
+
+23 `compiled.md` files over 18 crawled pages, 112 images, and the PDFs converted to Markdown — about 6 MB. Packet provenance is populated, so `evalgen`'s `source` column works against it.
+
+**To use it, skip steps 1, 2 and 3** and substitute `./sample-kb` for `./kb` everywhere below:
+
+```bash
+evalgen ./sample-kb --out kb-eval.csv --total 100 --seed 42   # step 4
+```
+
+and set `kb_root = "./sample-kb"` in `agent.toml` at step 5. Everything from step 4 onward is unchanged.
+
+Two things to know. It is a **snapshot**: MOM edits these pages, so it will drift from the live site — re-run steps 1–3 when you want current content, which is the point of the pipeline being reproducible. And it was built with the model in `sample-kb/hcag.toml`; rebuilding with a different model changes the summaries and therefore the catalog the agent routes on. To rebuild it in place, `hcag ./sample-kb --force`.
 
 ### 1. Crawl the two seed sections
 
@@ -118,9 +145,11 @@ Re-running is incremental. Use `hcag ./kb --force` to regenerate everything afte
 ### 4. Generate a 100-question eval set
 
 ```bash
-cp examples/evalgen.toml ./kb/evalgen.toml
+cp examples/evalgen.toml ./kb/evalgen.toml      # sample-kb already has one
 evalgen ./kb --out kb-eval.csv --total 100 --seed 42
 ```
+
+Taking the shortcut? `evalgen ./sample-kb --out kb-eval.csv --total 100 --seed 42` — its `evalgen.toml` is already in place, and `--config` is discovered from the KB root.
 
 `--total 100` splits evenly across the five kinds — 20 each of `simple`, `medium`, `complex`, `hard-1` (cross-packet) and `hard-2` (multimodal, reading an image or PDF page). `hard-2` needs a multimodal model; the sample config's default is one.
 
@@ -136,7 +165,7 @@ Expected answers are held to a completeness standard ([DESIGN.md §6.4.0](./DESI
 cp examples/agent.toml ./agent.toml
 ```
 
-The only field you must check is `kb_root` — it defaults to `./kb`, already correct if you followed step 1.
+The only field you must check is `kb_root`. It defaults to `./kb`, already correct if you followed step 1 — set it to `./sample-kb` if you took [the shortcut](#shortcut--start-from-the-bundled-sample-kb).
 
 ```bash
 hcag-server --agent-config ./agent.toml --port 8000
@@ -254,7 +283,7 @@ There is no sample `voice.toml` in `examples/`, so write a minimal one. `kb_root
 ```bash
 pip install -e ".[voice]"
 cat > voice.toml <<'EOF'
-kb_root = "./kb"
+kb_root = "./kb"        # or "./sample-kb"
 
 [livekit]
 url = "wss://your-project.livekit.cloud"
@@ -288,6 +317,7 @@ Add `NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud` to `hcag/web/.env
 |---|---|---|
 | `kb/` | step 1 | Crawled Markdown mirror, images and PDFs included |
 | `kb/**/compiled.md` | step 3 | One packet per folder; the root is the whole-KB index |
+| `sample-kb/` | shipped | Both of the above, pre-built — the shortcut past steps 1–3 |
 | `kb-eval.csv` | step 4 | 100 questions with complete expected answers and provenance |
 | `kb-eval-scored.csv` | step 7 | The same rows with the agent's answers and 0–3 scores |
 | `kb-eval-report.html` | step 7 | Per-kind pass rates and transcripts |
@@ -349,6 +379,8 @@ hcag/
 │       ├── components/    # Host page + chat widget (launcher, panel, voice overlay)
 │       ├── lib/           # chat-client, voice-client (LiveKit Room hook)
 │       └── README.md      # Frontend + backend run instructions
+├── examples/              # Sample config for every CLI — copy these, don't write from scratch
+├── sample-kb/             # A pre-crawled, pre-built KB (skips Getting Started steps 1–3)
 └── tests/
 ```
 
