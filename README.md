@@ -22,6 +22,278 @@ See [DESIGN.md §1.3](./DESIGN.md#13-when-to-use-hcag-vs-alternatives) for the f
 
 **Prerequisite:** HCAG's quality is bounded by the quality of the taxonomy. Building a good one is a one-time upfront investment.
 
+## Getting Started
+
+A complete run of the whole pipeline against two real seed URLs — Singapore MOM's Employment Pass and Overseas Networks & Expertise Pass sections. Crawl → build → generate an eval set → score it → explore in the browser. Every command below is meant to be run in order from an empty directory.
+
+### 0. Prerequisites
+
+| Need | Why | Required for |
+|---|---|---|
+| **Python 3.11+** | Everything. | all steps |
+| **An Anthropic API key** | `hcag`, `evalgen`, `evalrun` and the agent all call an LLM. | steps 2–8 |
+| **Node 18+** | `evalrun` drives [promptfoo](https://www.promptfoo.dev/) through `npx`; the web widget is Next.js. | steps 7, 8 |
+| **Docker** | Only to run a local Langfuse for traces. Langfuse Cloud, another OTLP backend, or no tracing at all all work instead. | step 5a (optional) |
+| **A LiveKit account** | Voice mode only. Skip it and everything else still works. | step 9 (optional) |
+
+```bash
+git clone <this-repo> hcag && cd hcag
+python -m venv .venv && source .venv/bin/activate
+pip install -e ".[web,dev]"          # add ,voice for step 9; ,otel for tracing
+export ANTHROPIC_API_KEY=sk-ant-...  # every LLM step reads this from the environment
+```
+
+The provider is config, not code — `provider = "bedrock"` or `"ollama"` in the files below runs the same pipeline without an Anthropic key ([LLM Provider Configuration](#llm-provider-configuration)).
+
+### 1. Crawl the two seed sections
+
+Both URLs live on one host, so they are one crawl. Each seed also defines a prefix scope: pages are followed only under a seed's path, while **PDFs and images are fetched wherever they live** ([DESIGN.md §4.3.4](./DESIGN.md#434-asset-scope)) — on this site the COMPASS PDFs sit under `/-/media/`, entirely outside both seeds.
+
+```bash
+crawl --depth 3 --output ./kb \
+    https://www.mom.gov.sg/passes-and-permits/employment-pass \
+    https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass
+```
+
+`crawl` prints each URL as it fetches and ends with a report of what was included and what was skipped, grouped by reason. Expect roughly 35 pages, ~20 PDFs and a handful of images; the counts drift as MOM edits the site. Skipped URLs are not failures — `out-of-scope` and `already-visited` dominate a healthy run.
+
+The domain becomes the first folder under `--output`, so you now have:
+
+```
+kb/
+└── www.mom.gov.sg/
+    └── passes-and-permits/
+        ├── employment-pass/
+        │   ├── index.md
+        │   ├── eligibility/
+        │   └── ...
+        └── overseas-networks-expertise-pass/
+```
+
+`./kb` is the **KB root** from here on. Every step below points at it.
+
+<details>
+<summary>Useful crawl flags when adapting this to your own site</summary>
+
+- `--depth N` — link-following depth from each seed. `3` reaches this site's third-level pages; higher pulls in more of the site and costs more in step 3.
+- `--min-image-bytes 10240` — skip logos and icons. Lower it if your images are small but meaningful.
+- `--asset-hosts cdn.example.com` — allow assets from a media subdomain.
+- `--no-extract` — keep the whole DOM instead of just the article body, when extraction gets a page wrong.
+</details>
+
+### 2. Configure the build
+
+`hcag` reads `hcag.toml` from the KB root. Start from the sample:
+
+```bash
+cp examples/kb-example/hcag.toml ./kb/hcag.toml
+```
+
+Defaults are fine for this walkthrough. The one field worth a look is the build model — it runs once per folder, so it is the cost lever:
+
+```toml
+[llm]
+provider    = "anthropic"
+model       = "claude-opus-4-6"
+api_key_env = "ANTHROPIC_API_KEY"
+preflight   = true      # prove the LLM works before writing anything (§3.4.9)
+```
+
+### 3. Build the KB
+
+```bash
+hcag ./kb
+```
+
+One DFS pass writes a `compiled.md` into every folder — this KB has about 23 of them, one LLM call each. Each file carries that folder's own content plus a catalog of its **entire subtree**, so `kb/compiled.md` ends up a complete index of the KB and the agent can reach any document in one hop ([DESIGN.md §3.4](./DESIGN.md#34-hcag--detailed-semantics)).
+
+The build **fails closed**: if the LLM is unreachable it aborts at startup, before scanning the tree or writing a byte. If a single folder cannot be summarized mid-walk it aborts there rather than filling the rest of the tree with placeholders, because a placeholder feeds every ancestor's summary and the result is indistinguishable from a good build by inspection. Pass `--allow-partial` only when you want that trade.
+
+```bash
+head -40 kb/compiled.md    # the root catalog the agent will hold in its system prompt
+```
+
+Re-running is incremental. Use `hcag ./kb --force` to regenerate everything after changing prompts or the model.
+
+### 4. Generate a 100-question eval set
+
+```bash
+cp examples/evalgen.toml ./kb/evalgen.toml
+evalgen ./kb --out kb-eval.csv --total 100 --seed 42
+```
+
+`--total 100` splits evenly across the five kinds — 20 each of `simple`, `medium`, `complex`, `hard-1` (cross-packet) and `hard-2` (multimodal, reading an image or PDF page). `hard-2` needs a multimodal model; the sample config's default is one.
+
+This is the slowest and most expensive step in the walkthrough — one generation per question, with retries on validation failure. `--seed 42` makes it reproducible. Start with `--total 25` if you just want to see the shape of the output.
+
+The result is an 8-column CSV: `question_id, kind, question, expected_answer, source, actual_answer, score, remark`. The last three are empty — step 7 fills them. `source` carries the URLs of the packets and images each question was built from, so you can check any expected answer against the page it came from.
+
+Expected answers are held to a completeness standard ([DESIGN.md §6.4.0](./DESIGN.md#640-expected-answers-must-be-complete)) — an answer that is true but omits a condition is scored as wrong, not merely terse, because a chatbot reproducing only the first clause would otherwise grade as correct.
+
+### 5. Configure and start the agent backend
+
+```bash
+cp examples/agent.toml ./agent.toml
+```
+
+The only field you must check is `kb_root` — it defaults to `./kb`, already correct if you followed step 1.
+
+```bash
+hcag-server --agent-config ./agent.toml --port 8000
+```
+
+The sample ships with **no trace destination configured**, so this starts with nothing to set up. Tracing is entirely optional and off by default; see [step 5a](#5a-observability-optional-but-worth-it) if you want it.
+
+Check it:
+
+```bash
+curl -s localhost:8000/health        # -> kb_root and live session count
+curl -s localhost:8000/chat -H 'content-type: application/json' \
+  -d '{"session_id":"t1","message":"What is the minimum monthly salary for an Employment Pass?","history":[]}'
+```
+
+Leave it running — steps 7 and 8 both talk to it.
+
+### 5a. Observability (optional, but worth it)
+
+Everything above works with no tracing at all. It is worth ten minutes anyway: HCAG's whole premise is *which packets did the agent load, and did the prompt actually contain the answer* — questions a trace answers directly and a log file answers awkwardly. Spans carry the full prompt, the loaded packet set, tool calls and token counts ([DESIGN.md §2.11](./DESIGN.md#211-observability)).
+
+**Option A — Langfuse, the quickest path.** Best fit for this project: it renders a turn as a generation with input and output side by side, which is exactly the view you want when an eval row scored 0 and you need to know whether the agent had the right packet.
+
+```bash
+# A local instance, if you don't already have one — not mandatory
+git clone https://github.com/langfuse/langfuse && cd langfuse && docker compose up -d
+# -> http://localhost:3000, create a project, copy the key pair
+```
+
+Then uncomment `[observability.langfuse]` in `agent.toml` and export the keys (Langfuse Cloud is the same with `host = "https://cloud.langfuse.com"`):
+
+```toml
+[observability.langfuse]
+host           = "http://localhost:3000"
+public_key_env = "LANGFUSE_PUBLIC_KEY"
+secret_key_env = "LANGFUSE_SECRET_KEY"
+```
+
+```bash
+export LANGFUSE_PUBLIC_KEY=pk-lf-...
+export LANGFUSE_SECRET_KEY=sk-lf-...
+```
+
+HCAG derives the OTLP endpoint, pins `http/protobuf`, and builds the Basic auth header itself — no URL path or base64 to assemble by hand.
+
+**Option B — any OTLP endpoint.** Use this for AWS (an [ADOT](https://aws-otel.github.io/) collector forwarding to CloudWatch, which is also how you'd ship traces alongside a Bedrock-hosted model), Grafana Tempo, Honeycomb, or a collector of your own. Set `otel.endpoint` to the **base** URL; HCAG appends `/v1/traces`:
+
+```toml
+[observability.otel]
+endpoint     = "http://localhost:4318"
+protocol     = "http/protobuf"
+service_name = "hcag-agent"
+```
+
+Both forms drive the same single exporter. Configure **at most one** — configuring both is a startup error, on purpose, because traces would otherwise go somewhere you did not choose; to fan out to two backends, point `otel.endpoint` at a collector and let it do that.
+
+```bash
+pip install -e ".[otel]"       # the exporter is an optional extra
+```
+
+**If tracing is misconfigured, the agent still runs.** A missing key or an unreachable exporter prints a loud `WARNING: tracing disabled: ...` on stderr, logs it at `ERROR`, and serves turns with tracing off. Answering questions does not depend on being able to report on it — but you are told immediately, because traces you think you are collecting and aren't is the failure worth being noisy about.
+
+### 6. Configure the scorer
+
+In a second terminal (same virtualenv):
+
+```bash
+source .venv/bin/activate
+export ANTHROPIC_API_KEY=sk-ant-...
+cp examples/evalrun.toml ./evalrun.toml
+```
+
+`evalrun.toml` is read from the **current working directory**, not the KB — `evalrun` never sees a KB, only a CSV and a backend URL. Run it from elsewhere and it silently falls back to defaults, so it prints both model names on stderr when no config is found.
+
+Two models are configured here, and they are commonly keyed separately: a cheap `[classifier.llm]` that decides whether a reply is an answer, a clarifying question or a refusal, and a strong `[judge.llm]` that scores. Both preflight at startup.
+
+### 7. Score the agent
+
+```bash
+evalrun kb-eval.csv \
+    --backend-url http://localhost:8000 \
+    --out kb-eval-scored.csv \
+    --report kb-eval-report.html \
+    --max-turns 5 --concurrency 4 --seed 42
+```
+
+The first run downloads promptfoo through `npx`, so give it a minute. Before dispatching a single row `evalrun` probes `/health`, loads its prompts, and preflights both models — a bad judge key otherwise surfaces only after the entire run has been paid for against the backend, and fails every row identically.
+
+```bash
+open kb-eval-report.html    # per-kind panels, score histogram, expandable transcripts
+```
+
+Keep `kb-eval-scored.csv`. On the next run, `--baseline kb-eval-scored.csv` renders per-kind deltas so you can see whether a prompt or KB change helped.
+
+### 8. Explore in the browser
+
+```bash
+cd hcag/web
+npm install
+cat > .env.local <<'EOF'
+NEXT_PUBLIC_USE_API=1
+HCAG_API_URL=http://localhost:8000
+EOF
+npm run dev            # http://localhost:3000
+```
+
+The widget answers from the running backend, renders Markdown (the KB is full of tables, and this is the hop where that structure would otherwise be thrown away), and streams tokens over SSE. Omit `NEXT_PUBLIC_USE_API=1` and it runs a scripted mock flow with no backend, no keys and no KB — useful for looking at the UI alone.
+
+Ask it something the eval set got wrong and watch the tool calls in `hcag-agent.log` to see which packets it loaded.
+
+### 9. Voice mode (optional)
+
+There is no sample `voice.toml` in `examples/`, so write a minimal one. `kb_root` is the only required field; everything else has a default:
+
+```bash
+pip install -e ".[voice]"
+cat > voice.toml <<'EOF'
+kb_root = "./kb"
+
+[livekit]
+url = "wss://your-project.livekit.cloud"
+
+[llm]
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"
+api_key_env = "ANTHROPIC_API_KEY"
+EOF
+```
+
+Credentials come from the environment. The LiveKit **URL** is config (or `--livekit-url`), not an env var — only the key pair is:
+
+```bash
+export LIVEKIT_API_KEY=...
+export LIVEKIT_API_SECRET=...
+export DEEPGRAM_API_KEY=...          # STT
+export ELEVENLABS_API_KEY=...        # TTS
+
+hcag-voice dry-run --config ./voice.toml    # bootstrap + warm-up, no room joined
+hcag-voice serve --config ./voice.toml
+```
+
+`dry-run` prints the resolved plan without joining a room — the fast way to check credentials and preloaded packets before starting the worker.
+
+Add `NEXT_PUBLIC_LIVEKIT_URL=wss://your-project.livekit.cloud` to `hcag/web/.env.local` and the widget's voice button becomes live.
+
+### What you should have
+
+| File | From | What it is |
+|---|---|---|
+| `kb/` | step 1 | Crawled Markdown mirror, images and PDFs included |
+| `kb/**/compiled.md` | step 3 | One packet per folder; the root is the whole-KB index |
+| `kb-eval.csv` | step 4 | 100 questions with complete expected answers and provenance |
+| `kb-eval-scored.csv` | step 7 | The same rows with the agent's answers and 0–3 scores |
+| `kb-eval-report.html` | step 7 | Per-kind pass rates and transcripts |
+
+Commit `kb-eval.csv` next to the KB revision it came from, and re-run steps 5–7 after any agent, prompt or KB change to catch quality drift.
+
 ## Repo Layout
 
 ```
@@ -331,7 +603,7 @@ Details: [DESIGN.md §6](./DESIGN.md#part-6--the-evalgen-cli-tool).
 
 ```bash
 # 1. Bring up the backend under test
-hcag-server serve --agent-config ./agent.toml --port 8000
+hcag-server --agent-config ./agent.toml --port 8000
 
 # 2. Score the eval set — writes a completed CSV + an HTML report
 evalrun kb-eval.csv \
@@ -407,7 +679,7 @@ End-to-end regression workflow:
 crawl --depth 3 https://docs.example.com/api/
 hcag ./kb
 evalgen ./kb --out kb-eval.csv --total 100 --seed 42     # once per KB revision
-hcag-server serve --agent-config ./agent.toml --port 8000 &
+hcag-server --agent-config ./agent.toml --port 8000 &
 evalrun kb-eval.csv --backend-url http://localhost:8000 \
      --out kb-eval-scored.csv --report kb-eval-report.html
 ```
@@ -477,7 +749,7 @@ The chat runs the prototype's scripted 4-turn flow so the UI is immediately expl
 pip install -e ".[web,voice,dev]"
 
 # Terminal 1 — FastAPI backend
-ANTHROPIC_API_KEY=... hcag-server serve \
+ANTHROPIC_API_KEY=... hcag-server \
     --agent-config ./examples/agent.toml \
     --port 8000
 
@@ -580,7 +852,9 @@ export LANGFUSE_SECRET_KEY=sk-...   # never from the config file
 
 **Generic OTLP** — set `otel.endpoint` for AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb, or any OTLP receiver. Langfuse works here too; the block above is the same thing with the path and header filled in.
 
-Three behaviors worth knowing: configuring **neither** means nothing leaves the process; configuring **both** is a startup error (to send to more than one backend, point `otel.endpoint` at a collector and let it fan out); and a Langfuse block whose key env var is unset is *also* a startup error, rather than silently exporting nothing — writing a key inline in the TOML is rejected outright so it cannot be committed by accident.
+Configuring **neither** means nothing leaves the process — a silent no-op, because not wanting tracing is a choice rather than a misconfiguration. Configuring **both** is a startup error: traces would go somewhere you did not choose and there is no safe default, so the ambiguity is a config bug to fix rather than a mode to run in (to reach two backends, point `otel.endpoint` at a collector and let it fan out).
+
+A destination that is configured but **cannot work** — an unset key env var, an unreachable exporter, the `otel` extra not installed — is reported on stderr and at `ERROR` in the log, and the agent then serves turns with tracing off. It does not refuse to start. This is the one place the fail-closed stance of the build tool (§3.4.9) deliberately does not apply: `hcag` cannot build without an LLM, but the agent's job is answering questions and it does that fine while unable to report on itself. What the strict rule was protecting is the word *silently*, and that is kept — you are told the moment it happens, naming the variable, which is when it can actually be fixed. Writing a key inline in the TOML is still rejected outright, so a secret cannot be committed by accident.
 
 Every CLI (`hcag`, `crawl`, `evalgen`, `evalrun`, `rag`, `hcag-voice`, `hcag-server`) accepts `--verbose` / `-v`, which mirrors the file log to stderr in the same JSON-lines shape. The file sink is unchanged — it stays at whatever level `--log-level` / config specifies — so `--verbose` is purely additive and safe to leave on during development.
 

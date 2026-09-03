@@ -74,7 +74,7 @@ The Python service is `hcag.server` (installed as `hcag-server`).
 pip install -e ".[web,voice,dev]"
 
 # Chat backend — talks to the HCAG AgentRuntime
-ANTHROPIC_API_KEY=... hcag-server serve \
+ANTHROPIC_API_KEY=... hcag-server \
     --agent-config ./examples/agent.toml \
     --port 8000
 ```

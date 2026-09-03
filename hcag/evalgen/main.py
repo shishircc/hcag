@@ -23,7 +23,7 @@ from .runner import EvalGenRequest, KIND_ORDER, run_evalgen, split_total
 
 
 def _cli(
-    kb_root: Path = typer.Argument(..., help="Normalized KB directory (post `hcag preprocess`)."),
+    kb_root: Path = typer.Argument(..., help="Normalized KB directory (post `hcag <root>`)."),
     out: Path = typer.Option(..., "--out", "-o", help="Output CSV path."),
     total: int | None = typer.Option(
         None, "--total", "-n",

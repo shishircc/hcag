@@ -69,7 +69,7 @@ def preprocess(
     except PreprocessAborted as e:
         # Fail closed (§3.4.9). Say how much is already on disk so the operator
         # knows whether re-running resumes or starts over.
-        typer.echo(f"hcag preprocess aborted: {e}", err=True)
+        typer.echo(f"hcag build aborted: {e}", err=True)
         if e.folders_written:
             typer.echo(
                 f"{e.folders_written} folder(s) were written before the abort; "

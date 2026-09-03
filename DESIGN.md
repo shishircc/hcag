@@ -1173,18 +1173,26 @@ Everything downstream is unchanged: the same span tree (§2.11.2), the same `ser
 
 **Credentials never live in the config file.** Like every other secret in this system (`llm.api_key_env`, §3.6; the LiveKit key pair, §5.8), the Langfuse keys are named by env var and read from the environment. `[observability.langfuse]` accepts no inline key fields at all, so a secret cannot be committed by accident.
 
-**Failure modes.** Consistent with §3.4.9's fail-closed stance — a destination that was explicitly requested but cannot work is an error, not a silent downgrade to no-op:
+**Failure modes — loud, but not fatal.** This is the one place the fail-closed stance of §3.4.9 does *not* apply, and the asymmetry is deliberate. `hcag`'s build aborts without an LLM because there is no build without one; the agent's *purpose* is answering questions, and it can do that perfectly well while unable to report on itself. Refusing to start over a missing trace key trades a total outage for a partial one, and does it at the worst possible moment — a key rotation, a new environment, a first deploy.
+
+What the original fail-closed rule was protecting is the word *silently*: an operator who asked for traces and is not getting them must find out immediately, not next week when they go looking for a trace that was never recorded. That property is kept in full. A broken destination is reported on **stderr and at `ERROR` in the log**, naming the exact variable — the operator who just set a destination is usually watching a terminal, and being told now is what matters, not whether the process then exits.
 
 | Condition | Behavior |
 |---|---|
-| `[observability.langfuse]` present, key env var unset or empty | **Startup error** naming the variable and that it is read from the environment. Explicitly configured observability that silently exports nothing is the failure this avoids. |
+| No trace destination configured at all | Silent no-op. Not configuring tracing is a choice, not a misconfiguration, and warning about it would train operators to ignore the channel that carries the real warnings. |
+| `[observability.langfuse]` present, key env var unset or empty | **`ERROR` + stderr** naming the variable and that it is read from the environment; the agent starts and serves turns with tracing off. |
+| Exporter cannot be constructed (bad endpoint, TLS failure, SDK mismatch) | Same: reported, tracing off, agent runs. |
+| OTEL SDK not installed | Same: reported, tracing off. Tracing is an optional extra (§2.13.6); a missing optional dependency is not a reason to refuse to answer questions. |
+| Langfuse host unreachable at runtime | Export failures are logged by the OTLP exporter and dropped. Traces are best-effort — a telemetry outage must never fail a user turn. |
 | Both `otel.endpoint` and `[observability.langfuse]` configured | **Startup error** naming both, asking the operator to pick one. |
-| OTEL SDK not installed | Tracing degrades to no-op with a `WARN`. Tracing is an optional extra (§2.13.6); a missing optional dependency is not a reason to refuse to answer questions. |
-| Langfuse host unreachable at runtime | Export failures are logged at `WARN` by the OTLP exporter and dropped. Traces are best-effort — a telemetry outage must never fail a user turn. |
+
+The last row stays fatal, and the distinction is worth being precise about. Every other row is *the operator asked for X and cannot have it* — recoverable, because running without X is a coherent state. Configuring both destinations is *the operator's intent is unknown*: traces would go somewhere they did not choose, and there is no safe default to fall back to. Ambiguity about where a conversation's contents get sent is a config bug to fix before starting, not a degraded mode to run in.
+
+`resolve_destination` still raises on a broken destination; degrading is `build_tracer`'s policy, layered on top. The check and the response to it are separate on purpose, so a caller that genuinely wants startup to fail can have that by calling the former.
 
 Example destinations:
 
-- **Langfuse (direct):** set `[observability.langfuse]` and export `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`. Nothing else.
+- **Langfuse (direct):** set `[observability.langfuse]` and export `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY`. Nothing else. `docker compose up` in a clone of `langfuse/langfuse` brings a local instance up on `http://localhost:3000` if you do not have one; Langfuse Cloud needs only `host = "https://cloud.langfuse.com"`. The sample `examples/agent.toml` ships with this block **commented out**, so a fresh checkout runs with no trace backend and no warnings.
 - **Langfuse (generic OTLP):** `otel.endpoint = https://cloud.langfuse.com/api/public/otel` with a hand-built `Authorization: Basic <base64(pk:sk)>` header. Still supported; the direct form exists because this is the step people get wrong.
 - **AWS CloudWatch (via ADOT):** `otel.endpoint = http://localhost:4318` pointing at a local ADOT collector, which forwards to CloudWatch.
 - In both cases the base URL is what you configure; HCAG appends `/v1/traces`.
@@ -4263,7 +4271,7 @@ Both take the same request body and share a session; a client may stream one tur
 **The RAG baseline implements `POST /chat` only.** It has no tool loop and retrieves once up front, so its stream would carry deltas and nothing else; the comparison in §9.4 is about retrieval architecture and is run by `evalrun`, which is synchronous anyway. A client asking `--agent rag` for `/chat/stream` gets `501`, not a degraded imitation.
 
 ```
-$ hcag-server serve --agent {hcag|rag} [options]
+$ hcag-server --agent {hcag|rag} [options]
 ```
 
 Precedence for the choice: `--agent` CLI flag > `HCAG_SERVER_AGENT` env var > default (`hcag`).

@@ -190,10 +190,17 @@ def test_build_tracer_still_accepts_a_bare_otel_config() -> None:
     assert resolve_destination(ObservabilityConfig(otel=OTELConfig())) is None
 
 
-def test_agent_runtime_surfaces_a_missing_key_at_construction(tmp_path) -> None:
-    """A configured-but-broken destination stops startup (§2.11.1), it does not
-    quietly downgrade to no-op tracing."""
+def test_agent_runtime_starts_despite_a_broken_destination(tmp_path, monkeypatch) -> None:
+    """A configured-but-broken destination is reported loudly and does NOT stop
+    startup (§2.11.1). Tracing is auxiliary: an agent that refuses to answer
+    questions because it cannot report on itself is the larger outage."""
+    import contextlib
+    import io as _io
+
     from hcag.runtime.agent import AgentRuntime
+
+    monkeypatch.delenv("LANGFUSE_PUBLIC_KEY", raising=False)
+    monkeypatch.delenv("LANGFUSE_SECRET_KEY", raising=False)
 
     (tmp_path / "compiled.md").write_text(
         "<!-- HCAG:COMPILED id=_root -->\n---\nid: ''\ntitle: R\n"
@@ -205,8 +212,13 @@ def test_agent_runtime_surfaces_a_missing_key_at_construction(tmp_path) -> None:
     cfg.observability.log.file_path = str(tmp_path / "a.log")
     cfg.observability.langfuse = LangfuseConfig()
 
-    with pytest.raises(ValueError, match="LANGFUSE_PUBLIC_KEY"):
-        AgentRuntime(cfg=cfg, llm=object())
+    err = _io.StringIO()
+    with contextlib.redirect_stderr(err):
+        runtime = AgentRuntime(cfg=cfg, llm=object())
+
+    assert runtime is not None
+    assert "LANGFUSE_PUBLIC_KEY" in err.getvalue()
+    assert "tracing disabled" in err.getvalue()
 
 
 # --- OTLP signal path (the "404, reason: Not Found" bug) -------------------

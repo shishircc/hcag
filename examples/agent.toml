@@ -93,7 +93,7 @@ rotation_keep    = 5
 # backend, point otel.endpoint at a collector and let it fan out.
 # ------------------------------------------------------------------------------
 
-# --- Form 1: direct Langfuse (active in this example) ---
+# --- Form 1: direct Langfuse (commented out — uncomment to enable) ---
 # HCAG derives the OTLP endpoint (<host>/api/public/otel/v1/traces), pins
 # http/protobuf, and builds the Basic auth header from the key pair — no URL
 # path and no base64 to assemble by hand. Note the /v1/traces suffix: OTLP/HTTP
@@ -101,33 +101,38 @@ rotation_keep    = 5
 # code is used verbatim, so a bare base URL POSTs to a route that does not
 # exist and every batch fails with "404, reason: Not Found".
 #
-# BECAUSE THIS BLOCK IS PRESENT, TRACING IS ON, and both env vars below must be
-# set before the agent will start:
+# Uncommenting this block turns tracing ON, and both env vars must then be set:
 #
 #     export LANGFUSE_PUBLIC_KEY=pk-lf-...
 #     export LANGFUSE_SECRET_KEY=sk-lf-...
 #
-# An unset key is a startup error rather than a silent downgrade — observability
-# that looks configured but exports nothing is exactly what this form prevents.
-# To run without Langfuse, comment the three lines below out; with no trace
-# destination configured at all, tracing is a no-op and nothing leaves the
-# process.
+# Getting a Langfuse to point at: `docker compose up` in a clone of
+# langfuse/langfuse brings one up on http://localhost:3000, where you create a
+# project and copy out the key pair. Langfuse Cloud works the same way with
+# host = "https://cloud.langfuse.com". Neither is required — the agent runs
+# fine with no trace destination at all.
+#
+# If the block is enabled but a key is missing, the agent prints a loud warning
+# and runs on WITHOUT tracing. It does not refuse to start: observability that
+# was asked for and is not happening must be reported, but it is an auxiliary
+# subsystem, and taking a working support agent offline over a missing trace
+# key trades a large outage for a small one.
 #
 # Keys are read from the ENVIRONMENT, never from this file: writing
 # `public_key = "pk-..."` here is a validation error, not a silently ignored
 # field, so a secret cannot be committed by accident.
-[observability.langfuse]
-host           = "http://localhost:3000"   # or https://us.cloud.langfuse.com,
-                                                # or your self-hosted base URL
-public_key_env = "LANGFUSE_PUBLIC_KEY"
-secret_key_env = "LANGFUSE_SECRET_KEY"
+# [observability.langfuse]
+# host           = "http://localhost:3000"   # or https://cloud.langfuse.com,
+#                                            # or your self-hosted base URL
+# public_key_env = "LANGFUSE_PUBLIC_KEY"
+# secret_key_env = "LANGFUSE_SECRET_KEY"
 
 # --- Form 2: generic OTLP — activated only when `endpoint` is set. ---
 # Point at AWS CloudWatch (via ADOT), Grafana Tempo, Honeycomb, or any
 # OTLP-compatible receiver. (Langfuse also works here; Form 1 is the same thing
 # with the endpoint path and auth header filled in for you.)
 #
-# Leave this commented while Form 1 is active: configuring BOTH is a startup
+# Uncomment at most ONE of Form 1 and Form 2: configuring BOTH is a startup
 # error, on purpose. To send to more than one backend, point otel.endpoint at a
 # collector and let the collector fan out.
 #

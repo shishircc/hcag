@@ -9,8 +9,8 @@ default, and it exports nothing.
 from __future__ import annotations
 
 import base64
-import logging
 import os
+import sys
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any, Iterator
@@ -79,9 +79,12 @@ class TraceDestination:
 def _langfuse_destination(lf: LangfuseConfig, service_name: str) -> TraceDestination:
     """Derive the OTLP exporter settings from a Langfuse key pair (§2.11.1).
 
-    Raises `ValueError` when a key env var is unset: observability that was
-    explicitly requested but silently exports nothing is the exact failure the
-    direct form exists to prevent, so it is a startup error, not a downgrade.
+    Raises `ValueError` when a key env var is unset. `build_tracer` catches it,
+    reports it loudly, and runs on without tracing: observability that was
+    explicitly requested but silently exports nothing is a real failure, and it
+    is reported as one — but it is a failure of an auxiliary subsystem, and
+    taking a working support agent offline over a missing trace key trades a
+    large outage for a small one.
     """
     missing = [
         name
@@ -149,7 +152,15 @@ def build_tracer(
     working.
     """
     obs = cfg if isinstance(cfg, ObservabilityConfig) else ObservabilityConfig(otel=cfg)
-    dest = resolve_destination(obs, service_name)
+    try:
+        dest = resolve_destination(obs, service_name)
+    except ValueError as e:
+        # A misconfigured destination (typically an unset Langfuse key) must not
+        # take down the agent. Loud, not silent, and not fatal: the operator
+        # asked for traces and is not getting them, which they need to know —
+        # but answering questions does not depend on being able to say so.
+        _report_tracing_disabled(str(e), logger)
+        return _NoopTracer()
     if dest is None:
         if logger is not None:
             logger.info("tracing.disabled", reason="no trace destination configured")
@@ -183,13 +194,34 @@ def build_tracer(
     except ImportError:
         # Tracing is an optional extra (§2.13.6). A missing optional dependency
         # is not a reason to refuse to answer questions.
-        logging.getLogger("hcag").warning(
-            "tracing requested (%s -> %s) but the OpenTelemetry SDK is not installed; "
-            "spans will not be exported",
-            dest.source,
-            dest.endpoint,
+        _report_tracing_disabled(
+            f"tracing requested ({dest.source} -> {dest.endpoint}) but the "
+            "OpenTelemetry SDK is not installed; install the `otel` extra",
+            logger,
         )
         return _NoopTracer()
+    except Exception as e:  # noqa: BLE001
+        # Same rule for anything else the exporter raises while being built —
+        # a bad endpoint, a TLS problem, an SDK version mismatch. None of it is
+        # a reason to stop answering questions.
+        _report_tracing_disabled(
+            f"could not initialize the {dest.source} exporter for {dest.endpoint}: "
+            f"{type(e).__name__}: {e}",
+            logger,
+        )
+        return _NoopTracer()
+
+
+def _report_tracing_disabled(reason: str, logger: Any | None = None) -> None:
+    """Announce that tracing asked for is not happening — on every channel.
+
+    Written to stderr as well as the log because the operator who set a trace
+    destination is usually watching a terminal at that moment, and a line in a
+    JSON log file they will read tomorrow is not the same as being told now.
+    """
+    if logger is not None:
+        logger.error("tracing.disabled", reason=reason)
+    print(f"WARNING: tracing disabled: {reason}", file=sys.stderr)
 
 
 def current_trace_id() -> str | None:
