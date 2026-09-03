@@ -1,0 +1,35 @@
+{
+  "source_url": "https://www.mom.gov.sg/passes-and-permits/employment-pass",
+  "link_order": [
+    "key-facts",
+    "consider-all-candidates-fairly",
+    "eligibility",
+    "passes-for-family",
+    "documents-required",
+    "apply-for-a-pass",
+    "appeal-against-a-rejected-application",
+    "renew-a-pass",
+    "cancel-a-pass",
+    "replace-a-pass-card",
+    "notify-mom-of-changes",
+    "taking-up-secondary-directorship",
+    "list-of-standard-occupations",
+    "experienced-tech-professionals-with-skills-in-shortage",
+    "eservices-and-forms"
+  ],
+  "documents": {
+    "appeal-against-a-rejected-application.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/appeal-against-a-rejected-application",
+    "cancel-a-pass.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/cancel-a-pass",
+    "consider-all-candidates-fairly.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/consider-all-candidates-fairly",
+    "eservices-and-forms.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/eservices-and-forms",
+    "experienced-tech-professionals-with-skills-in-shortage.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/experienced-tech-professionals-with-skills-in-shortage",
+    "index.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass",
+    "list-of-standard-occupations.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/list-of-standard-occupations",
+    "passes-for-family.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/passes-for-family",
+    "replace-a-pass-card.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/replace-a-pass-card"
+  },
+  "images": {
+    "consider-all-candidates-fairly-fcf-edits-to-job-ad.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/fcf-edits-to-job-ad.png",
+    "consider-all-candidates-fairly-fcf-ep-application-date.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/fcf-ep-application-date.png"
+  }
+}

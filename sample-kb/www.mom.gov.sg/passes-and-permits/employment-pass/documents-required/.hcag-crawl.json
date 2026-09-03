@@ -1,0 +1,47 @@
+{
+  "source_url": "https://www.mom.gov.sg/passes-and-permits/employment-pass/documents-required",
+  "link_order": [
+    "travel-doc-requirements-v1",
+    "bsc-guide",
+    "verification-portal-guide",
+    "list-of-verification-portals",
+    "opencerts-portal-guide"
+  ],
+  "documents": {
+    "bsc-guide.md": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/bsc-guide.pdf",
+    "index.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/documents-required",
+    "list-of-verification-portals.md": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/list-of-verification-portals.pdf",
+    "opencerts-portal-guide.md": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/opencerts-portal-guide.pdf",
+    "travel-doc-requirements-v1.md": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf",
+    "verification-portal-guide.md": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf"
+  },
+  "images": {
+    "bsc-guide-Image10.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/bsc-guide.pdf",
+    "bsc-guide-Image11.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/bsc-guide.pdf",
+    "bsc-guide-Image16.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/bsc-guide.pdf",
+    "bsc-guide-Image17.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/bsc-guide.pdf",
+    "bsc-guide-Image178.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/bsc-guide.pdf",
+    "bsc-guide-Image179.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/bsc-guide.pdf",
+    "bsc-guide-Image180.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/bsc-guide.pdf",
+    "opencerts-portal-guide-Image155.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/opencerts-portal-guide.pdf",
+    "opencerts-portal-guide-Image156.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/opencerts-portal-guide.pdf",
+    "opencerts-portal-guide-Image157.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/opencerts-portal-guide.pdf",
+    "opencerts-portal-guide-Image4.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/opencerts-portal-guide.pdf",
+    "opencerts-portal-guide-Image5.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/opencerts-portal-guide.pdf",
+    "opencerts-portal-guide-Image6.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/opencerts-portal-guide.pdf",
+    "travel-doc-requirements-v1-Image218.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf",
+    "travel-doc-requirements-v1-Image23.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf",
+    "travel-doc-requirements-v1-Image25.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf",
+    "travel-doc-requirements-v1-Image31.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf",
+    "travel-doc-requirements-v1-Image32.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf",
+    "travel-doc-requirements-v1-Image4.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf",
+    "travel-doc-requirements-v1-Image6.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf",
+    "verification-portal-guide-Image265.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf",
+    "verification-portal-guide-Image266.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf",
+    "verification-portal-guide-Image267.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf",
+    "verification-portal-guide-Image28.png": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf",
+    "verification-portal-guide-Image29.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf",
+    "verification-portal-guide-Image6.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf",
+    "verification-portal-guide-Image7.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf"
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "source_url": "https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts",
+  "link_order": [
+    "wpspassconditions"
+  ],
+  "documents": {
+    "index.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts",
+    "wpspassconditions.md": "https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/wpspassconditions.pdf"
+  }
+}

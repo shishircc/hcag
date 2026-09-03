@@ -1,0 +1,85 @@
+# ==============================================================================
+# HCAG CLI (`hcag preprocess`) — sample config
+# Place this file as `hcag.toml` at the ROOT of your KB directory. The CLI
+# discovers it automatically. If missing, the defaults below apply.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# Generated compiled.md artifacts.
+# ------------------------------------------------------------------------------
+[compiled]
+# ID for the root folder when a downstream consumer needs a non-empty one.
+# Default is the empty string, which is what §3.4.5 specifies for the root.
+root_id = "_root"
+
+# ------------------------------------------------------------------------------
+# LLM used ONLY for build-time metadata generation:
+#   - packet title, short_description, long_description
+#   - node title, node short description
+# Runtime agent uses its own separate config (see examples/agent.toml).
+# For CLI a cheap+fast model is usually fine.
+# ------------------------------------------------------------------------------
+
+# --- Anthropic direct (default) ---
+[llm]
+provider    = "anthropic"
+model       = "claude-opus-4-6"      # cheap+fast for build-time
+api_key_env = "ANTHROPIC_API_KEY"
+temperature = 0.0
+
+# Fail-closed policy (DESIGN §3.4.9). The build needs an LLM call at EVERY
+# folder, so it proves the LLM works before scanning the tree or writing a
+# byte, and aborts mid-walk rather than filling the rest of the tree with
+# placeholder summaries (which would silently degrade every ancestor).
+preflight   = true                   # probe before the walk; off only for
+                                     # offline runs with stubbed LLM calls
+max_retries = 2                      # retries per call, exponential backoff
+
+# --- AWS Bedrock ---
+# [llm]
+# provider   = "bedrock"
+# model      = "bedrock/anthropic.claude-3-5-haiku-20241022-v1:0"
+# max_tokens = 1024
+
+# --- Ollama (local) ---
+# Metadata quality varies with model; try llama3.1:8b for a quick local build.
+# [llm]
+# provider   = "ollama"
+# model      = "ollama/llama3.1:8b"
+# endpoint   = "http://localhost:11434"
+# max_tokens = 1024
+
+# ------------------------------------------------------------------------------
+# Tokenizer for the token_size_estimate field written into each catalog entry.
+# The runtime uses these estimates for budgeting; no re-tokenization at runtime.
+# ------------------------------------------------------------------------------
+[tokenizer]
+kind     = "tiktoken"          # tiktoken | rough
+encoding = "cl100k_base"       # provider-agnostic proxy
+
+# ------------------------------------------------------------------------------
+# Catalog roll-up (D3a, DESIGN §3.4.4).
+# Each folder's `## Sub-topics` section indexes its ENTIRE subtree, not just
+# its immediate children — so the root's compiled.md is a complete index of the
+# KB and the agent can resolve any document in one hop. These knobs bound what
+# that costs in the system prompt.
+# ------------------------------------------------------------------------------
+[catalog]
+max_depth   = 0        # cap roll-up to N levels below each folder; 0 = unlimited
+long_depth  = 10        # include `long` on entries this deep or shallower; 0 = never
+include_tree = true    # emit the compact `#### Tree` outline atop the section
+warn_tokens = 40000    # WARN at build time if the ROOT catalog exceeds this
+
+# Runtime knob, read by the memory module (mirror it in agent.toml):
+# elide `## Sub-topics` when serving a non-root packet, since the root index is
+# already in the agent's system prompt (DESIGN §2.6).
+strip_subtopics_on_load = true
+
+# ------------------------------------------------------------------------------
+# Build log — same JSON-lines format as the runtime log.
+# ------------------------------------------------------------------------------
+[log]
+file_path        = "./hcag-build.log"
+level            = "INFO"      # DEBUG | INFO | WARN | ERROR
+rotation_size_mb = 50
+rotation_keep    = 5

@@ -1,0 +1,18 @@
+{
+  "source_url": "https://www.mom.gov.sg/passes-and-permits/employment-pass/notify-mom-of-changes",
+  "link_order": [
+    "list_of_standard_occupation_a-i",
+    "list_of_standard_occupation_j-r",
+    "list_of_standard_occupation_s-z"
+  ],
+  "documents": {
+    "index.md": "https://www.mom.gov.sg/passes-and-permits/employment-pass/notify-mom-of-changes",
+    "list_of_standard_occupation_a-i.md": "https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_a-i.pdf",
+    "list_of_standard_occupation_j-r.md": "https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_j-r.pdf",
+    "list_of_standard_occupation_s-z.md": "https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_s-z.pdf"
+  },
+  "images": {
+    "list_of_standard_occupation_a-i-Image10422.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_a-i.pdf",
+    "list_of_standard_occupation_j-r-Image6761.jpeg": "https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_j-r.pdf"
+  }
+}

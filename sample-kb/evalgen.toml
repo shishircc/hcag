@@ -1,0 +1,51 @@
+# ==============================================================================
+# `evalgen` CLI — sample config (§6.8)
+# Place as `evalgen.toml` at the KB root, or point to it with --config.
+# All fields shown below are defaults — the file is entirely optional.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# LLM used to generate questions and expected answers.
+# Question quality benefits from a strong model; `hard-2` requires a
+# multimodal-capable model (Claude, GPT-4o, Gemini, etc.).
+# ------------------------------------------------------------------------------
+[llm]
+provider    = "anthropic"
+model       = "claude-opus-4-6"
+api_key_env = "ANTHROPIC_API_KEY"
+max_tokens  = 2048
+temperature = 0.0
+
+# --- Ollama (local, multimodal via e.g. llama3.2-vision) ---
+# [llm]
+# provider   = "ollama"
+# model      = "ollama/llama3.2-vision"
+# endpoint   = "http://localhost:11434"
+# max_tokens = 2048
+
+# ------------------------------------------------------------------------------
+# Generation knobs.
+# ------------------------------------------------------------------------------
+[generation]
+# Retry an item this many times if the LLM output fails per-kind validation
+# (e.g., complex must cite >=3 paragraphs; hard-2 must reference the image).
+max_retries_per_item = 2
+
+# Minimum length of a paragraph in packet.md to be considered a "paragraph"
+# for medium/complex/hard-1 sourcing. Filters out stray headings and blank
+# lines that split the body but carry no substance.
+paragraph_min_chars = 120
+
+# Pair selection for hard-1 (cross-packet):
+#   "taxonomy" — bias toward packets sharing a taxonomy parent (siblings)
+#   "uniform"  — uniform random pair
+cross_packet_bias = "taxonomy"
+
+# ------------------------------------------------------------------------------
+# Log — same JSON-lines format as the runtime and other CLIs (§6.10).
+# ------------------------------------------------------------------------------
+[log]
+file_path        = "./evalgen.log"
+level            = "INFO"      # DEBUG | INFO | WARN | ERROR
+rotation_size_mb = 50
+rotation_keep    = 5
