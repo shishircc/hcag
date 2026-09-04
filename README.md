@@ -12,6 +12,41 @@ Flat RAG loses on knowledge-heavy tasks in three ways ([DESIGN.md §1.2](./DESIG
 2. **Complex reasoning** — Flat RAG assembles an answer from partial chunks that have noise making reasoning weaker, while HCAG retrieves high quality leaf documents of relevant taxonomy branch so the model reasons over complete and higher quality input. Retrieval of relevant material for reasoning is different: HCAG uses an LLM to reason over the taxonomy to retrieve compared to RAG's embedding model's similarity search. Reasoning over taxonomy using LLM model for retrieval provides stronger handling of multiple simultaneous constraints and more control over the result. 
 3. **Speed and cost** — HCAG classifies the task branch **once** and reuses the same active set across many reasoning steps, keeping the prompt prefix byte-stable for cache hits (90%+ token savings on repeated calls).
 
+## Benchmark — HCAG vs flat RAG
+
+The same 37 questions, the same knowledge base, the same generator model and the same judge. The
+only variable is the retrieval architecture. **Full analysis, per-question data and method:
+[`sample-benchmark-report/`](./sample-benchmark-report/README.md)** · reports:
+[HCAG](./sample-benchmark-report/hcag-kb-eval-report.html) ·
+[RAG](./sample-benchmark-report/rag-kb-eval-report.html)
+
+| | HCAG | Flat RAG | Gap |
+|---|---|---|---|
+| **Mean score** (0–3) | **2.76** — **91.9%** of max | 1.97 — 65.8% of max | **+39.7% relative** (+0.78 pts) |
+| **Pass rate** (score ≥ 2) | **100.0%** (37/37) | 64.9% (24/37) | +35.1 pp |
+| **Refusals on in-scope questions** | **0** | 10 of 37 (27.0%) | |
+
+The average hides the shape of the result. Scored as a percentage of the 3-point maximum, by
+question difficulty:
+
+| Difficulty | HCAG | Flat RAG | Δ relative |
+|---|---:|---:|---:|
+| `simple` — FAQ lookup, no reasoning | 100.0% | 87.5% | +14.3% |
+| `medium` — reasoning within one paragraph | 88.9% | 77.8% | +14.3% |
+| `complex` — 3 concepts across one document | 83.3% | 70.8% | +17.6% |
+| `hard-1` — **two documents required** | 95.2% | 52.4% | **+81.8%** |
+| `hard-2` — **the answer is in an image** | 91.7% | 41.7% | **+120.0%** |
+
+Flat RAG holds up where [§1.3](./DESIGN.md#13-when-to-use-hcag-vs-alternatives) says it should —
+single-passage lookup, right at the 70–80% ceiling it predicts. It falls off a cliff exactly where
+the three problems above bite: crossing a **document boundary** (knowledge isolation and multi-hop
+reasoning), and reading an **image**, which flat RAG sees only as an indexed text description while
+HCAG attaches the image itself as a content block. HCAG never dropped below 83% in any category,
+never scored a wrong answer, and never refused an in-scope question.
+
+*Caveat: n = 37, one KB, an LLM judge — directional, not a leaderboard.
+[Method and caveats.](./sample-benchmark-report/README.md#caveats--read-before-quoting-these-numbers)*
+
 ## When to Use It
 
 - **Use HCAG** for autonomous customer support over large/complex knowledge, root cause analysis, and autonomous operation workflows — knowledge-heavy tasks with strong reasoning inside a bounded branch.
@@ -396,6 +431,7 @@ hcag/
 │       └── README.md      # Frontend + backend run instructions
 ├── examples/              # Sample config for every CLI — copy these, don't write from scratch
 ├── sample-kb/             # A pre-crawled, pre-built KB (skips Getting Started steps 1–3)
+├── sample-benchmark-report/  # HCAG vs flat RAG — reports, scored CSVs, analysis
 └── tests/
 ```
 

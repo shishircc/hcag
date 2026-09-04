@@ -5,17 +5,21 @@ same HTTP contract (`POST /chat`), scored by the same judge on the same 0–3 ru
 variable is the retrieval architecture: HCAG navigates a taxonomy and loads whole packets; the RAG
 baseline runs hybrid (vector + BM25) search over 659 chunks.
 
-| | HCAG | Flat RAG |
-|---|---|---|
-| **Mean score** (0–3) | **2.76** | 1.97 |
-| **Pass rate** (score ≥ 2) | **100%** (37/37) | 64.9% (24/37) |
-| **Full marks** (score 3) | 28 | 15 |
-| **Answers below "partially correct"** | **0** | 13 |
-| **Refusals on in-scope questions** | **0** | 10 |
-| Head-to-head | **wins 20** | wins 1 (16 ties) |
+| | HCAG | Flat RAG | Gap |
+|---|---|---|---|
+| **Mean score** (0–3) | **2.76** — **91.9%** of max | 1.97 — 65.8% of max | **+0.78 pts · +26.1 pp · +39.7% relative** |
+| **Pass rate** (score ≥ 2) | **100.0%** (37/37) | 64.9% (24/37) | +35.1 pp · +54.2% relative |
+| **Full marks** (score 3) | **75.7%** (28/37) | 40.5% (15/37) | +35.2 pp · +86.7% relative |
+| **Answers below "partially correct"** | **0.0%** (0/37) | 35.1% (13/37) | −35.1 pp |
+| **Refusals on in-scope questions** | **0.0%** (0/37) | 27.0% (10/37) | −27.0 pp |
+| Head-to-head | **wins 20** (54.1%) | wins 1 (2.7%) | 16 ties (43.2%) |
 
-The averages understate the interesting part. The gap is small on easy questions and roughly
-**four times larger** on the two hardest categories.
+Three ways of reading the same score, used throughout this page: **% of max** is the mean divided
+by the 3-point maximum; **pp** is the arithmetic difference between two such percentages; **%
+relative** is HCAG's lead expressed as a share of RAG's own score — the "how much better" number.
+
+The averages understate the interesting part. HCAG is **~14% better** than flat RAG on easy
+questions and **120% better** on the hardest ones.
 
 ---
 
@@ -39,14 +43,27 @@ excludes `*.log`.
 
 ## Scores by difficulty
 
-| Difficulty | n | HCAG | RAG | Δ | HCAG full marks | RAG full marks | H wins | R wins | ties |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| `simple` — FAQ lookup, no reasoning | 8 | **3.00** | 2.62 | +0.38 | 8/8 | 5/8 | 3 | 0 | 5 |
-| `medium` — reasoning within one paragraph | 6 | **2.67** | 2.33 | +0.33 | 4/6 | 3/6 | 2 | 0 | 4 |
-| `complex` — ≥3 concepts across one packet | 8 | **2.50** | 2.12 | +0.38 | 4/8 | 4/8 | 3 | 1 | 4 |
-| `hard-1` — cross-packet, two packets required | 7 | **2.86** | 1.57 | **+1.29** | 6/7 | 1/7 | 6 | 0 | 1 |
-| `hard-2` — key fact is in an **image** | 8 | **2.75** | 1.25 | **+1.50** | 6/8 | 2/8 | 6 | 0 | 2 |
-| **All** | 37 | **2.76** | 1.97 | +0.78 | 28 | 15 | 20 | 1 | 16 |
+| Difficulty | n | HCAG | RAG | Δ points | Δ pp | **Δ relative** |
+|---|---:|---:|---:|---:|---:|---:|
+| `simple` — FAQ lookup, no reasoning | 8 | **3.00** — 100.0% | 2.62 — 87.5% | +0.38 | +12.5 pp | **+14.3%** |
+| `medium` — reasoning within one paragraph | 6 | **2.67** — 88.9% | 2.33 — 77.8% | +0.33 | +11.1 pp | **+14.3%** |
+| `complex` — ≥3 concepts across one packet | 8 | **2.50** — 83.3% | 2.12 — 70.8% | +0.38 | +12.5 pp | **+17.6%** |
+| `hard-1` — cross-packet, two packets required | 7 | **2.86** — 95.2% | 1.57 — 52.4% | **+1.29** | **+42.9 pp** | **+81.8%** |
+| `hard-2` — key fact is in an **image** | 8 | **2.75** — 91.7% | 1.25 — 41.7% | **+1.50** | **+50.0 pp** | **+120.0%** |
+| **All** | 37 | **2.76** — 91.9% | 1.97 — 65.8% | +0.78 | +26.1 pp | **+39.7%** |
+
+Flat RAG scores between 71% and 88% of maximum on the first three levels — respectable, and roughly
+the "~70–80% accuracy ceiling for non-trivial questions" §1.3.3 predicts for it. On the last two it
+falls to **52.4%** and **41.7%**, while HCAG never drops below **83.3%** in any category.
+
+| Difficulty | HCAG full marks | RAG full marks | H wins | R wins | ties |
+|---|---:|---:|---:|---:|---:|
+| `simple` | 8/8 (100%) | 5/8 (63%) | 3 | 0 | 5 |
+| `medium` | 4/6 (67%) | 3/6 (50%) | 2 | 0 | 4 |
+| `complex` | 4/8 (50%) | 4/8 (50%) | 3 | 1 | 4 |
+| `hard-1` | 6/7 (86%) | 1/7 (14%) | 6 | 0 | 1 |
+| `hard-2` | 6/8 (75%) | 2/8 (25%) | 6 | 0 | 2 |
+| **All** | 28/37 (76%) | 15/37 (41%) | 20 | 1 | 16 |
 
 The difficulty levels are the generator's five kinds (`hcag/prompts/evalgen/`): `simple` is looked
 up, `medium` is interpreted from a single paragraph, `complex` needs three concepts from three
@@ -87,8 +104,8 @@ design decision.
 ### `simple` / `medium` — a small, steady edge
 
 §1.3.3 says flat RAG is the right tool for "FAQ-style — short, self-contained, answered from a
-single passage", and the numbers agree: RAG is at 2.62 on `simple`, its strongest category. HCAG's
-edge here (+0.38) is not about finding the answer — both find it — but about **completeness**. HCAG
+single passage", and the numbers agree: RAG is at 2.62 on `simple` — 87.5% of maximum, its
+strongest category. HCAG's edge here (+0.38 pts, **+14.3% relative**) is not about finding the answer — both find it — but about **completeness**. HCAG
 holds the whole document, so nothing adjacent to the answer is missing; RAG holds the top-k chunks
 and scored 2 rather than 3 three times because a detail sat just outside the retrieved window.
 
@@ -104,7 +121,7 @@ the judge on RAG: *"Correctly covers the appeal deadline (3 months) and the fina
 requirement, but fails to provide the cancellation rules … which is a key part of the question."*
 Two of three concepts retrieved, one missed.
 
-### `hard-1` — the cross-packet cliff (+1.29)
+### `hard-1` — the cross-packet cliff (+1.29 pts · +42.9 pp · **+81.8%**)
 
 §1.2 Problem 2: *"Multi-faceted problems are where flat RAG breaks down: covering them properly
 requires several distinct queries, and any one of them can miss the right chunk."*
@@ -120,7 +137,7 @@ information."* HCAG's catalog let it name both packets and load them; the RAG re
 chunks about one half of the question, and the generator — correctly refusing to invent the other
 half — declined.
 
-### `hard-2` — the multimodal cliff (+1.50)
+### `hard-2` — the multimodal cliff (+1.50 pts · +50.0 pp · **+120.0%**)
 
 The largest gap, and the most structural. **D9. Multimodal loading is first-class**: *"Images under
 a folder's `assets/` directory are loaded as multimodal content blocks alongside its `compiled.md`.
@@ -162,9 +179,9 @@ That is the honest counter-example to the paragraph above.
 
 | §9.4 prediction | Outcome | |
 |---|---|---|
-| `simple`, `medium` "roughly tied" | HCAG +0.38 / +0.33 — a real but modest edge, not a tie | ~ |
-| `complex`, `hard-1` "should favour HCAG" | +0.38 and +1.29 — `hard-1` strongly, `complex` only modestly | ✓ |
-| `hard-2` "should strongly favour HCAG" | +1.50, the largest gap in the run | ✓ |
+| `simple`, `medium` "roughly tied" | HCAG +0.38 / +0.33 pts — **+14.3%** on both — a real but modest edge, not a tie | ~ |
+| `complex`, `hard-1` "should favour HCAG" | **+17.6%** and **+81.8%** — `hard-1` strongly, `complex` only modestly | ✓ |
+| `hard-2` "should strongly favour HCAG" | **+120.0%** — RAG at 41.7% of maximum, the largest gap in the run | ✓ |
 
 Two honest deviations. First, HCAG's edge on easy questions is small but consistent rather than
 absent — it comes from completeness, not from retrieval success. Second, `complex` separated far
@@ -202,9 +219,10 @@ seed 42. Both agents generated with `claude-haiku-4-5`; the RAG side embedded wi
 
 ### Caveats — read before quoting these numbers
 
-- **n = 37**, with 6–8 questions per difficulty bucket. The overall gap (+0.78) and the two large
-  per-bucket gaps (+1.29, +1.50) are wide relative to that noise; the ±0.35 differences on
-  `simple` / `medium` / `complex` are **not** separable from sampling error at this size.
+- **n = 37**, with 6–8 questions per difficulty bucket. The overall gap (+0.78 pts, +39.7%) and the
+  two large per-bucket gaps (+81.8%, +120.0%) are wide relative to that noise; the ±0.35-point
+  differences on `simple` / `medium` / `complex` (+14–18% relative) are **not** separable from
+  sampling error at this size — treat them as directional, not measured.
 - **The RAG run used the improved index.** The corpus was re-indexed at 11:30 local with the
   heading-path chunk prefix (each chunk now carries `Document > Section` in its indexed text, worth
   +17% on-topic FTS hits in isolated measurement); the RAG run began at 11:45. Its agent-side code,
@@ -223,6 +241,6 @@ seed 42. Both agents generated with `claude-haiku-4-5`; the RAG side embedded wi
 ## The one-line version
 
 On questions a single passage answers, flat RAG is competitive and much cheaper to build. The
-moment a question needs **two documents** or **something only visible in an image**, the flat index
-stops being able to represent the problem — and its failure is a refusal or a half-answer, not an
+moment a question needs **two documents** (+81.8%) or **something only visible in an image**
+(+120.0%), the flat index stops being able to represent the problem — and its failure is a refusal or a half-answer, not an
 obvious error. That is the boundary §1.3 draws, and this run puts numbers on it.
