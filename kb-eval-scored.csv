@@ -13,27 +13,26 @@ Additionally, the EP holder's primary employer must have no objections to the EP
 
 MOM will grant an LOC if:
 
-1. **Corporate Shareholding Relationship**: Your company is related by shareholding to the Employment Pass holder's primary employer, as reflected in ACRA records.
+1. **Corporate Shareholding Relationship**: Your company is related by shareholding to the Employment Pass holder's employer, and this relationship must be reflected in ACRA records.
 
-2. **Related to Primary Employment**: The secondary directorship is for purposes related to the EP holder's primary employment.
+2. **Purpose Related to Primary Employment**: The secondary directorship is for purposes related to the EP holder's primary employment.
 
-3. **Indirect Shareholding Relationships**: MOM may also grant an LOC for indirect shareholding relationships, including:
-   - Holding companies of the primary employer
-   - Subsidiaries of the holding company of the primary employer
-   - Any companies other than the primary employer within this corporate structure
+MOM may also grant an LOC for indirect shareholding relationships, including:
+- Holding companies of the primary employer
+- Subsidiaries of the holding company of the primary employer
+- Other companies within the corporate group (other than the primary employer itself)
+
+The secondary employer will need to provide MOM with an organisation chart explaining its relationship with the EP holder's primary employer.
 
 ## For Unrelated Companies
 
-If the secondary directorship is in an **unrelated** company, MOM relies on the assessment of a **sector government agency** regulating or promoting that industry. The LOC may be granted if the sector agency supports the application.
+If the secondary directorship is in an **unrelated** company, MOM relies on assessment by a sector government agency that regulates or promotes the industry. The LOC may be granted if that agency supports the application.
 
-## Key Requirements
+## Additional Requirements
 
-Regardless of the company relationship, the employer must:
-- Obtain the EP holder's primary employer's consent before proceeding
-- Provide MOM with an organisation chart explaining the relationship between the secondary employer and the primary employer (when applicable)
-- Apply for the LOC before the directorship duties commence
+Regardless of the company type, the EP holder's primary employer must have **no objections** to the EP holder taking on the directorship.
 
-The LOC remains valid until the expiry or cancellation date of the current Employment Pass.",3,"The answer covers all key conditions: related companies (corporate shareholding, indirect relationships), purposes related to primary employment, unrelated companies (sector agency support), primary employer consent, organisation chart requirement, and LOC validity period. It also adds a minor point about applying before duties commence, which is reasonable and not misleading."
+The LOC is valid up to the expiry or cancellation date of the current Employment Pass, and a new LOC must be applied for when the EP is renewed.",3,"The chatbot's answer covers all key conditions from the reference: related companies (corporate shareholding, ACRA records, indirect relationships, organisation chart), purpose related to primary employment, unrelated companies (sector agency assessment), primary employer's no objection, and LOC validity/renewal requirements. Accurate and comprehensive."
 q-0002,simple,What are the eligibility criteria for the Overseas Networks & Expertise Pass (ONE Pass)?,"Candidates are assessed on a case-by-case basis and must meet one of the following criteria:
 
 1. **Based on current or last held employment (overseas or in Singapore):** Earned a fixed monthly salary of at least S$30,000 (or its equivalent in foreign currency) for the 12 consecutive months leading up to the date of application. If employed overseas, the candidate must have worked for an established company for those 12 consecutive months. The qualifying salary of at least S$30,000 must come from one employer only if the candidate drew salaries from more than one employer; other sources of income may be considered on a case-by-case basis. Existing pass holders need to have worked in Singapore for at least 1 year.
@@ -76,38 +75,39 @@ You must meet **one of the following criteria**:
 - **No foreign worker levy or quota**
 - Flexibility to work for multiple companies concurrently
 - No need to reapply if you change jobs
-- Family members can obtain passes to join you",3,"The answer covers all three eligibility categories (current/past employment, prospective employment, outstanding achievements) with correct salary thresholds, established company criteria, and additional details matching the reference answer. It also includes accurate supplementary information about existing pass holders and key features."
+- Family members can obtain passes to join you",3,"The answer covers all three eligibility categories with correct salary thresholds, established company criteria, outstanding achievements areas, and additional details like existing pass holder requirements. It accurately reflects the reference answer and adds relevant supplementary information without errors."
 q-0003,simple,What is the qualifying salary for a Singapore Employment Pass?,"The qualifying salary for an Employment Pass is a fixed monthly salary comparable to the top one-third of local PMET salaries, starting from $5,600 and increasing progressively with age, up to $10,700 for those in the mid-40s. Candidates in the financial services sector need higher salaries to qualify.",https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts,"Based on the loaded information, here is the qualifying salary for a Singapore Employment Pass:
 
-## EP Qualifying Salary
+## Employment Pass Qualifying Salary
 
-The Employment Pass has **two different salary thresholds** depending on the sector and the candidate's age:
+The EP qualifying salary is **benchmarked to the top 1/3 of local PMET (Professionals, Managers, Executives, and Technicians) salaries by age** and varies by sector.
 
-### Current Requirements (for applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028):
+### Current Rates (for applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028):
 
 **General Sector (all except financial services):**
-- Minimum: **$5,600** (age 23 or below)
-- Maximum: **$10,700** (age 45 and above)
-- Increases progressively with age
+- **Age 23 or below:** $5,600
+- **Age 45 or above:** $10,700
+- Increases progressively with age in between
 
 **Financial Services Sector:**
-- Minimum: **$6,200** (age 23 or below)
-- Maximum: **$11,800** (age 45 and above)
-- Increases progressively with age
+- **Age 23 or below:** $6,200
+- **Age 45 or above:** $11,800
+- Increases progressively with age in between
 
-### Future Requirements (from 1 Jan 2027 for new applications and from 1 Jan 2028 for renewals):
+### New Rates (from 1 Jan 2027 for new applications and renewals expiring from 1 Jan 2028):
 
 **General Sector:**
-- Minimum: **$6,000** (age 23 or below)
-- Maximum: **$11,500** (age 45 and above)
+- **Age 23 or below:** $6,000
+- **Age 45 or above:** $11,500
+- Increases progressively with age in between
 
 **Financial Services Sector:**
-- Minimum: **$6,600** (age 23 or below)
-- Maximum: **$12,700** (age 45 and above)
+- **Age 23 or below:** $6,600
+- **Age 45 or above:** $12,700
+- Increases progressively with age in between
 
-## Important Note
-
-The EP qualifying salary is **different from the COMPASS C1 salary criterion**. The qualifying salary is the minimum bar that candidates must meet to be eligible for an EP. Even if a candidate scores well on COMPASS, they will not qualify if they don't meet the EP qualifying salary requirement.",3,"The chatbot's answer covers all key points from the reference (starting from $5,600, progressive increase with age, up to $10,700 for mid-40s, higher for financial services) and provides additional accurate detail including specific financial services thresholds and upcoming changes."
+### Important Note:
+The EP qualifying salary is **different from the COMPASS C1 Salary criterion**. The qualifying salary is the minimum bar that candidates must meet to be eligible for an EP. Even if a candidate scores well on COMPASS, they will not qualify if they don't meet the EP qualifying salary threshold.",3,"The answer covers all key points from the reference (top 1/3 of local PMET salaries, starting from $5,600, increasing with age up to $10,700 for mid-40s, higher for financial services) and provides additional accurate detail including specific financial services figures and upcoming rate changes."
 q-0004,simple,"What are the EP qualifying salary requirements by sector, age, and application/renewal timing for Singapore's Employment Pass?","The EP qualifying salary depends on the sector (all sectors except financial services, or financial services), the candidate's age, and whether the application/renewal falls under current or upcoming rules.
 
 **All sectors except financial services:**
@@ -120,91 +120,48 @@ q-0004,simple,"What are the EP qualifying salary requirements by sector, age, an
 
 The EP qualifying salary is benchmarked to the top 1/3 of local PMET salaries by age. Meeting the qualifying salary is Stage 1 of the EP eligibility framework; candidates who do not meet Stage 1 will not be eligible for an EP regardless of their COMPASS score under Stage 2.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility,"Based on the loaded information, here are the **EP qualifying salary requirements by sector, age, and application/renewal timing** for Singapore's Employment Pass:
 
-## EP Qualifying Salary Framework
+## Two-Tier Salary Structure
 
-Singapore uses a **two-stage eligibility framework** for Employment Pass applications:
-
-- **Stage 1**: Meet the EP qualifying salary (minimum threshold)
-- **Stage 2**: Pass COMPASS (points-based assessment) — unless exempted
-
----
-
-## Salary Requirements by Sector and Age
+Singapore has **two different salary schedules** depending on the application/renewal timing:
 
 ### **Current Requirements** (for new applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028)
 
-#### **All Sectors (except Financial Services)**
-Ranges from **$5,600** (age 23 and below) to **$10,700** (age 45 and above)
-
-| Age | Minimum Salary |
-|-----|---|
-| 23 or below | $5,600 |
-| 24 | $5,832 |
-| 25 | $6,064 |
-| 30 | $7,223 |
-| 35 | $8,382 |
-| 40 | $9,541 |
-| 45 or above | $10,700 |
-
-#### **Financial Services Sector**
-Ranges from **$6,200** (age 23 and below) to **$11,800** (age 45 and above)
-
-| Age | Minimum Salary |
-|-----|---|
-| 23 or below | $6,200 |
-| 24 | $6,455 |
-| 25 | $6,709 |
-| 30 | $7,982 |
-| 35 | $9,255 |
-| 40 | $10,527 |
-| 45 or above | $11,800 |
-
----
+| Sector | Starting Age 23 | Peak Age 45+ |
+|--------|-----------------|--------------|
+| **All sectors (except financial services)** | $5,600 | $10,700 |
+| **Financial services** | $6,200 | $11,800 |
 
 ### **New Requirements** (for new applications from 1 Jan 2027 and renewals expiring from 1 Jan 2028)
 
-#### **All Sectors (except Financial Services)**
-Ranges from **$6,000** (age 23 and below) to **$11,500** (age 45 and above)
+| Sector | Starting Age 23 | Peak Age 45+ |
+|--------|-----------------|--------------|
+| **All sectors (except financial services)** | $6,000 | $11,500 |
+| **Financial services** | $6,600 | $12,700 |
 
-| Age | Minimum Salary |
-|-----|---|
-| 23 or below | $6,000 |
-| 24 | $6,250 |
-| 25 | $6,500 |
-| 30 | $7,750 |
-| 35 | $9,000 |
-| 40 | $10,250 |
-| 45 or above | $11,500 |
+## Progressive Salary Increases by Age
 
-#### **Financial Services Sector**
-Ranges from **$6,600** (age 23 and below) to **$12,700** (age 45 and above)
+The salary requirements **increase progressively with age** from age 23 to 45+. For example, under current rules for non-financial sectors:
 
-| Age | Minimum Salary |
-|-----|---|
-| 23 or below | $6,600 |
-| 24 | $6,877 |
-| 25 | $7,155 |
-| 30 | $8,541 |
-| 35 | $9,927 |
-| 40 | $11,314 |
-| 45 or above | $12,700 |
-
----
+| Age | Current Salary | From Jan 2027 |
+|-----|----------------|---------------|
+| 23 or below | $5,600 | $6,000 |
+| 30 | $7,223 | $7,750 |
+| 35 | $8,382 | $9,000 |
+| 40 | $9,541 | $10,250 |
+| 45 or above | $10,700 | $11,500 |
 
 ## Key Points
 
-1. **Salary increases progressively with age** — the older the candidate, the higher the qualifying salary requirement.
+1. **Two-Stage Eligibility**: Candidates must first meet the EP qualifying salary (Stage 1), then pass the COMPASS points-based assessment (Stage 2) unless exempted.
 
-2. **Financial services sector has higher thresholds** — approximately $600–$1,000 higher than other sectors at each age level.
+2. **COMPASS Exemption**: Candidates earning a **fixed monthly salary of at least $22,500** are exempted from COMPASS requirements.
 
-3. **COMPASS exemption threshold**: Candidates earning a **fixed monthly salary of at least $22,500** are exempted from COMPASS requirements.
+3. **Timing Matters**: The salary threshold you must meet depends on when you apply or when your pass expires, not when you're hired.
 
-4. **Timing matters**: The salary requirement that applies depends on whether the application is new or a renewal, and the date of submission/expiry.
+4. **Financial Services Premium**: The financial services sector has consistently higher salary thresholds than other sectors.",3,"The answer accurately covers all key dimensions (sector, age, timing) with correct figures matching the reference, includes progressive age examples, and correctly explains the two-stage framework. The additional details about COMPASS exemption at $22,500 are relevant and not misleading."
+q-0005,simple,"How often is the Shortage Occupation List (SOL) updated, and how often is it comprehensively reviewed?","Occupations may be added or removed from the SOL once a year, to remain responsive to market conditions. The SOL will be comprehensively reviewed every 3 years. The SOL released in November 2025 applies to new and renewal EP applications from 1 January 2026. The SOL is created by MOM and the Ministry of Trade and Industry (MTI) in consultation with sector agencies and tripartite partners, and occupations are identified based on their strategic importance to Singapore's economic priorities, the degree and nature of labour shortage, and the sector's commitment to developing the local pipeline to address these shortages in the medium term.",https://www.mom.gov.sg/passes-and-permits/employment-pass/upcoming-changes-to-employment-pass-eligibility/complementarity-assessment-framework-compass/compass-shortage-occupation-list#what-additional-requirements-must-my-candidate-meet-to-obtain-the-sol-bonus-points,"Based on the loaded content, here is the update and review frequency for the Shortage Occupation List (SOL):
 
-5. **Salary benchmarking**: The EP qualifying salary is distinct from the COMPASS C1 (Salary) criterion, which benchmarks candidate salaries against local PMET salaries in their specific sector.",3,"The answer is accurate and comprehensive, matching all salary figures from the reference answer across all sectors, age brackets, and timing periods. It also correctly explains the two-stage framework and includes additional helpful context."
-q-0005,simple,"How often is the Shortage Occupation List (SOL) updated, and how often is it comprehensively reviewed?","Occupations may be added or removed from the SOL once a year, to remain responsive to market conditions. The SOL will be comprehensively reviewed every 3 years. The SOL released in November 2025 applies to new and renewal EP applications from 1 January 2026. The SOL is created by MOM and the Ministry of Trade and Industry (MTI) in consultation with sector agencies and tripartite partners, and occupations are identified based on their strategic importance to Singapore's economic priorities, the degree and nature of labour shortage, and the sector's commitment to developing the local pipeline to address these shortages in the medium term.",https://www.mom.gov.sg/passes-and-permits/employment-pass/upcoming-changes-to-employment-pass-eligibility/complementarity-assessment-framework-compass/compass-shortage-occupation-list#what-additional-requirements-must-my-candidate-meet-to-obtain-the-sol-bonus-points,"Based on the loaded content, here is the information about the Shortage Occupation List (SOL) update frequency:
-
-## SOL Update Frequency
+## SOL Update and Review Frequency
 
 **Annual Updates:**
 Occupations may be added or removed from the SOL **once a year**, to remain responsive to market conditions.
@@ -212,30 +169,27 @@ Occupations may be added or removed from the SOL **once a year**, to remain resp
 **Comprehensive Review:**
 The SOL will be comprehensively reviewed every **3 years**.
 
-This means that while the list is updated annually to reflect changing labour market needs, a more thorough and detailed review of all occupations on the list occurs every three years. The SOL is created by MOM and the Ministry of Trade and Industry (MTI) in consultation with sector agencies and tripartite partners, with occupations identified based on their strategic importance to Singapore's economic priorities, the degree and nature of labour shortage, and the sector's commitment to developing the local pipeline to address these shortages.",3,"The answer accurately covers all key points: annual updates, comprehensive review every 3 years, and the creation process involving MOM, MTI, sector agencies, and tripartite partners. The only minor omission is the specific detail about the November 2025 SOL applying from 1 January 2026, but this is not essential to answering the question asked."
-q-0006,simple,"What are the situations involving a change in business entity that require an employer to inform MOM, and what should the employer do in those scenarios?","An employer needs to inform MOM if the company is undergoing changes that will result in a change in the CPF submission numbers. Specifically, the situations are: (1) changing to another type of business entity (e.g. from a sole proprietorship to a private limited company), where at least one of the directors, partners or sole proprietor will move to the new entity; (2) undergoing full merger, acquisition or amalgamation of entities; and (3) renewing a business registration with a different ACRA number while keeping the company name. For all of these scenarios, the employer should follow the process to transfer their workers to the new company.",https://www.mom.gov.sg/passes-and-permits/employment-pass/notify-mom-of-changes,"Based on the loaded documentation, here are the situations involving a change in business entity that require an employer to inform MOM, and what the employer should do:
+The SOL is created by MOM and the Ministry of Trade and Industry (MTI) in consultation with sector agencies and tripartite partners. Occupations are identified for inclusion based on:
+- Their strategic importance to Singapore's economic priorities
+- The degree and nature of labour shortage
+- The sector's commitment to developing the local pipeline to address these shortages in the medium term",3,"The answer accurately covers the key points: annual updates, 3-year comprehensive review, and the creation process involving MOM, MTI, sector agencies, and tripartite partners with the three criteria. The only minor omission is the specific mention of the November 2025 SOL applying from 1 January 2026, but this is a detail rather than a key point of the question."
+q-0006,simple,"What are the situations involving a change in business entity that require an employer to inform MOM, and what should the employer do in those scenarios?","An employer needs to inform MOM if the company is undergoing changes that will result in a change in the CPF submission numbers. Specifically, the situations are: (1) changing to another type of business entity (e.g. from a sole proprietorship to a private limited company), where at least one of the directors, partners or sole proprietor will move to the new entity; (2) undergoing full merger, acquisition or amalgamation of entities; and (3) renewing a business registration with a different ACRA number while keeping the company name. For all of these scenarios, the employer should follow the process to transfer their workers to the new company.",https://www.mom.gov.sg/passes-and-permits/employment-pass/notify-mom-of-changes,"Based on the loaded content, here are the situations involving a change in business entity that require an employer to notify MOM, and what the employer should do:
 
-## Situations Requiring Notification to MOM
+## Situations Requiring Notification
 
 An employer must inform MOM if the company is undergoing the following types of changes that will result in a change in the **CPF submission numbers**:
 
 1. **Changing to another type of business entity** — for example, converting from a sole proprietorship to a private limited company, where at least one of the directors, partners, or sole proprietor will move to the new entity.
 
-2. **Undergoing full merger, acquisition, or amalgamation of entities** — when the company merges with, acquires, or is amalgamated with other entities.
+2. **Undergoing full merger, acquisition, or amalgamation of entities** — when the company is being merged with, acquired by, or amalgamated with another entity.
 
-3. **Renewing a business registration with a different ACRA number** — while keeping the company name the same.
+3. **Renewing a business registration with a different ACRA number** — while keeping the company name the same, if the business registration is renewed with a different ACRA (Accounting and Corporate Regulatory Authority) number.
 
 ## What the Employer Should Do
 
-For all three scenarios above, the employer should:
+For these scenarios, the employer should **find out how to transfer the workers to the new company**. The document indicates that employers should refer to guidance on transferring Employment Pass holders when the company is undergoing business restructuring.
 
-**Find out how to transfer workers to the new company** — The documentation directs employers to refer to guidance on transferring the company's work pass holders if it is undergoing business restructuring.
-
-This is a critical step because when a business entity changes in a way that affects CPF submission numbers, the existing Employment Pass holders cannot simply continue under the old pass arrangement. The employer must follow the proper procedures to transfer these workers to the new entity, which typically involves:
-- Having the new company apply for new Employment Passes for the affected workers
-- Cancelling the existing Employment Passes before the new ones are issued
-
-This ensures compliance with MOM regulations and maintains the legal status of foreign workers during the business restructuring process.",3,"The answer accurately covers all three situations (changing business entity type, full merger/acquisition/amalgamation, renewing business registration with different ACRA number) and correctly states the employer should transfer workers to the new company. The additional detail about Employment Passes is reasonable elaboration, though slightly speculative, but does not detract from the core accuracy."
+The key point is that these changes result in a change to the CPF submission numbers, which is why MOM notification is required — to ensure proper tracking and continuity of the Employment Pass holders' records under the new business entity structure.",3,"The answer accurately covers all three situations (changing business entity type, full merger/acquisition/amalgamation, renewing business registration with different ACRA number) and correctly states the employer should transfer workers to the new company, matching the reference answer comprehensively."
 q-0007,simple,"How early can I apply to renew an Employment Pass, and what happens to the remaining validity on my current pass if I renew early?","For a standard Employment Pass, you can apply to renew up to 6 months (180 days) before the pass expires. For an EP (Sponsorship), you can start applying to renew 3 months before the pass expires. You must apply before the expiry date. Your new work pass validity will not be reduced or lost when you renew early; any remaining validity from your current pass (up to six months) is added on to your renewal. If you miss the deadline, you need to apply for a new pass.",https://www.mom.gov.sg/passes-and-permits/employment-pass/renew-a-pass,"Based on the Employment Pass renewal information, here are the answers to your questions:
 
 ## How Early Can You Apply?
@@ -298,44 +252,35 @@ The **Shortage Occupation List (SOL)** is directly integrated into the **COMPASS
 
 ### The Connection
 
-The SOL lists all jobs eligible for the **COMPASS C5 Skills Bonus**, which is one of six criteria in the COMPASS points-based assessment system. COMPASS is a two-stage eligibility framework for Singapore Employment Pass (EP) applications:
+The SOL defines occupations that qualify for the **C5. Skills Bonus** under COMPASS. According to the content:
 
-1. **Stage 1**: Meet the EP qualifying salary
-2. **Stage 2**: Pass COMPASS (earn at least 40 points)
+> ""This bonus recognises jobs that require highly specialised skills, which are in shortage in the local workforce. The SOL is determined by a robust evaluation process that takes into account industry needs and local workforce development efforts.""
 
-### How SOL Fits Into COMPASS
-
-The SOL occupations fall under the **bonus criteria** section of COMPASS, alongside the C6 Strategic Economic Priorities bonus. While the four foundational criteria (C1 Salary, C2 Qualifications, C3 Diversity, C4 Support for Local Employment) can earn up to 20 points each, the C5 Skills Bonus can earn:
-- **20 points** (if the candidate's nationality forms less than 1/3 of the firm's PMET employees)
-- **10 points** (if the candidate's nationality forms 1/3 or more of the firm's PMET employees)
+The SOL occupations are identified based on:
+- Their **strategic importance to Singapore's economic priorities**
+- The **degree and nature of labour shortage**
+- The **sector's commitment to developing the local pipeline** to address these shortages in the medium term
 
 ## Specific Benefits of Being on the SOL
 
-### 1. **COMPASS Points Bonus**
-Candidates performing jobs on the SOL can earn valuable bonus points (10-20 points) under the C5 criterion, which can help them pass the overall 40-point COMPASS requirement even if they score lower on other criteria.
+### 1. **COMPASS C5 Skills Bonus Points**
+Candidates filling roles on the SOL can earn **bonus points** to help pass COMPASS:
+- **Up to 20 points** for the C5 Skills Bonus (or 10 points in certain circumstances, such as when the candidate's nationality forms 1/3 or more of the firm's PMET employees)
+
+This is particularly valuable because it allows candidates who may not score well on foundational criteria (C1-C4) to still reach the required **40-point threshold** to pass COMPASS.
 
 ### 2. **5-Year Duration Employment Pass**
-A significant benefit is that **infocomm technology occupations on the SOL** qualify experienced tech professionals for a **longer 5-year duration EP** (instead of the standard 2-year duration). To qualify, candidates must:
-- Score at least 10 points on COMPASS Criterion 3 (Diversity)
-- Meet specific salary thresholds ($10,700–$15,499 depending on age and application timing)
+Experienced tech professionals on the SOL (specifically in the infocomm technology sector) may qualify for a **longer 5-year duration EP** instead of the standard shorter duration, provided they meet additional requirements including scoring at least 10 points on COMPASS Criterion 3 (Diversity).
 
-### 3. **Recognition of Specialized Skills**
-The SOL recognizes jobs that require highly specialized skills in shortage in the local workforce, spanning sectors including:
-- Agritech
-- Financial services (private banking)
-- Carbon services
-- Healthcare
-- Infocomm technology
-- Maritime
-- Semiconductors
+### 3. **Pathway to EP Approval**
+As illustrated in the case studies provided, candidates with SOL occupations can pass COMPASS even when they score poorly on firm-level criteria (C3 and C4), as shown in Example C where a candidate with 0 points on diversity and support for local employment still passed with the C5 bonus points.
 
-### 4. **Strategic Economic Importance**
-Occupations are selected for the SOL based on their **strategic importance to Singapore's economic priorities**, the degree and nature of labour shortage, and the sector's commitment to developing the local pipeline.
+## Key Requirement
 
-### 5. **Flexibility in Application**
-Candidates on the SOL can leverage these bonus points to strengthen their overall COMPASS score, making it easier to meet the 40-point pass mark even if they have weaker performance in other criteria areas.
-
-The SOL is updated annually and comprehensively reviewed every three years to remain responsive to market conditions and Singapore's evolving economic needs.",2,"The answer correctly identifies the core relationship: SOL lists jobs eligible for the COMPASS C5 Skills Bonus, and being on the SOL provides bonus points under COMPASS for EP eligibility. However, it adds substantial extraneous detail (5-year EP, sector lists, point breakdowns by nationality) that goes well beyond the reference answer and may include unverifiable claims not grounded in the referenced paragraph."
+To obtain the C5 Skills Bonus, candidates must:
+1. **Perform the specific job duties** listed for the shortage occupation
+2. **Meet additional requirements** (qualifications, experience, or registration as specified for each occupation)
+3. **Select the correct eligible job title** in the EP application form, matching the MyCareersFuture advertisement",3,"The answer correctly identifies that the SOL is integrated into COMPASS as the C5 Skills Bonus criterion, which is the core relationship described in the reference answer. It also provides additional accurate details about the specific benefits, going beyond the reference but without contradicting it."
 q-0010,medium,"If you want your family to arrive in the country around the same time your Overseas Networks & Expertise Pass is approved, when should you apply for their Dependant's Pass or Long-Term Visit Pass, and why?","You should apply for your family's passes as soon as your own pass gets approved, because Dependant's Pass and Long-Term Visit Pass applications take 4 weeks to process. Applying promptly upon your pass approval helps minimize the waiting period before your family can join you.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families,"Based on the knowledge base, here's the answer:
 
 ## Timing Recommendation
@@ -344,19 +289,19 @@ q-0010,medium,"If you want your family to arrive in the country around the same 
 
 ## Why
 
-The guidance provides two key reasons:
+There are two key reasons:
 
-1. **Processing time alignment**: Dependant's Pass and Long-Term Visit Pass applications take **4 weeks to process**. Since your ONE Pass approval typically takes around 4 weeks as well, applying after your ONE Pass is approved means your family's passes will be processed in parallel, allowing them to arrive around the same time you do.
+1. **Processing time alignment**: Dependant's Pass and Long-Term Visit Pass applications take approximately **4 weeks to process**. Since your ONE Pass typically takes about 4 weeks to process as well, applying after your ONE Pass approval means your family's passes will be processed around the same time your pass is approved, allowing them to arrive around the same time you do.
 
-2. **Financial risk mitigation**: Although you *can* apply for family passes simultaneously with your ONE Pass application, **you may lose the application fees for each family pass if your ONE Pass application is rejected**. By waiting for approval confirmation first, you avoid this financial loss.
+2. **Financial risk**: Although you *can* apply for family passes simultaneously with your ONE Pass application, doing so carries a significant financial risk. **If your ONE Pass application is rejected, you will lose the application fees for each family pass.** By waiting for ONE Pass approval first, you avoid this risk.
 
-In summary: wait for your ONE Pass approval → then apply for family passes → both will be ready within approximately the same timeframe (4 weeks each).",2,"The chatbot correctly identifies that you should apply after ONE Pass approval and that the 4-week processing time is the key reason. However, it adds potentially misleading information about financial risk mitigation and parallel processing that isn't in the reference answer, and the logic about 'arriving around the same time' is slightly confused since applying after approval means a 4-week wait, not simultaneous arrival."
+In summary: wait for ONE Pass approval → then apply for family passes → both arrive in Singapore around the same timeframe, with no wasted fees if your ONE Pass is rejected.",2,"The chatbot correctly identifies that you should apply after ONE Pass approval and that processing takes 4 weeks, matching the reference answer's key points. However, it adds potentially inaccurate details about financial risk and fee loss that aren't in the reference, and the logic about timing alignment is slightly confused (applying after approval means family arrives 4 weeks after approval, not at the same time)."
 q-0011,medium,"Which supporting agency for the COMPASS SEP bonus requires an organisation to be progressive and committed to working with the Labour Movement to strengthen local workforce development, and what is the contact email for that agency?",The National Trades Union Congress (NTUC) is the supporting agency whose SEP economic criteria require the organisation to be a progressive organisation committed to working with the Labour Movement to strengthen local workforce development (through either of the stated pathways). Its contact email is askme@ntuc.org.sg.,https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes,"Based on the loaded content, the supporting agency is **National Trades Union Congress (NTUC)**, and the contact email is **askme@ntuc.org.sg**.
 
-According to the COMPASS C6 SEP bonus eligible programmes list, NTUC requires an organisation to be a **progressive firm that is committed to work with the Labour Movement to strengthen local workforce development** through either:
+According to the eligible programmes table, NTUC requires an organisation to be a **progressive firm that is committed to work with the Labour Movement to strengthen local workforce development** through either:
 - NTUC's Company Training Committees (CTCs), or
-- Participation in Government-supported programmes",3,"The answer correctly identifies NTUC as the supporting agency and provides the correct contact email askme@ntuc.org.sg, matching the reference answer with additional relevant detail."
-q-0012,medium,"If you hold a Dependant's Pass linked to an Overseas Networks & Expertise Pass and want to apply for employment, what prerequisite regarding your pass validity must you verify before submitting an application, and what action should you take if that prerequisite is not met?","You must check that your Dependant's Pass has at least 3 months of validity remaining before submitting an application. If it has less than 3 months of validity, you need to renew your pass first. The application can then be submitted by yourself, by your prospective employer, or by an employment agent on your behalf.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/dependants-pass-for-overseas-networks-expertise-pass,"Based on the information from the knowledge base, here is the prerequisite and required action:
+- Participation in Government-supported programmes",3,"The answer correctly identifies NTUC as the supporting agency and provides the correct contact email askme@ntuc.org.sg, matching the reference answer fully."
+q-0012,medium,"If you hold a Dependant's Pass linked to an Overseas Networks & Expertise Pass and want to apply for employment, what prerequisite regarding your pass validity must you verify before submitting an application, and what action should you take if that prerequisite is not met?","You must check that your Dependant's Pass has at least 3 months of validity remaining before submitting an application. If it has less than 3 months of validity, you need to renew your pass first. The application can then be submitted by yourself, by your prospective employer, or by an employment agent on your behalf.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/dependants-pass-for-overseas-networks-expertise-pass,"Based on the loaded information, here is the prerequisite and required action:
 
 ## Prerequisite to Verify
 
@@ -368,14 +313,12 @@ If your Dependant's Pass has **less than 3 months validity**, you must **renew y
 
 ## Context
 
-This requirement applies specifically when applying for a **Letter of Consent (LOC)** to work in Singapore as a spouse of an Overseas Networks & Expertise Pass holder. The LOC is valid only up to the expiry date of your Dependant's Pass, so MOM requires sufficient remaining validity to ensure the LOC will have meaningful duration.
-
-Note: If you are a non-spouse dependant seeking employment, you would need to obtain a separate work pass (EP, S Pass, or Work Permit) rather than an LOC, and the same 3-month validity requirement would apply to your Dependant's Pass.",3,"The chatbot correctly identifies the 3-month validity prerequisite and the renewal action, matching the reference answer. Additional context about LOC and non-spouse dependants is reasonable supplementary detail without introducing errors."
+This requirement applies specifically when applying for a **Letter of Consent (LOC)** to work or operate a business in Singapore as a spouse of an Overseas Networks & Expertise Pass holder. The LOC itself is valid only up to the expiry date of your Dependant's Pass, which is why maintaining adequate pass validity is essential before submitting your employment application.",3,"The answer correctly identifies the 3-month validity prerequisite and the renewal action, matching the reference answer. The additional context about LOC is accurate and relevant without introducing errors."
 q-0013,medium,"Based on the COMPASS C1 salary benchmarks, how much more does a candidate aged 45 or older need to earn compared to a 37-year-old to achieve 20 points, and what percentile of local PMETs does this 20-point threshold correspond to?","A candidate aged 45 or older needs to earn $14,996 to achieve 20 points, while a 37-year-old needs $12,064 for the same 20 points. The difference is $2,932. The 20-point threshold corresponds to the 90th percentile of local PMETs.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c1-salary-benchmarks,"Based on the COMPASS C1 salary benchmarks, I can now provide you with a comprehensive answer.
 
 ## Salary Difference Between Age 45+ and Age 37 for 20 Points
 
-The salary difference varies by sector. Here are some examples from the current benchmarks (released Aug 2025):
+The salary difference varies by sector. Here are some examples across different sectors:
 
 | **Sector** | **Age 37 (20 pts)** | **Age ≥45 (20 pts)** | **Difference** |
 |---|---|---|---|
@@ -386,98 +329,763 @@ The salary difference varies by sector. Here are some examples from the current 
 | Education | $11,520 | $14,267 | **$2,747** |
 | Info-communication Technology | $18,139 | $22,917 | **$4,778** |
 | Professional Services | $17,956 | $22,737 | **$4,781** |
+| Retail Trade | $10,386 | $12,077 | **$1,691** |
 
-The differences range from approximately **$2,200 to $7,100** depending on the sector, with financial services showing the largest gap.
+The differences range from approximately **$1,691 to $7,143** depending on the sector, with financial services showing the largest gap.
 
 ## Percentile Correspondence
 
-The 20-point threshold corresponds to the **90th percentile of local PMET (Professional, Managerial, Executive, Technician) salaries** in each sector.
+The **20-point threshold corresponds to the 90th percentile of local PMET (Professional, Managerial, Executive, and Technician) salaries** in each sector.
 
-This means that to earn 20 COMPASS C1 points, a candidate's fixed monthly salary must meet or exceed the salary level earned by the top 10% of local PMETs in their sector—a significantly higher bar than the 10-point threshold, which corresponds to the 65th percentile.",2,"The chatbot correctly identifies the 90th percentile threshold and provides sector-specific salary differences, but does not match the reference answer's specific figures ($12,064 for age 37 and $14,996 for age 45+, difference of $2,932). The sector-specific breakdown may be accurate but diverges from the expected single-figure answer, adding complexity and potential confusion."
-q-0014,medium,"Based on the instructions provided, what two actions must a person take after receiving their In-Principle Approval (IPA) and before arriving in Singapore?",The person must (1) print their IPA letter and (2) ensure that they comply with the latest travel requirements as specified by ICA (Immigration & Checkpoints Authority) at their website.,https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/apply-for-a-pass,"Based on the content I've loaded, I can now answer your question about the two actions required after receiving an In-Principle Approval (IPA) and before arriving in Singapore.
-
-According to the **Pass map** section in the Employment Pass overview, under the ""Before candidate's arrival"" phase, after receiving an in-principle approval letter, the two actions that must be taken are:
-
-1. **Ensure that the candidate complies with the latest travel requirements** — The candidate must meet all current travel requirements, which are referenced to the Immigration and Checkpoints Authority (ICA) website.
-
-2. **Get an in-principle approval letter** — While this is technically the approval itself, the document emphasizes that once the pass is approved, the employer receives the in-principle approval letter.
-
-However, looking more carefully at the regulatory conditions in the Employment of Foreign Manpower (Work Passes) Regulations 2012, there are specific employer obligations that must be fulfilled before the candidate's arrival:
-
-1. **Ensure the candidate receives the in-principle approval letter** — The employer must take all necessary steps to ensure that the foreign employee's copy of the in-principle approval letter, in its entirety as provided by the Ministry of Manpower, is received by the foreign employee **at least 3 days before the foreign employee's departure for Singapore**.
-
-2. **Ensure compliance with travel requirements** — The employer must ensure that the candidate complies with the latest travel requirements set by the Immigration and Checkpoints Authority.
-
-These are the two critical actions that must be completed after IPA approval and before the candidate arrives in Singapore.",1,"The chatbot correctly identifies compliance with ICA travel requirements but misses the explicit action of printing the IPA letter, instead discussing receiving/getting the IPA letter. The answer is also convoluted with multiple attempts and hedging."
-q-0015,medium,"Under what legislation would a person be guilty of an offence if they falsely declared their salary, academic qualifications, or submitted forged documents in a work pass application, and what specific types of false information or fraudulent actions are covered?","Under the Employment of Foreign Manpower Act (Cap.91A), a person would be guilty of an offence if they falsely declare salary, falsely declare academic qualifications, or submit forged documents in the work pass application. All three types of misconduct — false declaration of salary, false declaration of academic qualifications, and submission of forged documents — are covered under this Act.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/long-term-visit-pass-for-overseas-networks-expertise-pass/working-in-singapore,"Based on the knowledge base available, I can see that the catalog covers Singapore's Employment Pass and ONE Pass schemes, but it does not appear to contain specific information about the offence provisions under the Employment of Foreign Manpower Act. The loaded content includes the Employment of Foreign Manpower (Work Passes) Regulations 2012, which sets out the conditions and requirements for work passes, but the specific criminal offence provisions are not included in the available materials.
-
-## Answer
-
-I apologize, but I cannot provide a complete answer to your question from the available knowledge base. While I have access to the **Employment of Foreign Manpower (Work Passes) Regulations 2012 (S 569/2012)**, which is the key regulatory framework for Singapore work passes, the specific offence provisions and penalties are not contained in the materials I have loaded.
-
-### What I Can Confirm
-
-The knowledge base confirms that the **Employment of Foreign Manpower Act (Chapter 91A)** is the governing legislation under which work pass offences would be prosecuted. The Work Passes Regulations 2012 are made under this Act and set out the conditions that applicants and employers must comply with.
-
-### What Would Be Covered
-
-Based on the regulatory framework visible in the loaded materials, offences would likely relate to:
-
-- **False declarations** in work pass applications regarding salary, qualifications, and employment details
-- **Submission of forged or fraudulent documents** (passports, educational certificates, employment verification documents)
-- **Misrepresentation** of candidate credentials or company information
-- **Breach of work pass conditions** by employers and employees
-
-However, to provide you with the **specific offence provisions, penalties, and the exact types of false information or fraudulent actions covered**, I would need access to the substantive offence sections of the Employment of Foreign Manpower Act itself, which are not currently in my active knowledge base.
-
-**I recommend consulting the Employment of Foreign Manpower Act (Chapter 91A) directly or contacting the Ministry of Manpower (MOM) for authoritative information on criminal offences and penalties related to false declarations and forged documents in work pass applications.**",2,"The chatbot correctly identifies the Employment of Foreign Manpower Act (Cap. 91A) as the governing legislation and mentions the three specific types of misconduct (false declaration of salary, false declaration of academic qualifications, and submission of forged documents). However, it hedges excessively, claims uncertainty about details it actually covers, and adds extraneous speculative content beyond what was asked."
-q-0016,medium,"Based on the consent statement, what two broad categories of passes does the disclosed information relate to, and who is authorized to both display and disclose this information?",The consent covers two broad categories: work passes and passes for dependants. The Government of Singapore and its statutory authorities are authorized to display the individual's information on the Ministry of Manpower's work pass systems and to disclose such information to any relevant person or organisation for the administration of matters relating to these passes.,https://www.mom.gov.sg/passes-and-permits/employment-pass/apply-for-a-pass,"Perfect! I found the consent statement. Based on the declaration forms in both the Employment Pass (Sponsorship) Application form and the Overseas Networks & Expertise (ONE) Pass Declaration Form, I can answer your question.
+This means that to earn 20 COMPASS C1 points, a candidate's fixed monthly salary must meet or exceed the 90th percentile of local PMET salaries in their sector—a significantly higher bar than the 10-point threshold, which requires only the 65th percentile.",2,"The chatbot correctly identifies the 90th percentile correspondence and provides sector-specific breakdowns, but the reference answer expects specific benchmark figures ($14,996 vs $12,064, difference of $2,932) rather than sector-varying amounts. The chatbot's answer is not wrong per se—it provides more granular data—but it doesn't match the specific figures in the reference answer, suggesting it may be using different or fabricated sector-level data rather than the general COMPASS C1 benchmarks the question refers to."
+q-0016,medium,"Based on the consent statement, what two broad categories of passes does the disclosed information relate to, and who is authorized to both display and disclose this information?",The consent covers two broad categories: work passes and passes for dependants. The Government of Singapore and its statutory authorities are authorized to display the individual's information on the Ministry of Manpower's work pass systems and to disclose such information to any relevant person or organisation for the administration of matters relating to these passes.,https://www.mom.gov.sg/passes-and-permits/employment-pass/apply-for-a-pass,"Based on the consent statements I've found in the work pass application forms, I can now answer your question.
 
 ## Two Broad Categories of Passes
 
-The disclosed information relates to the following two broad categories of passes:
+The consent statement relates to the following two broad categories of passes:
 
-1. **Employment Pass (EP)** and related work passes
-2. **Passes for dependants** (such as Dependant's Pass and Long-Term Visit Pass)
+1. **Work passes** (Employment Pass, S Pass, Work Permit, and Overseas Networks & Expertise Pass)
+2. **Passes for dependants** (Dependant's Pass and Long-Term Visit Pass)
 
 ## Authorization to Display and Disclose
 
-According to the consent statements in both application forms, the following entities are authorized to both display and disclose this information:
+According to the consent statements in both the Employment Pass (Sponsorship) application form and the Overseas Networks & Expertise Pass declaration form, the following entities are authorized to both display and disclose this information:
 
-**The Government of Singapore and its statutory authorities** — specifically:
-- The Ministry of Manpower
-- Any relevant person or organisation for the administration of matters relating to work pass and passes for dependants
+**The Government of Singapore and its statutory authorities** (specifically the Ministry of Manpower)
 
-### Specific Language from the Forms
+The exact language from the Employment Pass form states:
 
-From the **Employment Pass (Sponsorship) Application form** (Part 4 – Declaration by Candidate):
+> ""I consent for the Government of Singapore and its statutory authorities to **display my information on the Ministry of Manpower's work pass systems, and to disclose such information to any relevant person or organisation** for the administration of matters relating to work pass and passes for dependants.""
 
-> ""I consent for the Government of Singapore and its statutory authorities to display my information on the Ministry of Manpower's work pass systems, and to disclose such information to any relevant person or organisation for the administration of matters relating to work pass and passes for dependants.""
+Similarly, the ONE Pass declaration form specifies:
 
-From the **ONE Pass Declaration Form**:
+> ""For the Government of Singapore and statutory authorities to obtain from and verify information...with any person, organisation or any other source, and to **display my information on the Ministry of Manpower's work pass systems**. To the release of all information obtained...to the Government of Singapore, statutory authorities, their agents, and any relevant person or organisation.""",3,The answer correctly identifies the two broad categories (work passes and passes for dependants) and correctly identifies the Government of Singapore and its statutory authorities as authorized to display and disclose the information. The additional detail about specific pass types and quoted language adds context without introducing errors.
+q-0017,complex,"An Overseas Networks & Expertise Pass holder has both a legally married spouse and a common-law spouse (whose relationship is recognised under the laws of their country). What type of pass should each family member apply for, can both work in Singapore, and when should the ONE Pass holder submit these applications relative to their own pass approval?","The legally married spouse should apply for a Dependant's Pass, while the common-law spouse (whose common-law relationship is recognised under the laws of their country or region) should apply for a Long-Term Visit Pass (LTVP). Both can work in Singapore: the spouse with a Dependant's Pass can apply for a Letter of Consent (LOC) to work, and the common-law spouse on an LTVP can also apply for a Letter of Consent (LOC) to work. The ONE Pass holder is recommended to apply for these family passes once their own pass gets approved, as both Dependant's Pass and Long-Term Visit Pass applications take 4 weeks to process.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families,"Based on the loaded documentation, here is the answer to your question:
 
-> ""I consent, for the purposes of assessing this Application for an Overseas Networks & Expertise Pass, and the administration of matters relating to work pass and passes for dependants: For the Government of Singapore and statutory authorities to obtain from and verify information... and to display my information on the Ministry of Manpower's work pass systems. To the release of all information obtained... to the Government of Singapore, statutory authorities, their agents, and any relevant person or organisation.""",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWri4bTzrMqGgjGJG1g""}"
-q-0017,complex,"An Overseas Networks & Expertise Pass holder has both a legally married spouse and a common-law spouse (whose relationship is recognised under the laws of their country). What type of pass should each family member apply for, can both work in Singapore, and when should the ONE Pass holder submit these applications relative to their own pass approval?","The legally married spouse should apply for a Dependant's Pass, while the common-law spouse (whose common-law relationship is recognised under the laws of their country or region) should apply for a Long-Term Visit Pass (LTVP). Both can work in Singapore: the spouse with a Dependant's Pass can apply for a Letter of Consent (LOC) to work, and the common-law spouse on an LTVP can also apply for a Letter of Consent (LOC) to work. The ONE Pass holder is recommended to apply for these family passes once their own pass gets approved, as both Dependant's Pass and Long-Term Visit Pass applications take 4 weeks to process.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWrsEVoEwDhreUeZKp1""}"
-q-0018,complex,"A high-growth startup incorporated in Singapore wants to qualify for the COMPASS Strategic Economic Priorities (SEP) bonus. What specific financial and funding criteria must it meet according to the eligible programmes list, and what is the general eligibility requirement that all firms—including this startup—must satisfy to be considered for the SEP bonus?","To qualify for the SEP bonus, all firms must be supported by economic agencies or NTUC and must participate in or meet the criteria for at least one of the eligible programmes listed by MOM. For the high-growth startup programme specifically (Programme S/N 8, under Enterprise Singapore/EnterpriseSG), the startup must be incorporated in Singapore, must have received a minimum investment amount of USD $10 million over the past 36 months, and must have received funding from EDBI, SEEDS Capital, or other recognised investment firms. More details on the eligible SEP programmes can be downloaded from MOM's website, and queries should be directed to the supporting agencies.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWs4rVfTFxUtcGL8REB""}"
-q-0019,complex,"If an Overseas Networks & Expertise Pass (ONE Pass) holder needs to notify MOM about both a change of residential address and a change in employment details (such as a new employer and updated total annual income for the past calendar year), what steps and information are involved, and how does the process differ between these two types of updates?","For a change of residential address, the pass holder must first ensure the new address meets the relevant housing requirements (as outlined on MOM's housing requirements page). They then log in to the EP eService to update their address; the update is immediate. After updating, they should print the acknowledgement page and keep it with their pass card. For changes to employment details—such as employer(s), occupation(s), total annual income for the past calendar year, and other professional activities if applicable—the pass holder must submit the request online (via the designated link at go.gov.sg/update-passholder-particulars), together with the required supporting documents. Thus, address updates are done through the EP eService with an immediate effect and require checking housing requirements, while employment and income-related updates are submitted online with supporting documents through a separate submission process.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/notify-mom,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWsF8Nduy7snP1i94vA""}"
-q-0020,complex,"When applying for a Long-Term Visit Pass related to the Overseas Networks & Expertise Pass, if an applicant has obtained support from a vetting agency, what documentary requirement applies, and what are at least three examples of recognized vetting agencies from different professional domains? Additionally, what personal history disclosures (from Part 5) must the applicant make regarding their past interactions with immigration or legal systems?","If the applicant has obtained support from a vetting agency, they must produce documentary proof of support from the agencies concerned together with the application. Recognized vetting agencies span multiple professional domains and include, among others: Allied Health Professions Council, Enterprise Singapore (Representative Office), Legal Services Regulatory Authority, Singapore Dental Council, Singapore Medical Council, Singapore Nursing Board, Singapore Pharmacy Council, Sport Singapore, TCM Practitioners Board, and Unit for Prehospital Emergency Care. In Part 5, the applicant must disclose whether they have ever: (a) been refused entry into or deported from any country, (b) been convicted in a court of law in any country, (c) been prohibited from entering Singapore, (d) entered Singapore using a passport issued by a different country, (e) entered Singapore using a passport showing another name, or (f) been a Singapore Citizen or Singapore Permanent Resident. Furthermore, the applicant consents to the release of all information thereby obtained to the Government of Singapore, statutory authorities, and their agents thereof.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/long-term-visit-pass-for-overseas-networks-expertise-pass/working-in-singapore,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWsRELg2bmqD4WNaEF7""}"
-q-0021,complex,"A candidate is applying for an Employment Pass in Singapore for a role as a 'Carbon project manager' at a firm in the Carbon Services space. They do not hold a Bachelor's degree in any of the specified faculties. Under what alternative qualification pathway can they meet the additional requirements for this shortage occupation, and how does the general rule about sector-specificity for SOL bonus points potentially affect their eligibility? Additionally, contrast the type of credential required for a Marine Superintendent role on the SOL with the credential options available for the Carbon project manager role.","For the Carbon project/program manager shortage occupation (S/N 4 under the Green economy category), a candidate without a Bachelor's degree in the specified faculties (Earth Sciences, Environmental Engineering, Environmental Management, Environmental Policy, Sustainability Management, or Sustainability Policy) can alternatively qualify under criterion (2b): they must have a minimum total of three years' work experience in at least one of a specified list of job titles, which includes Carbon auditor, Carbon programme manager, Carbon project manager, Carbon project originator, Carbon rating analyst, Carbon standards & methodology developer, Carbon verification & audit specialist, Chief sustainability officer, Conservation officer, Conservation scientist, Energy and sustainability manager, Environmental auditor, Environmental compliance officer, Environmental impact analyst, Environmental management consultant, Environmental officer (environmental protection), Environmental programme coordinator, Natural resource analyst, Sustainability officer, and Sustainability specialist. In addition, they must also satisfy criterion (1): being from a firm involved in the Carbon Services space, which MOM verifies directly with EDB and EnterpriseSG (no additional documentation required; new entrants can reach out to EDB/EnterpriseSG). Regarding sector-specificity, candidates working in occupations on the SOL may not need to be working in the respective sectors listed to qualify for the bonus points, meaning the Carbon project manager candidate could potentially qualify for SOL bonus points even if not strictly in the listed sector. In contrast, the Marine Superintendent role requires a specific maritime credential — at least a Level 1 Certificate of Competency from Singapore's Maritime Port Authority (MPA) or from recognized foreign maritime administrations — which should be declared as a post-secondary diploma in the EP application form. This is a narrowly defined professional certification, unlike the Carbon project manager role which offers a choice between an academic degree in specified faculties or a minimum of three years' relevant work experience across a broad range of sustainability and carbon-related job titles.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c5-skills-bonus-shortage-occupation-list-sol,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWsbL4HL67yz4Q7LhcN""}"
-q-0022,complex,"Under the Employment of Foreign Manpower (Work Passes) Regulations 2012, if an employer discovers that a foreign employee has gone missing and the employee's work permit subsequently expires without the employee being found or employed by another employer, what are the employer's specific obligations regarding (a) notification and its timeline, and (b) repatriation and the destination standard, and how are disputes about the repatriation destination resolved?","(a) Under the Regulations (which came into operation on 9th November 2012), the employer must inform the Controller within 7 days after the employer becomes aware of the foreign employee going missing. (b) Subject to paragraphs 13 and 17 of the Regulations, the employer must repatriate the foreign employee to the international port of entry within the foreign employee's home country that affords reasonable access to the foreign employee's hometown, when the work permit or visit pass expires, is cancelled, or is revoked, provided the foreign employee is not earlier employed by another employer. In the event of any dispute about the international port of entry to which the foreign employee shall be repatriated, the dispute shall be referred to the Controller, whose decision shall be final.",https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWsmLKQ373nHqqtPwYd""}"
-q-0023,complex,"If a company submits its Overseas Networks & Expertise Pass application using financial documents signed by its own management staff instead of third-party auditors, and the application is subsequently rejected, what is the deadline for submitting an appeal, and if the pass holder later decides not to work in Singapore, what are the rules for cancelling the pass?","First, regarding the financial documents: MOM will only consider documents from third party auditors; documents signed by the company's management staff will not be accepted. If the company's latest audited Profit & Loss statements are provided in lieu of other information, they must still be from third party auditors. If the application is rejected (potentially due to unacceptable documentation), the appeal must be submitted within 3 months of the rejection; otherwise, a new application must be submitted. Separately, if the pass holder no longer plans to work in Singapore, the pass must be cancelled within 1 week before the departure date (for example, if the departure date is 10 February, the request should be submitted from 3 February onwards). The cancellation can be done by the pass holder or their employment agent, and the cancellation takes effect immediately.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWswDPiKk9Za5CUdD2D""}"
-q-0024,complex,"When renewing an Employment Pass in Singapore, what personal and professional details must the candidate provide on the renewal form, what digital tool should the pass holder use to view their work pass after renewal, and what income verification consent does the candidate give as part of the renewal process—including the fallback verification rule if the current year's records are unavailable?","On the Employment Pass (Sponsorship) Renewal Form (Part 1), the candidate must provide: a notification email address, the pass expiry date and duration of pass applied for (in years and months), their Foreign Identification Number (FIN), full name as on travel document (excluding salutations such as Mr, Miss, Professor, Doctor), nationality/citizenship and state/province of nationality/citizenship, travel document type, travel document number with issue and expiry dates (in DD/MM/YYYY format), marital status, residential address (block/house number, floor number, unit number, building name, street name, postal code), total period of working experience (years and months), and total relevant working experience relevant to the current occupation (years and months). After renewal, the pass holder should use the SGWorkPass app to view their digital work pass and employment information; they will need a Singpass account to do so. As part of the renewal, the candidate consents for the Comptroller of Income Tax to verify their income stated in their current and renewal applications based on their assessment record for the current Year of Assessment. If the current Year of Assessment record is not available or finalised at the point of verification, the Comptroller of Income Tax will instead verify income against the assessment records for the two previous Years of Assessment. The candidate also consents for the Comptroller of Income Tax to communicate the verification results to the Controller of Work Passes.",https://www.mom.gov.sg/passes-and-permits/employment-pass/renew-a-pass,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWt6Dd8TKrJy6ZQeYoq""}"
-q-0025,hard-1,"For an Overseas Networks & Expertise Pass (ONE Pass) holder in Singapore: (a) What pass types are available for their legally married spouse versus their common-law spouse, and what work-related benefit can each of these family members obtain? (b) What is the risk if the family pass applications are submitted at the same time as the ONE Pass application? (c) What is the deadline for the ONE Pass holder to notify MOM of a change in residential address or mobile number, and what is the consequence of failing to do so?","(a) A legally married spouse of a ONE Pass holder can obtain a Dependant's Pass, while a common-law spouse (defined as a common-law relationship between 2 people that is recognised under the laws of their country or region) can obtain a Long-Term Visit Pass (LTVP). Both the spouse on a Dependant's Pass and the common-law spouse on an LTVP can apply for a Letter of Consent (LOC) to work in Singapore. (b) Although family pass applications can be submitted at the same time as the ONE Pass application, the applicant may lose the application fees for each family pass if the ONE Pass application gets rejected. (c) The ONE Pass holder must update MOM within 2 weeks of changing their residential address or mobile number. Otherwise, they may be penalised.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/notify-mom,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWtGEdT2zcPvxHRgnwu""}"
-q-0026,hard-1,"When an employer is cancelling a work pass for a foreign employee, what obligations does the employer have regarding repatriation costs, and how does this contrast with the process for an Overseas Networks & Expertise Pass (ONE Pass) holder who no longer requires their pass? Additionally, if a ONE Pass holder's company cannot provide specific financial information during the application process, what alternative documentation does MOM accept and what restrictions apply to that alternative?","For an Employment Pass holder whose pass is being cancelled, the employer must: (1) give the pass holder reasonable notice on their upcoming repatriation; (2) seek tax clearance from the Inland Revenue Authority of Singapore (IRAS) at least 1 month before the last day of employment; (3) settle all outstanding employment issues that the pass holder may raise, including salary payments; and (4) buy an air ticket with check-in luggage and pay for all connecting transport costs to the international port of entry in the pass holder's home country or the region nearest to their hometown — unless the pass holder agrees in writing to bear the cost instead. In contrast, for a ONE Pass holder who no longer requires their pass, the holder themselves cancels the pass directly (there is no employer-driven repatriation obligation described). ONE Pass holders are also required to notify MOM about their professional activities and annual income by 31 January of the next year, and to notify MOM about any changes to their residential address or personal information. Separately, regarding ONE Pass application documentation, if the required company financial information is not available, the applicant may provide the company's latest audited Profit & Loss statements instead. However, MOM will only consider documents from third-party auditors; documents signed by the company's management staff will not be accepted.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass https://www.mom.gov.sg/passes-and-permits/employment-pass,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWtSCAbxfob24ozdRCV""}"
-q-0027,hard-1,"For an individual who holds an Overseas Networks & Expertise Pass (ONE Pass), what ongoing obligation must they fulfill after obtaining the pass, and what specific limitation applies to the occupations they can take up? Additionally, what consent regarding their contact details is involved in the application process?","An Overseas Networks & Expertise Pass (ONE Pass) holder has an annual notification obligation to MOM and must also notify MOM of any changes to their details. Furthermore, ONE Pass holders cannot work in certain restricted occupations, such as media or religion related occupations, unless they have obtained approval from MOM. During the application process, the applicant consents to the use of their contact details to be contacted during emergencies and to receive messages related to their work pass and employment in Singapore, and to the sharing of their contact details with other Government agencies and statutory authorities for the same purpose.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/notify-mom https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/apply-for-a-pass,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWtbew1StQ9BDR23H8c""}"
-q-0028,hard-1,"If a candidate already has an existing work pass application pending with MOM, can they simultaneously apply for an Overseas Networks & Expertise Pass, and once they do hold an Overseas Networks & Expertise Pass, what family-related benefit does it provide?","No, a candidate cannot apply for an Overseas Networks & Expertise Pass if they already have an existing work pass application, because only 1 work pass application per candidate may be submitted at a time. Additionally, the applicant must declare that the information in the application is, to the best of their knowledge, true and correct, and that all documents submitted in support of the application are true copies of the originals. Once a candidate holds an Overseas Networks & Expertise Pass, they may apply for passes to allow their family members to join them in Singapore.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/apply-for-a-pass https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWtkjPCVt2xpfbgkTRf""}"
-q-0029,hard-1,"What restriction applies to a foreign employee's work under an S pass, and under what condition can an employer be exempted from granting that employee a rest day?","Under the S pass and visit pass, the foreign employee shall work only for the employer and in the occupation and sector specified in the S pass and visit pass (Packet A, paragraph 413). Regarding rest days, the employer does not have to grant a rest day to the foreign employee if there is a prior written agreement mutually agreed between the employer and the foreign employee (Packet A, paragraph 179). Additionally, when applying for a pass, the applicant must declare whether they have, among other things, been refused entry into or deported from any country, been convicted in a court of law in any country, been prohibited from entering Singapore, entered Singapore using a passport issued by a different country, entered Singapore using a different name, or been a Singapore Citizen or Singapore Permanent Resident (Packet B, paragraph 24). These declarations form part of the application process that determines eligibility for the pass under which these work restrictions and rest day provisions apply.",https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts https://www.mom.gov.sg/passes-and-permits/employment-pass/apply-for-a-pass,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWtvsaT6gXPgwMa5AQc""}"
-q-0030,hard-1,"For an Overseas Networks & Expertise (ONE) Pass holder who wants to bring family members to Singapore, which family members are eligible under the Long-Term Visit Pass, and how long after submitting a Dependant's Pass application should one check the application status?","The Long-Term Visit Pass for ONE Pass holders covers common-law spouses, step-children, handicapped children, and parents of the pass holder. For a Dependant's Pass application for a ONE Pass holder, the applicant should check the application status after 3 weeks, though it may take longer if additional information is required.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/long-term-visit-pass-for-overseas-networks-expertise-pass https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/dependants-pass-for-overseas-networks-expertise-pass,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWu6tLjiZQm4rtfvf3g""}"
-q-0031,hard-1,"When applying for a Letter of Consent for a common-law spouse under the Overseas Networks & Expertise Pass, what language requirement applies to supporting documents, and what financial details about the employing company must be provided in the application form? Additionally, if the common-law spouse later obtains an Employment Pass and that pass card is lost or stolen, what are the replacement fee, the timeline for applying, and who can submit the replacement application?","For the Letter of Consent (Common-Law Spouse) application under the ONE Pass, non-English documents must be accompanied by an English translation, which can be done by a translation service provider. The application form requires the employing company to provide its paid-up capital (in S$) and the value of turnover for the past 3 years (starting with the most recent year), including for each year whether the turnover figure is from an audited account (for unaudited accounts or if the employing company is exempted from audit, 'No' should be selected). If the common-law spouse later holds an Employment Pass and the pass card is lost or stolen, the employer must apply for a replacement within 1 week. The replacement application can be submitted by the employer or an appointed employment agent (EA). For a damaged card, the fee is $65.40. For a lost or stolen card, the fee is also specified (fees are inclusive of GST and non-refundable). Processing is immediate for most cases, with card collection taking 4 working days after approval.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/long-term-visit-pass-for-overseas-networks-expertise-pass/working-in-singapore https://www.mom.gov.sg/passes-and-permits/employment-pass,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWuGdUTUq8xyhTEKNvB""}"
-q-0032,hard-1,"Under the COMPASS framework for Employment Pass eligibility, what fixed monthly salary would a 30-year-old EP candidate need to earn to score 10 points on the C1 salary criterion, and what additional bonus criterion (C6) can an organisation qualify for by participating in eligible programmes — including what is required to be considered for that bonus?","For the C1 salary benchmark criterion, a candidate aged 30 needs a fixed monthly salary of at least $8,283 to score 10 points (which corresponds to the 65th percentile of local PMETs). To score 20 points at the same age, the required salary rises to $14,316 (the 90th percentile of local PMETs). These C1 salary benchmarks are published by sector: the version released in August 2025 and an upcoming version to be released in August 2026 are both available as downloadable PDFs ('C1 salary benchmarks by sectors'). Separately, under criterion C6 (Strategic Economic Priorities bonus), an organisation needs to participate in at least one of the eligible programmes listed by MOM to be considered for the C6 SEP bonus. Neither the salary benchmarks alone nor the C6 programme participation requirement alone covers both aspects; both must be considered together as part of the COMPASS framework.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c1-salary-benchmarks https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWuVAnEVR4zFiAUAjym""}"
-q-0033,hard-2,"Looking at the logo shown on the page, what colors are used in the Ministry of Manpower's logo, and according to the EP (Sponsorship) Renewal Form, how long does it take to process a renewal application submitted through that form?","The Ministry of Manpower logo uses orange and blue (dark blue and a lighter blue) colors. According to the EP (Sponsorship) Renewal Form (Page 1), it takes around 8 weeks to process the renewal application. Note that the main webpage states 'within 6 weeks for most cases' for EP (Sponsorship) renewals processed via the myMOM Portal, but the form itself states approximately 8 weeks.",https://www.mom.gov.sg/passes-and-permits/employment-pass/renew-a-pass https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/ep_sponsor_renewal_form.pdf,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWufG13QaLAkdFrJqyY""}"
-q-0034,hard-2,"According to the travel document requirements for an Employment Pass application, when there are changes to passport details such as name or expiry date, what is the exact wording of the checkbox option shown in the eService application form that applicants must select before uploading the Amendments/Observation page?","The checkbox reads: ""I wish to upload Amendments/Observations page as there are changes in the biodata page details. (optional)""",https://www.mom.gov.sg/passes-and-permits/employment-pass/documents-required https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWupSAGpoBgQoj3BayF""}"
-q-0035,hard-2,"According to the candidate's form overview shown in the image, what are the three steps in the application process, what does each step involve, and how long does the form estimate it may take to complete?","The three steps in the application process are: Step 1 – Candidate's form: Use this form to provide your personal details to your employer; errors may cause delay or even rejection. Step 2 – EP or S Pass application: Your employer will apply for an Employment Pass (EP) or S Pass on your behalf after written consent has been given with the information you have provided in this form. Step 3 – Application outcome: Your employer will notify you of the application outcome; if the application is approved by MOM, you will receive an In-Principle Approval (IPA) letter. The form may take 20 minutes to complete.",https://www.mom.gov.sg/passes-and-permits/employment-pass/apply-for-a-pass https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/ep-and-s-pass-candidate-form.pdf,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWuykFLWYPZomPrLjFj""}"
-q-0036,hard-2,"According to the C1 salary benchmarks document released in Aug 2025, what government body's logo appears on the document, and what are the specific C1 salary benchmarks (for both 10 points and 20 points) for a 30-year-old candidate in the Accommodation sector?","The document bears the logo of the Ministry of Manpower (MOM). For a 30-year-old candidate in the Accommodation sector (released Aug 2025), the required fixed monthly salary for 10 points (65th percentile of local PMETs) is $5,063, and the required salary for 20 points (90th percentile of local PMETs) is $7,843. The salary benchmarks increase progressively with age from age 23 to age 45. For the Accommodation sector, the range for 10 points runs from $4,341 (age ≤23) to $6,611 (age ≥45), and for 20 points from $5,578 (age ≤23) to $12,695 (age ≥45). Candidates who do not meet the EP qualifying salary are not eligible regardless of COMPASS points, and EP candidates earning at least $22,500 in fixed monthly salary are exempted from COMPASS entirely.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c1-salary-benchmarks https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks.pdf,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWv8oD6yW6CTDhEi6d4""}"
-q-0037,hard-2,"What is the domain name displayed in the center of the QR code shown on the page, and what is the purpose of the page this QR code appears on?","The domain name displayed in the center of the QR code is GO.gov.sg. The QR code appears on the Ministry of Manpower (MOM) page about eligibility for the Employment Pass (EP) in Singapore, which explains the two-stage eligibility framework: Stage 1 requires candidates to earn at least the EP qualifying salary (benchmarked to the top 1/3 of local PMET salaries by age), and Stage 2 requires passing the points-based Complementarity Assessment Framework (COMPASS) by earning at least 40 points, unless exempted.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/compass-booklet.pdf,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWvKXdUUEHB62hSeKHi""}"
-q-0038,hard-2,"What government ministry's logo appears on the COMPASS C5 Skills Bonus - Shortage Occupation List (SOL) page, and what are the colors used in its logo design?","The logo belongs to the Ministry of Manpower. The logo design features three curved swoosh-like figures in dark blue, orange, and blue, positioned to the left of the text 'Ministry of Manpower' in dark blue.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c5-skills-bonus-shortage-occupation-list-sol https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/sol-guidebook.pdf,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWvU2rGFLgkHZd9X9BP""}"
-q-0039,hard-2,"According to the header of the document listing standard occupations available in EP eService, what is the address of the Work Pass Division shown on the document, and what visual branding element (logo) appears on the document's first page?","The Work Pass Division is located at 18 Havelock Road, Singapore 059764, with the website www.mom.gov.sg. The document bears the Ministry of Manpower logo, which consists of three stylized curved figures in orange and two shades of blue (representing people), alongside the text 'Ministry of Manpower' in dark blue.",https://www.mom.gov.sg/passes-and-permits/employment-pass/notify-mom-of-changes https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_a-i.pdf,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWvdAGwZx7SpUAGtmMQ""}"
-q-0040,hard-2,"According to the timeline diagram for Employment Pass applications, if an employer posts a job advertisement in early January and closes it after 30 days (in early February), what is the earliest date they can submit an EP or S Pass application relative to the job ad posting, and what is the latest date they can use that job advertisement for the application?","The earliest date to submit an EP or S Pass application is 15 days after posting the job ad (shown in the diagram as a point in mid-January). The latest date to submit an EP or S Pass application using that job advertisement is 3 months after the employer closes the job ad. In the diagram's example, the employer closes the job ad after 30 days (early February), and the latest date to submit the application using that ad falls in early May — 3 months after closure. Additionally, per the markdown, job advertisements that have expired or been closed for more than 3 months cannot be used for EP applications, and the employer must re-advertise the vacancy.",https://www.mom.gov.sg/passes-and-permits/employment-pass https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/fcf-ep-application-date.png,"[backend_error] http_500: {""detail"":""BadRequestError: litellm.BadRequestError: AnthropicException - b'{\""type\"":\""error\"",\""error\"":{\""type\"":\""invalid_request_error\"",\""message\"":\""Your credit balance is too low to access the",,"[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {""type"":""error"",""error"":{""type"":""invalid_request_error"",""message"":""Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.""},""request_id"":""req_011CegWvnpTHTCxu3CjeM82Z""}"
+## Pass Types for Each Spouse
+
+| Spouse Type | Pass Type | Work Rights |
+|---|---|---|
+| **Legally married spouse** | Dependant's Pass (DP) | Can work with a free Letter of Consent (LOC) |
+| **Common-law spouse** | Long-Term Visit Pass (LTVP) | Can work with a Letter of Consent (LOC) |
+
+## Work Eligibility
+
+**Both spouses can work in Singapore**, but through different mechanisms:
+
+- **Legally married spouse (DP holder)**: Can apply for a free Letter of Consent to work or operate a business in Singapore. Processing time is within 4 weeks.
+
+- **Common-law spouse (LTVP holder)**: Can also apply for a Letter of Consent to work in Singapore. The prospective employer must submit the application on their behalf using the Letter of Consent (Common-Law Spouse) application form. Processing time is approximately 8 weeks.
+
+## Application Timing
+
+**MOM recommends applying for family passes AFTER the ONE Pass is approved**, not concurrently. The guidance states:
+
+> ""We recommend applying for your family's passes once your pass gets approved, as Dependant's Pass and Long-Term Visit Pass applications take 4 weeks to process.""
+
+**Important caveat**: Although you *can* apply for family passes at the same time as the ONE Pass application, **you may lose the application fees for each family pass if the ONE Pass application is rejected**. This is a significant financial risk, so the safer approach is to wait for ONE Pass approval before submitting family pass applications.",3,"The answer correctly identifies DP for the legally married spouse, LTVP for the common-law spouse, LOC work eligibility for both, and the recommendation to apply after ONE Pass approval. Additional details (free LOC, processing times, financial caveat) are reasonable elaborations consistent with the reference answer."
+q-0018,complex,"A high-growth startup incorporated in Singapore wants to qualify for the COMPASS Strategic Economic Priorities (SEP) bonus. What specific financial and funding criteria must it meet according to the eligible programmes list, and what is the general eligibility requirement that all firms—including this startup—must satisfy to be considered for the SEP bonus?","To qualify for the SEP bonus, all firms must be supported by economic agencies or NTUC and must participate in or meet the criteria for at least one of the eligible programmes listed by MOM. For the high-growth startup programme specifically (Programme S/N 8, under Enterprise Singapore/EnterpriseSG), the startup must be incorporated in Singapore, must have received a minimum investment amount of USD $10 million over the past 36 months, and must have received funding from EDBI, SEEDS Capital, or other recognised investment firms. More details on the eligible SEP programmes can be downloaded from MOM's website, and queries should be directed to the supporting agencies.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes,"Based on the loaded knowledge base content, I can provide you with a comprehensive answer about the COMPASS C6 SEP bonus requirements for a high-growth startup.
+
+## Specific Financial and Funding Criteria for High-Growth Startups
+
+According to the eligible programmes list, a **high-growth startup incorporated in Singapore** must meet the following specific criteria to qualify for the C6 SEP bonus:
+
+1. **Minimum Investment Amount**: USD $10 million invested over the past 36 months
+2. **Funding Source**: The startup must have received funding from:
+   - EDBI (Economic Development Board's investment arm), **OR**
+   - SEEDS Capital, **OR**
+   - Other recognised investment firms
+
+This programme is administered by **Enterprise Singapore (EnterpriseSG)** and is listed as item #8 in the eligible SEP programmes table.
+
+## General Eligibility Requirement for All Firms
+
+The **general eligibility requirement** that applies to all firms—including your startup—is:
+
+**Your organisation must participate in at least ONE of the eligible programmes** to be considered for the C6 SEP bonus.
+
+## How the SEP Bonus Works
+
+Once your startup qualifies and is approved by EnterpriseSG:
+
+- **Points awarded**: 10 points under the C6 criterion
+- **Validity period**: Up to 3 years, or for the duration of your organisation's participation in the eligible programme, whichever is shorter
+- **Renewal requirements**: At renewal, your organisation must:
+  - Continue participating in an eligible programme
+  - Earn at least 10 points for **C3 (Diversity)** for each of the 3 months before renewal
+  - Earn at least 10 points for **C4 (Support for Local Employment)** for each of the 3 months before renewal
+
+For more details or to verify your startup's eligibility, you should contact **EnterpriseSG** directly at: **ENTERPRISESG_COMPASS@enterprisesg.gov.sg**",2,"The chatbot correctly identifies the specific financial criteria (USD $10M over 36 months, funding from EDBI/SEEDS Capital/other recognised firms, Programme S/N 8 under EnterpriseSG) and the requirement to participate in an eligible programme. However, it omits the general requirement that firms must be 'supported by economic agencies or NTUC,' which the reference answer identifies as essential. The additional details about points, validity, and renewal are extra but not incorrect."
+q-0019,complex,"If an Overseas Networks & Expertise Pass (ONE Pass) holder needs to notify MOM about both a change of residential address and a change in employment details (such as a new employer and updated total annual income for the past calendar year), what steps and information are involved, and how does the process differ between these two types of updates?","For a change of residential address, the pass holder must first ensure the new address meets the relevant housing requirements (as outlined on MOM's housing requirements page). They then log in to the EP eService to update their address; the update is immediate. After updating, they should print the acknowledgement page and keep it with their pass card. For changes to employment details—such as employer(s), occupation(s), total annual income for the past calendar year, and other professional activities if applicable—the pass holder must submit the request online (via the designated link at go.gov.sg/update-passholder-particulars), together with the required supporting documents. Thus, address updates are done through the EP eService with an immediate effect and require checking housing requirements, while employment and income-related updates are submitted online with supporting documents through a separate submission process.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/notify-mom,"Based on the loaded information, here's a comprehensive breakdown of how ONE Pass holders must notify MOM about address changes and employment updates, and how these processes differ:
+
+## **Notification Requirements for ONE Pass Holders**
+
+### **1. Residential Address or Mobile Number Changes**
+
+**Timeline:**
+- Must notify MOM **within 2 weeks** of the change
+- Failure to do so may result in penalties
+
+**Steps involved:**
+1. Ensure your new address meets relevant housing requirements
+2. Log in to **EP eService** to update your address or mobile number
+3. The update is **immediate** upon submission
+4. Print the acknowledgement page and keep it with your pass card
+
+**Information required:**
+- New residential address (must meet housing requirements)
+- Mobile number (if changed)
+
+---
+
+### **2. Employment Details and Income Changes**
+
+**Timeline:**
+- Part of the **annual notification exercise** (not a continuous, on-demand process)
+- MOM will send you an email with instructions if you are required to participate
+
+**Steps involved:**
+1. Wait for MOM to contact you via email requesting annual notification
+2. Provide the required information through the notification exercise
+
+**Information required:**
+- Employer(s) and occupation(s)
+- Total annual income for the past calendar year
+- Other professional activities (if applicable)
+
+---
+
+## **Key Differences Between the Two Processes**
+
+| Aspect | Address/Mobile Number | Employment & Income |
+|--------|----------------------|-------------------|
+| **Trigger** | Whenever you change address or mobile number | Annual notification exercise (MOM-initiated) |
+| **Timeline** | Within 2 weeks of change | As instructed by MOM in annual notification email |
+| **Method** | Self-service via EP eService (immediate) | Respond to MOM's email with required information |
+| **Penalty for delay** | Yes—may be penalized for late notification | Not specified, but part of mandatory annual exercise |
+| **Frequency** | As needed (ad hoc) | Once per year |
+| **Information scope** | Address and/or mobile number only | Employer(s), occupation(s), annual income, professional activities |
+
+---
+
+## **Important Notes**
+
+- **Annual notification is mandatory**: If MOM requires you to participate in the annual notification exercise, you must provide employment details and income information as requested.
+- **Address updates are self-service**: Unlike employment updates, address changes can be updated immediately through EP eService without waiting for MOM to contact you.
+- **Acknowledgement is important**: For address changes, you should print and retain the acknowledgement page as proof of your update.",2,"The address change process is accurately described (EP eService, immediate, housing requirements, print acknowledgement). However, the employment details update process diverges from the reference: the reference says the pass holder submits online via go.gov.sg/update-passholder-particulars with supporting documents, while the chatbot describes it as a MOM-initiated annual notification exercise where you wait for an email. This is a significant difference in the described mechanism, though the required information fields are correct."
+q-0020,complex,"When applying for a Long-Term Visit Pass related to the Overseas Networks & Expertise Pass, if an applicant has obtained support from a vetting agency, what documentary requirement applies, and what are at least three examples of recognized vetting agencies from different professional domains? Additionally, what personal history disclosures (from Part 5) must the applicant make regarding their past interactions with immigration or legal systems?","If the applicant has obtained support from a vetting agency, they must produce documentary proof of support from the agencies concerned together with the application. Recognized vetting agencies span multiple professional domains and include, among others: Allied Health Professions Council, Enterprise Singapore (Representative Office), Legal Services Regulatory Authority, Singapore Dental Council, Singapore Medical Council, Singapore Nursing Board, Singapore Pharmacy Council, Sport Singapore, TCM Practitioners Board, and Unit for Prehospital Emergency Care. In Part 5, the applicant must disclose whether they have ever: (a) been refused entry into or deported from any country, (b) been convicted in a court of law in any country, (c) been prohibited from entering Singapore, (d) entered Singapore using a passport issued by a different country, (e) entered Singapore using a passport showing another name, or (f) been a Singapore Citizen or Singapore Permanent Resident. Furthermore, the applicant consents to the release of all information thereby obtained to the Government of Singapore, statutory authorities, and their agents thereof.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/long-term-visit-pass-for-overseas-networks-expertise-pass/working-in-singapore,"Based on the Letter of Consent (Common-Law Spouse) Application Form for LTVP holders of ONE Pass holders, I can provide you with the following information:
+
+## Documentary Requirement for Vetting Agency Support
+
+**Section 4E** of the application form states that if an applicant has obtained support from a relevant vetting agency, professional body, or accreditation agency, the applicant **must produce documentary proof of support from the agencies concerned together with this application**.
+
+## Three Examples of Recognized Vetting Agencies from Different Professional Domains
+
+The form lists the following vetting agencies/professional bodies/accreditation agencies across different sectors:
+
+1. **Singapore Medical Council** (Healthcare domain) — for doctors
+2. **Legal Services Regulatory Authority** (Legal domain) — for lawyers
+3. **Sport Singapore** (Sports domain) — for football players and coaches
+
+Other examples from different domains include:
+- **Singapore Dental Council** (Healthcare)
+- **Singapore Nursing Board** (Healthcare)
+- **Singapore Pharmacy Council** (Healthcare)
+- **Allied Health Professions Council** (Healthcare)
+- **Traditional Chinese Medicine Practitioners Board** (Healthcare)
+- **Unit for Prehospital Emergency Care** (Healthcare/Emergency Services)
+- **Enterprise Singapore** (Business/Economic Development)
+
+## Personal History Disclosures Required in Part 5
+
+**Part 5** of the application form requires the applicant to disclose whether they have ever:
+
+**(a) Been refused entry into or deported from any country?**
+
+**(b) Been convicted in a court of law in any country?**
+
+**(c) Been prohibited from entering Singapore?**
+
+**(d) Entered Singapore using a passport issued by a different country?**
+
+**(e) Entered Singapore using a passport showing another name?**
+
+**(f) Been a Singapore Citizen or Singapore Permanent Resident?**
+
+The form explicitly states: ""If the answer to any of the above questions is 'Yes', please provide the details."" This ensures full transparency regarding the applicant's immigration and legal history.",3,"The answer accurately covers the documentary requirement (documentary proof of support from the agencies concerned together with the application), lists all recognized vetting agencies matching the reference, and correctly enumerates all six personal history disclosures from Part 5. The only minor omission is the consent clause about release of information to the Government of Singapore, but all substantive elements are present and accurate."
+q-0021,complex,"A candidate is applying for an Employment Pass in Singapore for a role as a 'Carbon project manager' at a firm in the Carbon Services space. They do not hold a Bachelor's degree in any of the specified faculties. Under what alternative qualification pathway can they meet the additional requirements for this shortage occupation, and how does the general rule about sector-specificity for SOL bonus points potentially affect their eligibility? Additionally, contrast the type of credential required for a Marine Superintendent role on the SOL with the credential options available for the Carbon project manager role.","For the Carbon project/program manager shortage occupation (S/N 4 under the Green economy category), a candidate without a Bachelor's degree in the specified faculties (Earth Sciences, Environmental Engineering, Environmental Management, Environmental Policy, Sustainability Management, or Sustainability Policy) can alternatively qualify under criterion (2b): they must have a minimum total of three years' work experience in at least one of a specified list of job titles, which includes Carbon auditor, Carbon programme manager, Carbon project manager, Carbon project originator, Carbon rating analyst, Carbon standards & methodology developer, Carbon verification & audit specialist, Chief sustainability officer, Conservation officer, Conservation scientist, Energy and sustainability manager, Environmental auditor, Environmental compliance officer, Environmental impact analyst, Environmental management consultant, Environmental officer (environmental protection), Environmental programme coordinator, Natural resource analyst, Sustainability officer, and Sustainability specialist. In addition, they must also satisfy criterion (1): being from a firm involved in the Carbon Services space, which MOM verifies directly with EDB and EnterpriseSG (no additional documentation required; new entrants can reach out to EDB/EnterpriseSG). Regarding sector-specificity, candidates working in occupations on the SOL may not need to be working in the respective sectors listed to qualify for the bonus points, meaning the Carbon project manager candidate could potentially qualify for SOL bonus points even if not strictly in the listed sector. In contrast, the Marine Superintendent role requires a specific maritime credential — at least a Level 1 Certificate of Competency from Singapore's Maritime Port Authority (MPA) or from recognized foreign maritime administrations — which should be declared as a post-secondary diploma in the EP application form. This is a narrowly defined professional certification, unlike the Carbon project manager role which offers a choice between an academic degree in specified faculties or a minimum of three years' relevant work experience across a broad range of sustainability and carbon-related job titles.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c5-skills-bonus-shortage-occupation-list-sol,"Perfect! I now have the detailed SOL information. Let me provide a comprehensive answer based on the loaded content.
+
+## Alternative Qualification Pathway for Carbon Project Manager
+
+For a **Carbon project manager** role in the Carbon Services space, a candidate **without a Bachelor's degree** in the specified faculties can meet the additional requirements through **pathway (2b): minimum total three years' work experience** in one of the listed carbon-related job titles.
+
+The eligible job titles for this alternative pathway include:
+- Carbon auditor
+- Carbon programme manager
+- Carbon project manager
+- Carbon project originator
+- Carbon rating analyst
+- Carbon standards & methodology developer
+- Carbon verification & audit specialist
+- Chief sustainability officer
+- Conservation officer
+- Conservation scientist
+- Energy and sustainability manager
+- Environmental auditor
+- Environmental compliance officer
+- Environmental impact analyst
+- Environmental management consultant
+- Environmental officer (environmental protection)
+- Environmental programme coordinator
+- Natural resource analyst
+- Sustainability officer
+- Sustainability specialist
+
+### Sector-Specificity Rule and Its Impact
+
+The SOL document explicitly addresses sector-specificity with this important note:
+
+> ""Candidates working in the occupations on the SOL may **not need to be working in the respective sectors** listed below to qualify for the bonus points. For details, please refer to the SOL Employer Guide.""
+
+However, for the **Carbon project manager role specifically**, there is a **sector-specific requirement**: the candidate must **be from a firm involved in the Carbon Services space**. MOM verifies this directly with the Economic Development Board (EDB) and Enterprise Singapore (EnterpriseSG), so no additional documentation is required from the applicant. This means:
+
+- **The general rule** (that SOL occupations may not require sector-specific employment) **does not apply** to the Carbon project manager role
+- The candidate **must** be employed by a firm in the Carbon Services space to qualify for the C5 Skills Bonus
+- This sector-specificity requirement could **limit eligibility** if the candidate is working in a different sector, even if they meet the qualification or experience criteria
+
+---
+
+## Contrast: Marine Superintendent vs. Carbon Project Manager Credentials
+
+| **Aspect** | **Marine Superintendent (Deck)** | **Carbon Project Manager** |
+|---|---|---|
+| **Credential Type** | **Certificate of Competency (CoC)** | **Degree or Work Experience** |
+| **Specific Requirement** | Level 1 Certificate of Competency from Singapore's Maritime Port Authority (MPA) **or** any recognized maritime administration | **(2a)** Bachelor's degree in Earth Sciences, Environmental Engineering, Environmental Management, Environmental Policy, Sustainability Management, or Sustainability Policy **OR** **(2b)** Minimum 3 years' work experience in listed carbon-related roles |
+| **Declaration in EP Form** | Must be declared as a **post-secondary diploma** in the EP application form | Uploaded under the **qualifications section** (for degree pathway) or **work experience section** (for experience pathway) |
+| **Flexibility** | **No alternative pathway** — the Level 1 CoC is mandatory; no work-experience alternative is offered | **Two pathways** — either formal qualification OR work experience; significant flexibility for career-changers |
+| **Sector Verification** | Verified by MPA (maritime administration body) | Verified by EDB/EnterpriseSG (economic development agencies) |
+| **Nature of Credential** | **Professional/regulatory certification** — demonstrates competency in maritime operations and safety standards | **Academic or experiential** — demonstrates knowledge in environmental/sustainability domains or practical carbon-sector experience |
+
+### Key Distinction
+
+The **Marine Superintendent role requires a specific professional certification** (Level 1 CoC) with no alternative, reflecting the safety-critical and internationally-regulated nature of maritime work. In contrast, the **Carbon project manager role offers dual pathways** (formal education or work experience), reflecting a newer, less-regulated sector where practical experience is valued equally to formal qualifications.",2,"The answer covers all key points accurately — the alternative pathway (2b) with 3 years' experience, the full list of job titles, the Marine Superintendent CoC contrast, and the sector-specificity general rule. However, the chatbot incorrectly interprets the sector-specificity rule by stating the general rule 'does not apply' to the Carbon project manager role, whereas the reference answer says candidates may not need to be in the respective sector to qualify for bonus points, potentially benefiting the candidate. This misinterpretation is a meaningful error on a key part of the question, though the rest is comprehensive."
+q-0022,complex,"Under the Employment of Foreign Manpower (Work Passes) Regulations 2012, if an employer discovers that a foreign employee has gone missing and the employee's work permit subsequently expires without the employee being found or employed by another employer, what are the employer's specific obligations regarding (a) notification and its timeline, and (b) repatriation and the destination standard, and how are disputes about the repatriation destination resolved?","(a) Under the Regulations (which came into operation on 9th November 2012), the employer must inform the Controller within 7 days after the employer becomes aware of the foreign employee going missing. (b) Subject to paragraphs 13 and 17 of the Regulations, the employer must repatriate the foreign employee to the international port of entry within the foreign employee's home country that affords reasonable access to the foreign employee's hometown, when the work permit or visit pass expires, is cancelled, or is revoked, provided the foreign employee is not earlier employed by another employer. In the event of any dispute about the international port of entry to which the foreign employee shall be repatriated, the dispute shall be referred to the Controller, whose decision shall be final.",https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts,"Based on the Employment of Foreign Manpower (Work Passes) Regulations 2012, I can now provide you with the specific obligations regarding missing employees. The regulations address this scenario in the context of work permits, and the principles apply across different pass types.
+
+## Employer Obligations for Missing Foreign Employees
+
+### (a) Notification Obligations and Timeline
+
+**Notification Requirement:**
+Under the regulations, if a foreign employee goes missing, the employer must **inform the Controller within 7 days after the employer becomes aware of the foreign employee going missing**.
+
+This obligation appears consistently across multiple pass types:
+- **Work Permit (Domestic Worker)**: Part II, Paragraph 4 of the Fourth Schedule
+- **Work Permit (Non-Domestic Worker)**: Part IV, Paragraph 10 of the Fourth Schedule
+- **S Pass**: Part II, Paragraph 10 of the Fifth Schedule
+- **Employment Pass**: Part II, Paragraph 1 (employer must inform the Controller of contraventions)
+
+The 7-day timeline is strict and mandatory—it is not discretionary.
+
+### (b) Repatriation Obligations and Destination Standard
+
+**Repatriation Duty:**
+When a work permit expires or is cancelled and the employee is not employed by another employer, the employer must repatriate the foreign employee. The regulations specify:
+
+> ""The employer shall repatriate the foreign employee to **the international port of entry within the foreign employee's home country that affords reasonable access to the foreign employee's hometown** when the work permit or visit pass expires or is cancelled or revoked and if the foreign employee is not earlier employed by another employer.""
+
+**Key elements of the standard:**
+1. **Destination**: An international port of entry (not just any location) within the home country
+2. **Accessibility criterion**: The port must afford ""reasonable access"" to the foreign employee's hometown
+3. **Timing**: Repatriation must occur when the pass expires, is cancelled, or is revoked, provided the employee is not employed elsewhere
+
+**Cost Responsibility:**
+The employer bears all costs associated with repatriation, except where the Controller permits otherwise.
+
+**Pre-Repatriation Obligations:**
+Before repatriation, the employer must:
+- Ensure all outstanding salaries or moneys due to the foreign employee have been paid
+- Give the foreign employee reasonable notice of repatriation
+
+### (c) Dispute Resolution Mechanism
+
+**Dispute Resolution Process:**
+The regulations contain an explicit dispute resolution clause:
+
+> ""**In the event of any dispute about the international port of entry to which the foreign employee shall be repatriated, the dispute shall be referred to the Controller, whose decision shall be final.**""
+
+**Key characteristics:**
+1. **Forum**: The Controller (Ministry of Manpower)
+2. **Scope**: Disputes specifically about which international port of entry is the appropriate destination
+3. **Finality**: The Controller's decision is **final**—there is no further appeal mechanism specified in the regulations
+4. **Trigger**: A dispute arises when the employer and foreign employee (or other parties) disagree about which port affords ""reasonable access"" to the hometown
+
+**Application to Missing Employees:**
+In the scenario you describe—where an employee goes missing and the work permit subsequently expires—the employer's obligations remain:
+- Notify the Controller within 7 days of discovering the employee is missing
+- Repatriate the employee to the appropriate international port of entry if the employee is later found or located
+- If a dispute arises about the destination, refer it to the Controller for final determination
+
+The regulations do not provide a waiver of repatriation obligations merely because the employee went missing; rather, the employer must still comply with repatriation duties when the pass expires, unless the employee is employed by another employer or the Controller directs otherwise.",3,"The answer accurately covers all key points: 7-day notification to the Controller, repatriation to the international port of entry affording reasonable access to the employee's hometown, and dispute resolution by the Controller whose decision is final. Additional details about cost responsibility and pre-repatriation obligations are supplementary but not misleading."
+q-0023,complex,"If a company submits its Overseas Networks & Expertise Pass application using financial documents signed by its own management staff instead of third-party auditors, and the application is subsequently rejected, what is the deadline for submitting an appeal, and if the pass holder later decides not to work in Singapore, what are the rules for cancelling the pass?","First, regarding the financial documents: MOM will only consider documents from third party auditors; documents signed by the company's management staff will not be accepted. If the company's latest audited Profit & Loss statements are provided in lieu of other information, they must still be from third party auditors. If the application is rejected (potentially due to unacceptable documentation), the appeal must be submitted within 3 months of the rejection; otherwise, a new application must be submitted. Separately, if the pass holder no longer plans to work in Singapore, the pass must be cancelled within 1 week before the departure date (for example, if the departure date is 10 February, the request should be submitted from 3 February onwards). The cancellation can be done by the pass holder or their employment agent, and the cancellation takes effect immediately.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass,"Based on the loaded knowledge base content, I can now answer your questions:
+
+## Appeal Deadline for Rejected ONE Pass Application
+
+If a ONE Pass application is rejected, the deadline for submitting an appeal is **within 3 months** of the rejection. If you do not submit an appeal within this 3-month window, you will have to submit a new application instead.
+
+**Processing time:** Most appeals are processed within 4 weeks, with the outcome sent to the email address provided in the original application form.
+
+## Regarding Financial Documents Signed by Management Staff
+
+The knowledge base explicitly addresses this issue. According to the documents-required section for ONE Pass applications:
+
+> ""If this information is not available, you may provide the company's latest audited Profit & Loss statements instead. **MOM will only consider documents from third party auditors. Documents signed by the company's management staff will not be accepted.**""
+
+This requirement applies to both current/last held employment overseas and prospective employment categories. Therefore, if a company submits financial documents signed by its own management staff instead of third-party auditors, the application would likely be rejected on the grounds of insufficient documentation.
+
+## Pass Cancellation Rules
+
+If a ONE Pass holder later decides not to work in Singapore, the cancellation rules are:
+
+**Timing:** The pass should be cancelled **within 1 week before the departure date**. For example, if the departure date is 10 February, the cancellation request should be submitted from 3 February onwards.
+
+**Before cancelling:** The employer must seek **tax clearance from IRAS (Inland Revenue Authority of Singapore) at least 1 month before** the pass holder leaves the job. If the pass holder is self-employed, they must fulfil their tax obligations at least 1 month before the expected departure date.
+
+**How to cancel:** Log in to the EP eService on the myMOM Portal to cancel the pass.
+
+**STVP option:** Pass holders still in Singapore can request a Short-Term Visit Pass (STVP) in the eService to grant themselves a valid stay for up to 90 days from the date of application.
+
+**Consequences:** Once the pass is cancelled:
+- It cannot be reinstated
+- All related passes issued to family members will also be cancelled and cannot be reinstated
+- The pass card should be cut in half and discarded to prevent misuse",3,"The answer covers all key points from the reference: MOM only accepts documents from third-party auditors (not management staff), the 3-month appeal deadline, and the 1-week-before-departure cancellation rule with the correct example. Additional details (tax clearance, STVP, consequences) are accurate supplementary information, not noise that detracts from the answer."
+q-0024,complex,"When renewing an Employment Pass in Singapore, what personal and professional details must the candidate provide on the renewal form, what digital tool should the pass holder use to view their work pass after renewal, and what income verification consent does the candidate give as part of the renewal process—including the fallback verification rule if the current year's records are unavailable?","On the Employment Pass (Sponsorship) Renewal Form (Part 1), the candidate must provide: a notification email address, the pass expiry date and duration of pass applied for (in years and months), their Foreign Identification Number (FIN), full name as on travel document (excluding salutations such as Mr, Miss, Professor, Doctor), nationality/citizenship and state/province of nationality/citizenship, travel document type, travel document number with issue and expiry dates (in DD/MM/YYYY format), marital status, residential address (block/house number, floor number, unit number, building name, street name, postal code), total period of working experience (years and months), and total relevant working experience relevant to the current occupation (years and months). After renewal, the pass holder should use the SGWorkPass app to view their digital work pass and employment information; they will need a Singpass account to do so. As part of the renewal, the candidate consents for the Comptroller of Income Tax to verify their income stated in their current and renewal applications based on their assessment record for the current Year of Assessment. If the current Year of Assessment record is not available or finalised at the point of verification, the Comptroller of Income Tax will instead verify income against the assessment records for the two previous Years of Assessment. The candidate also consents for the Comptroller of Income Tax to communicate the verification results to the Controller of Work Passes.",https://www.mom.gov.sg/passes-and-permits/employment-pass/renew-a-pass,"Based on the Employment Pass renewal documentation, here are the answers to your questions:
+
+## Personal and Professional Details Required on the Renewal Form
+
+The EP (Sponsorship) Renewal Form requires candidates to provide:
+
+**Personal Particulars (Part 1B):**
+- Full name (as on travel document)
+- Nationality/Citizenship and state/province of nationality
+- Travel document type, number, issue date, and expiry date
+- Foreign Identification Number (FIN)
+- Marital status
+- Residential address
+- Total period of working experience (years and months)
+- Total relevant working experience in current occupation (years and months)
+
+**Spouse Information (Part 1C):**
+- Spouse's name and identification type (NRIC or FIN)
+- Spouse's date of birth (only if spouse is a Singapore Citizen, PR, or work pass holder)
+
+**Educational and Membership Details (Part 2):**
+- Highest qualification attained
+- Country/region and name of school
+- Most recent society/organisation membership and position held
+- Period of membership
+
+**Employment Details (Part 2C):**
+- Occupation (with reference to standard occupations list)
+- Fixed monthly salary and basic monthly salary
+- Whether salary is paid locally, overseas, or both
+
+## Digital Tool for Viewing Work Pass After Renewal
+
+After the pass is issued, the pass holder should download and use the **SGWorkPass app** to view their digital work pass and employment information. They will need a **Singpass account** to access the app.
+
+## Income Verification Consent and Fallback Rule
+
+The candidate gives consent for the **Comptroller of Income Tax to verify income** based on the following hierarchy:
+
+1. **Primary verification**: Income is verified against the candidate's assessment record for the **current Year of Assessment**
+
+2. **Fallback verification rule**: If the current year's assessment record is **not available or finalised** at the point of verification, the Comptroller of Income Tax will verify income against the assessment records for the **two previous Years of Assessment**
+
+The candidate also consents for the Comptroller of Income Tax to communicate the verification results to the Controller of Work Passes.",2,"Covers all essential points (personal details, SGWorkPass app with Singpass, income verification consent with fallback rule) accurately, but adds extra details not in the reference (spouse info, educational details, employment details from Parts 1C, 2, 2C) and omits some Part 1 specifics mentioned in the reference (notification email address, pass expiry date, duration of pass applied for, DD/MM/YYYY format note, salutation exclusion note)."
+q-0025,hard-1,"For an Overseas Networks & Expertise Pass (ONE Pass) holder in Singapore: (a) What pass types are available for their legally married spouse versus their common-law spouse, and what work-related benefit can each of these family members obtain? (b) What is the risk if the family pass applications are submitted at the same time as the ONE Pass application? (c) What is the deadline for the ONE Pass holder to notify MOM of a change in residential address or mobile number, and what is the consequence of failing to do so?","(a) A legally married spouse of a ONE Pass holder can obtain a Dependant's Pass, while a common-law spouse (defined as a common-law relationship between 2 people that is recognised under the laws of their country or region) can obtain a Long-Term Visit Pass (LTVP). Both the spouse on a Dependant's Pass and the common-law spouse on an LTVP can apply for a Letter of Consent (LOC) to work in Singapore. (b) Although family pass applications can be submitted at the same time as the ONE Pass application, the applicant may lose the application fees for each family pass if the ONE Pass application gets rejected. (c) The ONE Pass holder must update MOM within 2 weeks of changing their residential address or mobile number. Otherwise, they may be penalised.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/notify-mom,"Based on the loaded knowledge base, here are the answers to your questions:
+
+## (a) Pass types and work-related benefits for spouses
+
+| Spouse type | Pass type | Work-related benefit |
+|---|---|---|
+| **Legally married spouse** | Dependant's Pass (DP) | Can apply for a **free Letter of Consent (LOC)** to work or operate a business in Singapore. Processing time is within 4 weeks. |
+| **Common-law spouse** | Long-Term Visit Pass (LTVP) | Can apply for a **Letter of Consent (LOC)** to work in Singapore. The employer must submit the application on behalf of the common-law spouse. Processing time is approximately 8 weeks. |
+
+Both types of spouses can obtain a Letter of Consent, which allows them to work or operate a business in Singapore without needing a separate work pass.
+
+## (b) Risk of concurrent family pass and ONE Pass applications
+
+**The risk is significant:** If you submit family pass applications at the same time as the ONE Pass application, **you may lose the application fees for each family pass if your ONE Pass application gets rejected.**
+
+The knowledge base explicitly recommends applying for family passes **only after your ONE Pass is approved**, since Dependant's Pass and Long-Term Visit Pass applications take 4 weeks to process. This sequential approach protects your investment in family pass fees.
+
+## (c) Notification deadline for residential address or mobile number changes
+
+**Deadline:** ONE Pass holders must notify MOM of changes to their residential address or mobile number **within 2 weeks** of the change.
+
+**Consequence of failure:** The knowledge base states that failure to notify within this timeframe may result in **penalties**.
+
+**How to update:** ONE Pass holders can log into the EP eService to update their address or mobile number, and the update is immediate. They should print the acknowledgement page and keep it with their pass card.",3,"All three parts are answered accurately and comprehensively, matching the reference answer on every key point: DP for legally married spouse, LTVP for common-law spouse, LOC for both, risk of losing application fees, 2-week notification deadline, and penalties for non-compliance. Additional details (processing times, how to update) are supplementary and not misleading."
+q-0026,hard-1,"When an employer is cancelling a work pass for a foreign employee, what obligations does the employer have regarding repatriation costs, and how does this contrast with the process for an Overseas Networks & Expertise Pass (ONE Pass) holder who no longer requires their pass? Additionally, if a ONE Pass holder's company cannot provide specific financial information during the application process, what alternative documentation does MOM accept and what restrictions apply to that alternative?","For an Employment Pass holder whose pass is being cancelled, the employer must: (1) give the pass holder reasonable notice on their upcoming repatriation; (2) seek tax clearance from the Inland Revenue Authority of Singapore (IRAS) at least 1 month before the last day of employment; (3) settle all outstanding employment issues that the pass holder may raise, including salary payments; and (4) buy an air ticket with check-in luggage and pay for all connecting transport costs to the international port of entry in the pass holder's home country or the region nearest to their hometown — unless the pass holder agrees in writing to bear the cost instead. In contrast, for a ONE Pass holder who no longer requires their pass, the holder themselves cancels the pass directly (there is no employer-driven repatriation obligation described). ONE Pass holders are also required to notify MOM about their professional activities and annual income by 31 January of the next year, and to notify MOM about any changes to their residential address or personal information. Separately, regarding ONE Pass application documentation, if the required company financial information is not available, the applicant may provide the company's latest audited Profit & Loss statements instead. However, MOM will only consider documents from third-party auditors; documents signed by the company's management staff will not be accepted.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass https://www.mom.gov.sg/passes-and-permits/employment-pass,"Now I have good information about EP cancellation and ONE Pass. Let me search for more specific information about ONE Pass alternative documentation when company financial information is unavailable.
+
+Based on the loaded documents, I can now provide a comprehensive answer to your question.
+
+## Employer Repatriation Obligations: Employment Pass vs. ONE Pass
+
+### **Employment Pass (EP) Cancellation – Employer Repatriation Obligations**
+
+Under Singapore's Employment of Foreign Manpower (Work Passes) Regulations 2012, employers have **mandatory repatriation obligations** when cancelling an EP:
+
+**Repatriation Costs:**
+- The employer **must bear all costs associated with repatriating the foreign employee** at any time, except where the Controller permits otherwise
+- The employer must repatriate the employee to the international port of entry within the employee's home country that affords reasonable access to the employee's hometown
+- The employer must ensure all outstanding salaries or moneys due to the employee are paid **before repatriation**
+- The employer must return the work permit and visit pass to the Controller within 7 days after cancellation
+
+**Pre-Repatriation Duties:**
+- The employer must give the employee reasonable notice of repatriation
+- The employer remains responsible for the employee's upkeep and maintenance (including food and medical treatment) until repatriation is completed
+- The employer must ensure acceptable accommodation is maintained during this period
+
+### **ONE Pass Cancellation – Contrasting Process**
+
+The ONE Pass cancellation process is **significantly different and less prescriptive**:
+
+**Key Differences:**
+- ONE Pass holders can **self-initiate cancellation** through the EP eService on the myMOM Portal (not just employers)
+- The pass holder can request an **STVP (Short-Term Visit Pass)** to grant themselves a valid stay for up to 90 days from the date of application
+- **No explicit repatriation cost obligations** are detailed in the ONE Pass cancellation framework
+- The focus is on **tax clearance obligations** rather than repatriation logistics
+
+**Tax Clearance Requirement (applies to both):**
+- The employer must seek tax clearance from IRAS at least 1 month before the employee leaves the job
+- If self-employed, the ONE Pass holder must fulfil tax obligations at least 1 month before departure
+
+**Post-Cancellation:**
+- All related family passes (Dependant's Pass and Long-Term Visit Pass) are automatically cancelled
+- These cannot be reinstated
+- The pass holder must cut the card in half and discard it
+
+---
+
+## ONE Pass Alternative Documentation for Company Financial Information
+
+### **When Company Financial Information is Unavailable**
+
+For ONE Pass applications requiring proof of an established company (market capitalisation ≥US$500M or annual revenue ≥US$200M), the knowledge base specifies:
+
+**Primary Requirement:**
+- Latest financial information obtained within the last 3 months showing market capitalisation or annual company revenue from sources such as:
+  - Stock exchange listings
+  - Financial databases
+  - Company websites
+  - Other publicly available sources
+
+**Alternative Documentation (when primary sources unavailable):**
+- **The company's latest audited Profit & Loss statements**
+
+**Critical Restriction:**
+- **MOM will ONLY accept documents from third-party auditors**
+- **Documents signed by the company's management staff will NOT be accepted**
+
+This alternative is available for both:
+1. Current or last held employment overseas
+2. Prospective employment in Singapore
+
+### **Key Limitation:**
+The alternative documentation (audited P&L statements) is **strictly limited to third-party auditor-prepared documents**. This is a significant restriction because it excludes:
+- Internal company financial statements
+- Management-prepared financial reports
+- Unaudited financial documents
+- Self-certified financial information
+
+This requirement ensures that MOM can verify the company's financial standing through independent, professionally audited sources rather than relying on company-provided information that may lack independent verification.",3,"The answer comprehensively covers all three parts of the question: employer repatriation obligations (reasonable notice, salary settlement, bearing transport costs to home country), the contrast with ONE Pass self-cancellation (no employer-driven repatriation obligation), and the alternative documentation (audited P&L from third-party auditors only, management-signed documents not accepted). It includes additional accurate details beyond the reference answer without introducing errors."
+q-0027,hard-1,"For an individual who holds an Overseas Networks & Expertise Pass (ONE Pass), what ongoing obligation must they fulfill after obtaining the pass, and what specific limitation applies to the occupations they can take up? Additionally, what consent regarding their contact details is involved in the application process?","An Overseas Networks & Expertise Pass (ONE Pass) holder has an annual notification obligation to MOM and must also notify MOM of any changes to their details. Furthermore, ONE Pass holders cannot work in certain restricted occupations, such as media or religion related occupations, unless they have obtained approval from MOM. During the application process, the applicant consents to the use of their contact details to be contacted during emergencies and to receive messages related to their work pass and employment in Singapore, and to the sharing of their contact details with other Government agencies and statutory authorities for the same purpose.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/notify-mom https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/apply-for-a-pass,"Based on the loaded information, here are the key answers to your questions about ONE Pass holders:
+
+## Ongoing Obligation: Annual Notification
+
+ONE Pass holders have a significant **annual notification obligation**. As stated in the knowledge base, pass holders may be required by MOM to participate in an annual notification exercise where they must provide:
+
+- Employment details (employer(s) and occupation(s))
+- Total annual income for the past calendar year
+- Other professional activities, if applicable
+
+Pass holders who need to submit the annual notification will receive an email with further instructions.
+
+## Occupational Limitation: Restricted Occupations
+
+ONE Pass holders face a specific limitation: **they cannot work in certain restricted occupations unless they obtain prior approval from MOM**. The restricted occupations are primarily **media and religion-related roles**, including positions such as:
+
+- Journalists, editors, reporters, and broadcasters
+- Religious positions (priests, pastors, imams, monks, nuns, chaplains, etc.)
+- Media producers, presenters, and related roles
+
+The full list contains **161 restricted occupations**. To work in any of these roles, a ONE Pass holder must:
+
+1. Submit a request to MOM using an online form
+2. Obtain approval before starting work in that occupation
+3. Expect a response from MOM within 3 weeks in most cases
+
+## Consent Regarding Contact Details
+
+During the application process, ONE Pass applicants must sign a declaration form that includes a specific consent provision regarding contact details. The applicant consents:
+
+> ""To the use of my contact details to contact me during emergencies and sending messages related to my work pass and employment in Singapore, and to share my contact details with other Government agencies and statutory authorities for the same purpose.""
+
+Additionally, after the pass is issued, the holder undertakes to **notify MOM within 14 days of any change in contact details, including residential address**.",3,"The answer accurately covers all three key points: annual notification obligation, restricted occupations (media and religion-related), and consent regarding contact details. It matches the reference answer substantively and provides additional helpful detail without introducing errors."
+q-0028,hard-1,"If a candidate already has an existing work pass application pending with MOM, can they simultaneously apply for an Overseas Networks & Expertise Pass, and once they do hold an Overseas Networks & Expertise Pass, what family-related benefit does it provide?","No, a candidate cannot apply for an Overseas Networks & Expertise Pass if they already have an existing work pass application, because only 1 work pass application per candidate may be submitted at a time. Additionally, the applicant must declare that the information in the application is, to the best of their knowledge, true and correct, and that all documents submitted in support of the application are true copies of the originals. Once a candidate holds an Overseas Networks & Expertise Pass, they may apply for passes to allow their family members to join them in Singapore.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/apply-for-a-pass https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families,"Based on the knowledge base, I can answer both of your questions:
+
+## Simultaneous Applications with Pending Work Pass
+
+**No, a candidate cannot simultaneously apply for a ONE Pass if they already have a pending work pass application.** The knowledge base explicitly states:
+
+> ""You may only submit 1 work pass application per candidate at a time. For example, you may only apply for either an Overseas Networks & Expertise Pass or Employment Pass for your candidate at any one time.""
+
+This means the candidate must wait for their existing work pass application to be resolved (approved or rejected) before submitting a ONE Pass application.
+
+## Family-Related Benefits of the ONE Pass
+
+Once a candidate holds a ONE Pass, they gain significant family-related benefits:
+
+**Eligible family members** can obtain passes to join the ONE Pass holder in Singapore:
+
+1. **Spouses (legally married)** — Dependant's Pass
+   - Spouses can apply for a **Letter of Consent (LOC) to work in Singapore** at no cost
+   
+2. **Common-law spouses** — Long-Term Visit Pass
+   - Can also apply for a **Letter of Consent (LOC) to work in Singapore**
+
+3. **Unmarried children under 21** — Dependant's Pass
+
+4. **Handicapped unmarried children aged 21+** — Long-Term Visit Pass
+
+5. **Stepchildren (unmarried, under 21)** — Long-Term Visit Pass
+
+6. **Parents** — Long-Term Visit Pass
+
+The key family benefit is the **availability of passes for eligible family members** and notably, the ability for spouses to work in Singapore via a Letter of Consent, which provides significant flexibility for family relocation.",3,"The answer correctly states that simultaneous applications are not allowed and that ONE Pass holders can apply for passes for family members to join them in Singapore, matching the reference answer's key points. The additional detail about specific family member categories and LOC benefits is accurate and enhances rather than detracts from the response."
+q-0030,hard-1,"For an Overseas Networks & Expertise (ONE) Pass holder who wants to bring family members to Singapore, which family members are eligible under the Long-Term Visit Pass, and how long after submitting a Dependant's Pass application should one check the application status?","The Long-Term Visit Pass for ONE Pass holders covers common-law spouses, step-children, handicapped children, and parents of the pass holder. For a Dependant's Pass application for a ONE Pass holder, the applicant should check the application status after 3 weeks, though it may take longer if additional information is required.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/long-term-visit-pass-for-overseas-networks-expertise-pass https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/dependants-pass-for-overseas-networks-expertise-pass,"Based on the loaded information, I can answer both of your questions:
+
+## Family Members Eligible for Long-Term Visit Pass (LTVP)
+
+For an Overseas Networks & Expertise (ONE) Pass holder, the following family members are eligible for a Long-Term Visit Pass:
+
+1. **Common-law spouses** (a common-law relationship between 2 people that is recognised under the laws of their country or region)
+2. **Stepchildren** (unmarried and under 21 years old)
+3. **Handicapped children** (unmarried and aged 21 and above)
+4. **Parents** of the ONE Pass holder
+
+Note that common-law spouses on LTVP can apply for a Letter of Consent (LOC) to work in Singapore.
+
+## Application Status Check Timeline
+
+Regarding checking the application status for a Dependant's Pass application: **You should check your application status after 3 weeks**. 
+
+According to the guidance, if your application is still pending after 3 weeks, you should check your email for any requests for additional documents. The standard processing time for Dependant's Pass applications is **4 weeks** for most cases.",3,"The answer correctly identifies all four eligible family members for the LTVP (common-law spouses, stepchildren, handicapped children, and parents) and correctly states the 3-week timeline for checking the Dependant's Pass application status. The additional details about LOC and processing time are supplementary but not misleading."
+q-0031,hard-1,"When applying for a Letter of Consent for a common-law spouse under the Overseas Networks & Expertise Pass, what language requirement applies to supporting documents, and what financial details about the employing company must be provided in the application form? Additionally, if the common-law spouse later obtains an Employment Pass and that pass card is lost or stolen, what are the replacement fee, the timeline for applying, and who can submit the replacement application?","For the Letter of Consent (Common-Law Spouse) application under the ONE Pass, non-English documents must be accompanied by an English translation, which can be done by a translation service provider. The application form requires the employing company to provide its paid-up capital (in S$) and the value of turnover for the past 3 years (starting with the most recent year), including for each year whether the turnover figure is from an audited account (for unaudited accounts or if the employing company is exempted from audit, 'No' should be selected). If the common-law spouse later holds an Employment Pass and the pass card is lost or stolen, the employer must apply for a replacement within 1 week. The replacement application can be submitted by the employer or an appointed employment agent (EA). For a damaged card, the fee is $65.40. For a lost or stolen card, the fee is also specified (fees are inclusive of GST and non-refundable). Processing is immediate for most cases, with card collection taking 4 working days after approval.",https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/long-term-visit-pass-for-overseas-networks-expertise-pass/working-in-singapore https://www.mom.gov.sg/passes-and-permits/employment-pass,"Perfect! Now I have all the information I need. Let me compile the answers to your three questions based on the loaded content.
+
+## Answer
+
+Based on the Singapore Ministry of Manpower documentation, here are the answers to your questions:
+
+### 1. **Language Requirement for Letter of Consent Supporting Documents**
+
+According to the Letter of Consent (Common-Law Spouse) Application Form (Page 8), **non-English documents must be accompanied by an English translation**. The form explicitly states:
+
+> ""Non-English documents must be accompanied by an English translation. The translation can be done by a translation service provider.""
+
+### 2. **Financial Details Required in the Application Form**
+
+The Letter of Consent application form requires the following financial information about the employing company (Part 1B: Financial and other information):
+
+- **Paid-up capital** (in S$)
+- **Value of turnover of the company for the past 3 years** (starting with the most recent year), including:
+  - Year
+  - Value (S$)
+  - Whether the turnover figure is from an audited account (Yes/No)
+
+### 3. **Employment Pass Card Replacement: Fee, Timeline, and Who Can Apply**
+
+If the common-law spouse later obtains an Employment Pass and the card is lost or stolen, the following apply:
+
+| Aspect | Details |
+|--------|---------|
+| **Replacement Fee** | **For a lost or stolen card:** First replacement: **$100**; Second or subsequent replacement: **$300** (Fees are inclusive of GST and non-refundable) |
+| **Timeline for Application** | Must apply **within 1 week** of loss or theft |
+| **Who Can Submit** | **Employer or appointed employment agent (EA)** |
+| **Card Collection Timeline** | **4 working days after approval** |
+| **Collection Method** | For lost or stolen cards, the pass holder **must collect the card in person** at the Employment Pass Services Centre (EPSC) |
+
+**Additional Note:** The pass holder must bring the following documents for in-person collection:
+- Original passport
+- Card replacement letter
+- Police report (for stolen cards; overseas reports should be translated to English)",2,"Covers all key points (language requirement, financial details, timeline, who can submit, card collection timeline) accurately, but the replacement fee differs from the reference ($100/$300 vs $65.40), which may be a factual discrepancy or version difference. The extra details about in-person collection are extraneous but not harmful."
+q-0032,hard-1,"Under the COMPASS framework for Employment Pass eligibility, what fixed monthly salary would a 30-year-old EP candidate need to earn to score 10 points on the C1 salary criterion, and what additional bonus criterion (C6) can an organisation qualify for by participating in eligible programmes — including what is required to be considered for that bonus?","For the C1 salary benchmark criterion, a candidate aged 30 needs a fixed monthly salary of at least $8,283 to score 10 points (which corresponds to the 65th percentile of local PMETs). To score 20 points at the same age, the required salary rises to $14,316 (the 90th percentile of local PMETs). These C1 salary benchmarks are published by sector: the version released in August 2025 and an upcoming version to be released in August 2026 are both available as downloadable PDFs ('C1 salary benchmarks by sectors'). Separately, under criterion C6 (Strategic Economic Priorities bonus), an organisation needs to participate in at least one of the eligible programmes listed by MOM to be considered for the C6 SEP bonus. Neither the salary benchmarks alone nor the C6 programme participation requirement alone covers both aspects; both must be considered together as part of the COMPASS framework.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c1-salary-benchmarks https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes,"Based on the loaded COMPASS documentation, I can now provide you with comprehensive answers to both parts of your question.
+
+## C1 Salary Benchmark for a 30-Year-Old
+
+For a **30-year-old EP candidate to score 10 points on the C1 salary criterion**, the required fixed monthly salary depends on the sector. Looking at the C1 salary benchmarks (released August 2026, applicable to current applications), here are some examples:
+
+| Sector | Required Salary for 10 Points (65th percentile) |
+|--------|------------------------------------------------|
+| **Accommodation** | $5,449 |
+| **Administrative & Support** | $6,903 |
+| **Banking & Other Financial Services** | $11,499 |
+| **Construction** | $6,199 |
+| **Education** | $7,015 |
+| **Info-communication Technology** | $9,226 |
+| **Professional Services** | $8,283 |
+| **Retail Trade** | $5,881 |
+
+The salary thresholds vary significantly by sector because they are benchmarked against the 65th percentile of local PMET (Professionals, Managers, Executives, and Technicians) salaries in each sector.
+
+---
+
+## C6 Strategic Economic Priorities (SEP) Bonus
+
+The **C6 SEP bonus is an additional criterion** that can award **up to 10 points** to an EP application. Here's what's required:
+
+### **What the Bonus Recognises**
+
+The C6 SEP bonus recognises organisations that are either:
+- Undertaking **ambitious investment, innovation, and internationalisation activities** in partnership with economic agencies, OR
+- **Endorsed by the National Trades Union Congress (NTUC)** as strong partners on company and workforce transformation activities
+
+### **Eligibility Requirement**
+
+To qualify for the C6 SEP bonus, an organisation must **participate in at least ONE of the following eligible programmes**:
+
+| Supporting Agency | Eligible Programmes |
+|-------------------|-------------------|
+| **Economic Development Board (EDB)** | • Development and Expansion Incentive (DEI)<br>• Pioneer Certificate Incentive (PC)<br>• Research and Innovation Scheme for Companies (RISC)<br>• Manufacturers with ≥500 local employees<br>• Global Trader Programme (GTP) |
+| **Enterprise Singapore (EnterpriseSG)** | • Scale-Up SG<br>• Singapore Global Executive Programme (SGEP)<br>• High-growth startups (USD$10M+ investment in 36 months from EDBI, SEEDS Capital, or recognised firms) |
+| **Infocomm Media Development Authority (IMDA)** | • IMDA Accreditation Digital<br>• IMDA Spark Programme |
+| **Maritime & Port Authority (MPA)** | • Maritime Sector Incentive (MSI-AIS, MSI-SSS, ML awards)<br>• Maritime Cluster Fund – Business Development (MCF-BD) |
+| **Singapore Tourism Board (STB)** | • Selected Business Improvement Fund (BIF) grantees<br>• Selected Singapore Tourism Accelerator (STA) participants |
+| **National Trades Union Congress (NTUC)** | • Progressive firms committed to workforce development through Company Training Committees (CTCs) or Government-supported programmes |
+
+### **Validity and Renewal**
+
+- **Validity:** The SEP bonus points apply for **up to 3 years** or for the duration of the organisation's participation in an eligible programme, whichever is shorter.
+- **Renewal:** At renewal, the organisation must maintain **both C3 (Diversity) and C4 (Support for Local Employment) scores of at least 10 points** for each of the 3 months before renewal to continue receiving the SEP bonus.",3,"The answer correctly identifies $8,283 (Professional Services, 65th percentile) as the salary for 10 points at age 30, explains that C1 benchmarks vary by sector, accurately describes C6 SEP bonus including the requirement to participate in at least one eligible programme, and provides extensive additional detail on eligible programmes and agencies that aligns with the reference answer."
+q-0033,hard-2,"Looking at the logo shown on the page, what colors are used in the Ministry of Manpower's logo, and according to the EP (Sponsorship) Renewal Form, how long does it take to process a renewal application submitted through that form?","The Ministry of Manpower logo uses orange and blue (dark blue and a lighter blue) colors. According to the EP (Sponsorship) Renewal Form (Page 1), it takes around 8 weeks to process the renewal application. Note that the main webpage states 'within 6 weeks for most cases' for EP (Sponsorship) renewals processed via the myMOM Portal, but the form itself states approximately 8 weeks.",https://www.mom.gov.sg/passes-and-permits/employment-pass/renew-a-pass https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/ep_sponsor_renewal_form.pdf,"Based on the loaded document, I can answer your second question:
+
+## EP (Sponsorship) Renewal Processing Time
+
+According to the **EP (Sponsorship) Renewal Form**, **it takes around 8 weeks to process the renewal application**.
+
+This is stated on Page 1 of the form under the instructions: ""It takes around 8 weeks to process the renewal application.""
+
+---
+
+## Regarding the MOM Logo Colors
+
+I can see the Ministry of Manpower logo in the document image, which shows:
+- **Blue** (for the text ""Ministry of Manpower"" and the curved design elements)
+- **Orange** (for one of the curved design elements)
+
+However, I should note that I can only provide this information based on the visual content embedded in the document itself. For official confirmation of the exact logo colors and specifications, you would want to refer to MOM's official branding guidelines.",3,"The chatbot correctly identifies the logo colors as blue and orange, and accurately states the 8-week processing time from the EP (Sponsorship) Renewal Form, matching the reference answer's key points."
+q-0034,hard-2,"According to the travel document requirements for an Employment Pass application, when there are changes to passport details such as name or expiry date, what is the exact wording of the checkbox option shown in the eService application form that applicants must select before uploading the Amendments/Observation page?","The checkbox reads: ""I wish to upload Amendments/Observations page as there are changes in the biodata page details. (optional)""",https://www.mom.gov.sg/passes-and-permits/employment-pass/documents-required https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/travel-doc-requirements-v1.pdf,"Based on the loaded document, I can provide you with the exact wording of the checkbox option. According to the travel document requirements guide (Page 4), the exact checkbox wording shown in the eService application form is:
+
+**""I wish to upload Amendments/Observations page as there are changes in the biodata page details. (optional)""**
+
+This checkbox appears in the eService application form when applicants need to upload the Amendments/Observation page of their passport due to changes in details such as name or expiry date.",3,"The chatbot's answer matches the reference answer exactly, providing the correct wording of the checkbox option."
+q-0035,hard-2,"According to the candidate's form overview shown in the image, what are the three steps in the application process, what does each step involve, and how long does the form estimate it may take to complete?","The three steps in the application process are: Step 1 – Candidate's form: Use this form to provide your personal details to your employer; errors may cause delay or even rejection. Step 2 – EP or S Pass application: Your employer will apply for an Employment Pass (EP) or S Pass on your behalf after written consent has been given with the information you have provided in this form. Step 3 – Application outcome: Your employer will notify you of the application outcome; if the application is approved by MOM, you will receive an In-Principle Approval (IPA) letter. The form may take 20 minutes to complete.",https://www.mom.gov.sg/passes-and-permits/employment-pass/apply-for-a-pass https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/ep-and-s-pass-candidate-form.pdf,"Perfect! I found the information from the candidate's form overview. Based on the loaded documentation, here are the three steps in the EP/S Pass application process:
+
+## Three Steps in the Application Process
+
+### **Step 1: Candidate's Form**
+- **What it involves**: The candidate uses this form to provide their personal details to their employer. This includes information such as travel document details, work experience, educational qualifications, membership details, and declarations.
+- **Key point**: Errors in this form may cause delay or even rejection of the application.
+
+### **Step 2: EP or S Pass Application**
+- **What it involves**: After receiving the candidate's form information, the employer will apply for an Employment Pass (EP) or S Pass on the candidate's behalf. This requires written consent from the candidate and submission of the application with supporting documents.
+- **Key point**: The employer submits the application with the information provided by the candidate in Step 1.
+
+### **Step 3: Application Outcome**
+- **What it involves**: The employer will notify the candidate of the application outcome. If approved by MOM, the candidate will receive an In-Principle Approval (IPA) letter.
+- **Key point**: This is when the candidate learns whether their application has been successful.
+
+## Estimated Completion Time
+
+**The form may take 20 minutes to complete.**
+
+This estimate refers specifically to the time needed to fill in the candidate's form itself, which is the first step in the overall application process.",3,"The chatbot's answer covers all three steps accurately, describes what each involves consistent with the reference answer, and correctly states the 20-minute estimated completion time. Minor extra details (e.g., listing specific information types) do not detract from accuracy."
+q-0036,hard-2,"According to the C1 salary benchmarks document released in Aug 2025, what government body's logo appears on the document, and what are the specific C1 salary benchmarks (for both 10 points and 20 points) for a 30-year-old candidate in the Accommodation sector?","The document bears the logo of the Ministry of Manpower (MOM). For a 30-year-old candidate in the Accommodation sector (released Aug 2025), the required fixed monthly salary for 10 points (65th percentile of local PMETs) is $5,063, and the required salary for 20 points (90th percentile of local PMETs) is $7,843. The salary benchmarks increase progressively with age from age 23 to age 45. For the Accommodation sector, the range for 10 points runs from $4,341 (age ≤23) to $6,611 (age ≥45), and for 20 points from $5,578 (age ≤23) to $12,695 (age ≥45). Candidates who do not meet the EP qualifying salary are not eligible regardless of COMPASS points, and EP candidates earning at least $22,500 in fixed monthly salary are exempted from COMPASS entirely.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c1-salary-benchmarks https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks.pdf,"Based on the C1 salary benchmarks document released in August 2025, I can provide you with the following information:
+
+## Government Body Logo
+The document displays the **Ministry of Manpower (MOM)** logo at the bottom of the document.
+
+## C1 Salary Benchmarks for a 30-Year-Old in the Accommodation Sector
+
+For a 30-year-old candidate in the Accommodation sector (as per the Aug 2025 benchmarks):
+
+| Points | Required Salary |
+|--------|-----------------|
+| **10 points** (65th percentile) | **$5,063** |
+| **20 points** (90th percentile) | **$7,843** |
+
+These are the fixed monthly salary thresholds that a 30-year-old candidate in the Accommodation sector must meet to score the respective COMPASS C1 points under Singapore's Employment Pass eligibility framework.",3,"The chatbot correctly identifies MOM as the government body and provides the exact salary benchmarks ($5,063 for 10 points and $7,843 for 20 points) for a 30-year-old in the Accommodation sector, matching the reference answer precisely."
+q-0037,hard-2,"What is the domain name displayed in the center of the QR code shown on the page, and what is the purpose of the page this QR code appears on?","The domain name displayed in the center of the QR code is GO.gov.sg. The QR code appears on the Ministry of Manpower (MOM) page about eligibility for the Employment Pass (EP) in Singapore, which explains the two-stage eligibility framework: Stage 1 requires candidates to earn at least the EP qualifying salary (benchmarked to the top 1/3 of local PMET salaries by age), and Stage 2 requires passing the points-based Complementarity Assessment Framework (COMPASS) by earning at least 40 points, unless exempted.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/compass-booklet.pdf,"Based on the Employment Pass eligibility page I've loaded, I can see there are multiple QR codes displayed on the page. Here are the QR codes and their purposes:
+
+## QR Codes on the EP Eligibility Page
+
+**1. QR Code with domain: `GO.gov.sg`**
+   - **Text displayed in center:** `GO.gov.sg`
+   - **Purpose:** Links to the **myMOM Portal** at `https://go.gov.sg/mymom-portal`
+   - **Function:** Provides access to the **Workforce Insights (WFI) tool**, which allows employers to check their organization's scores on COMPASS firm-related attributes (C3 Diversity and C4 Support for Local Employment)
+
+**2. QR Code with domain: `GO.gov.sg`**
+   - **Text displayed in center:** `GO.gov.sg`
+   - **Purpose:** Links to the **COMPASS webpage** at `https://go.gov.sg/compass`
+   - **Function:** Directs users to comprehensive information about COMPASS requirements and the Employment Pass eligibility framework
+
+**3. QR Code with domain: `GO.gov.sg`**
+   - **Text displayed in center:** `GO.gov.sg`
+   - **Purpose:** Links to the **Self-Assessment Tool (SAT)** at `https://go.gov.sg/mom-workpass-sat/`
+   - **Function:** Allows employers and employment agents to check whether a candidate's application meets COMPASS criteria before submitting
+
+All three QR codes use the shortened government domain **`GO.gov.sg`** displayed in the center, which is Singapore's official URL shortening service for government links. These QR codes serve to provide quick access to essential COMPASS tools and resources for EP applicants and employers.",2,"The chatbot correctly identifies GO.gov.sg as the domain in the center of the QR code(s) and correctly identifies the page as the MOM EP eligibility page. However, it required a clarifying turn from the user, and it provides excessive detail about multiple QR codes (some possibly hallucinated) rather than directly answering the question. The description of the page's purpose is spread across the QR code descriptions rather than clearly stated as the two-stage eligibility framework (qualifying salary + COMPASS)."
+q-0038,hard-2,"What government ministry's logo appears on the COMPASS C5 Skills Bonus - Shortage Occupation List (SOL) page, and what are the colors used in its logo design?","The logo belongs to the Ministry of Manpower. The logo design features three curved swoosh-like figures in dark blue, orange, and blue, positioned to the left of the text 'Ministry of Manpower' in dark blue.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c5-skills-bonus-shortage-occupation-list-sol https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/sol-guidebook.pdf,"Based on the loaded content, I can see the government ministry logo that appears on the COMPASS C5 Skills Bonus - Shortage Occupation List (SOL) page.
+
+## Answer
+
+The **Ministry of Manpower (MOM)** logo appears on the COMPASS C5 Skills Bonus - Shortage Occupation List (SOL) page.
+
+The logo uses the following colors:
+- **Dark Blue** — used for the text ""Ministry of Manpower""
+- **Orange** — used as an accent color in the stylized graphic element (the curved lines on the left side of the logo)
+
+The logo features a modern design with curved, flowing lines in orange alongside the ministry name in dark blue text.",2,"Correctly identifies Ministry of Manpower and mentions dark blue and orange, but misses the blue (lighter blue) as a third color in the logo's swoosh figures, describing only two colors instead of three."
+q-0039,hard-2,"According to the header of the document listing standard occupations available in EP eService, what is the address of the Work Pass Division shown on the document, and what visual branding element (logo) appears on the document's first page?","The Work Pass Division is located at 18 Havelock Road, Singapore 059764, with the website www.mom.gov.sg. The document bears the Ministry of Manpower logo, which consists of three stylized curved figures in orange and two shades of blue (representing people), alongside the text 'Ministry of Manpower' in dark blue.",https://www.mom.gov.sg/passes-and-permits/employment-pass/notify-mom-of-changes https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_a-i.pdf,"Based on the loaded document, I can now answer your question about the header information on the List of Standard Occupations document for EP eService.
+
+**Address of the Work Pass Division:**
+18 Havelock Road Singapore 059764
+
+**Visual branding element (logo):**
+The Ministry of Manpower (MOM) logo appears on the document's first page. The logo features a stylized design with blue and orange elements and the text ""Ministry of Manpower.""
+
+This information appears consistently at the top of each of the three occupation list documents (A-I, J-R, and S-Z).",3,"The chatbot correctly identifies the address (18 Havelock Road, Singapore 059764) and the Ministry of Manpower logo with blue and orange elements and the text 'Ministry of Manpower,' which is substantively equivalent to the reference answer."
+q-0040,hard-2,"According to the timeline diagram for Employment Pass applications, if an employer posts a job advertisement in early January and closes it after 30 days (in early February), what is the earliest date they can submit an EP or S Pass application relative to the job ad posting, and what is the latest date they can use that job advertisement for the application?","The earliest date to submit an EP or S Pass application is 15 days after posting the job ad (shown in the diagram as a point in mid-January). The latest date to submit an EP or S Pass application using that job advertisement is 3 months after the employer closes the job ad. In the diagram's example, the employer closes the job ad after 30 days (early February), and the latest date to submit the application using that ad falls in early May — 3 months after closure. Additionally, per the markdown, job advertisements that have expired or been closed for more than 3 months cannot be used for EP applications, and the employer must re-advertise the vacancy.",https://www.mom.gov.sg/passes-and-permits/employment-pass https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/fcf-ep-application-date.png,"Perfect! I found the timeline diagrams you're referring to. Based on the Fair Consideration Framework materials in the Employment Pass documentation, here are the answers to your question:
+
+## Timeline for EP/S Pass Applications Based on Job Advertisement
+
+According to the timeline diagram in the knowledge base:
+
+**If an employer posts a job advertisement in early January and closes it after 30 days (in early February):**
+
+### Earliest Date to Submit Application
+**15 days after posting the job ad** — so if posted in early January, the earliest submission would be approximately **mid-January** (15 days later).
+
+### Latest Date to Use That Job Advertisement
+**3 months after the job ad closes** — so if the ad closes in early February, the latest date to submit an EP or S Pass application using that advertisement would be approximately **early May** (3 months after closure).
+
+## Key Requirements
+
+The timeline diagram illustrates these critical rules:
+
+1. **Minimum posting duration**: The job advertisement must remain open for **at least 14 consecutive days** before an EP/S Pass application can be submitted.
+
+2. **Expiry window**: Job advertisements that have **expired for more than 3 months or closed for more than 3 months cannot be used** for EP applications. A new advertisement must be posted if you want to proceed after this 3-month window.
+
+3. **Changes require reposting**: If you make any changes to the advertisement details (unique entity number, occupation, salary, number of vacancies), you must post a new advertisement and keep it open for at least another 14 consecutive days before submitting the application.",3,"The answer correctly identifies the earliest submission date as 15 days after posting (mid-January) and the latest date as 3 months after the ad closes (early May), matching the reference answer. It also includes the requirement about re-advertising if the ad has been closed for more than 3 months."
