@@ -1,0 +1,57 @@
+# RAG chat agent configuration (§9.6). Picked up automatically by
+# `hcag-server --agent rag`, whose --rag-config defaults to ./rag_agent.toml.
+
+# Which LanceDB table to query (must match the one `rag` wrote — §8.7 [index]).
+[index]
+path  = "./local_lancedb"
+table = "kb"
+
+# Query embedding — MUST match the model the corpus was indexed with (§9.3.1).
+[embedding]
+provider    = "openai"
+model       = "text-embedding-3-small"
+api_key_env = "OPENAI_API_KEY"
+
+# Generation LLM — the model that writes the answer.
+[llm]
+provider    = "anthropic"
+model       = "claude-haiku-4-5-20251001"
+api_key_env = "ANTHROPIC_API_KEY"
+max_tokens  = 1024
+
+[retrieval]
+top_k              = 8
+reranker           = "rrf"
+max_context_tokens = 6000
+merge_adjacent     = true
+
+# Query-time synonym expansion: what users type -> what this corpus spells.
+#
+# Neither retrieval leg can bridge a name the corpus never uses. MOM's pages
+# say "ONE Pass" and "Overseas Networks & Expertise Pass" and never "onepass",
+# so a question asking about "onepass" matched nothing lexically and gave the
+# embedder a coined compound to work with. Keys match on word boundaries,
+# case-insensitively. The value is appended to the retrieval query and shown to
+# the generator as a VOCABULARY note, so it can follow the name into the
+# excerpts; the QUESTION it answers is still the user's own wording.
+#
+# This list is specific to this knowledge base. Add an entry when you catch a
+# question that uses a name the source pages do not.
+[retrieval.aliases]
+# The value is appended to the retrieval query AND shown to the generator as
+# the name this KB uses, so write it as a name a sentence can contain — while
+# still carrying the terms BM25 needs to match.
+"onepass"   = "the ONE Pass, formally the Overseas Networks & Expertise Pass"
+"one pass"  = "the ONE Pass, formally the Overseas Networks & Expertise Pass"
+"one-pass"  = "the ONE Pass, formally the Overseas Networks & Expertise Pass"
+"ep"        = "the Employment Pass"
+"dp"        = "the Dependant's Pass"
+"ltvp"      = "the Long-Term Visit Pass"
+"loc"       = "the Letter of Consent"
+"sol"       = "the Shortage Occupation List"
+"compass"   = "COMPASS, the Complementarity Assessment Framework"
+"sgworkpass" = "the SGWorkPass digital work pass app"
+
+[log]
+file_path = "./rag-agent.log"
+level     = "INFO"

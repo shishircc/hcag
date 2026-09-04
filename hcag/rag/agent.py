@@ -14,6 +14,7 @@ version-stable across LanceDB releases and makes the fusion weights auditable.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
@@ -405,6 +406,11 @@ class TurnMetrics:
     dropped_chunks: int = 0
     context_tokens: int = 0
     generation_tokens: int = 0
+    #: Alias expansions that fired this turn, as "<typed>" -> "<corpus name>".
+    #: Retrieval is only half of what they fix: the generator also has to be
+    #: told, or it refuses a question whose subject the context describes
+    #: under a name the question never used.
+    aliases_applied: list[tuple[str, str]] = field(default_factory=list)
     #: A retrieval leg failed and the turn ran on the other one alone. An
     #: answer built on half the retriever is still an answer, but it is not
     #: the same answer, so it is never reported as a clean turn.
@@ -467,6 +473,43 @@ class RagAgent:
                 self._logger.warn("rag_agent.fts_search.failed", error=f"{type(e).__name__}: {e}")
             return []
 
+    def _expand_query(self, query_text: str) -> tuple[str, list[tuple[str, str]]]:
+        """Add the corpus's own name for anything the user named differently.
+
+        Applied to the retrieval query only — both legs, since neither can
+        bridge a name the corpus never spells. The expansion is appended, so
+        the user's wording keeps its weight, and the QUESTION the generator
+        sees stays exactly what was asked.
+        """
+        aliases = self.cfg.retrieval.aliases
+        if not aliases:
+            return query_text, []
+
+        lowered = query_text.lower()
+        applied: list[tuple[str, str]] = []
+        additions: list[str] = []
+        for alias, expansion in aliases.items():
+            alias = (alias or "").strip().lower()
+            expansion = (expansion or "").strip()
+            if not alias or not expansion:
+                continue
+            if expansion.lower() in lowered:
+                continue  # the query already says it the corpus's way
+            if re.search(rf"(?<!\w){re.escape(alias)}(?!\w)", lowered):
+                additions.append(expansion)
+                applied.append((alias, expansion))
+        if not additions:
+            return query_text, []
+
+        expanded = query_text + " " + " ".join(dict.fromkeys(additions))
+        if self._logger:
+            self._logger.debug(
+                "rag_agent.query.expanded",
+                original=query_text[:256],
+                added=list(dict.fromkeys(additions)),
+            )
+        return expanded, applied
+
     def _retrieve(self, query_text: str) -> tuple[list[RetrievedChunk], TurnMetrics]:
         assert self._deps is not None
         metrics = TurnMetrics()
@@ -476,9 +519,11 @@ class RagAgent:
         # take the whole retriever with it: full-text search needs no embedding
         # and answers the same query on its own. Hybrid's point is that either
         # leg can carry a turn — losing one is a degraded turn, not a blank one.
+        search_text, metrics.aliases_applied = self._expand_query(query_text)
+
         query_vec: list[float] | None = None
         try:
-            embed_result = self._deps.embedder.embed([query_text])
+            embed_result = self._deps.embedder.embed([search_text])
             query_vec = embed_result.vectors[0]
         except Exception as e:  # noqa: BLE001
             metrics.degraded = "vector"
@@ -492,7 +537,7 @@ class RagAgent:
         # Pull more than top_k per side so the fusion has something to work with.
         per_side = max(cfg.top_k * 2, cfg.top_k + 4)
         vector_hits = self._vector_search(query_vec, per_side) if query_vec else []
-        fts_hits = self._fts_search(query_text, per_side)
+        fts_hits = self._fts_search(search_text, per_side)
         if not fts_hits and metrics.degraded == "vector":
             # Both legs are down — that is a failed retrieval, not an empty KB.
             metrics.degraded = "all"
@@ -574,10 +619,26 @@ class RagAgent:
     # --- Turn helpers -----------------------------------------------------
 
     @staticmethod
-    def _context_block(kept: list[RetrievedChunk]) -> str:
-        if not kept:
-            return "CONTEXT\n(none — no relevant excerpts were retrieved for this question)"
-        return _format_context(kept)
+    def _context_block(
+        kept: list[RetrievedChunk],
+        aliases_applied: list[tuple[str, str]] | None = None,
+    ) -> str:
+        body = (
+            _format_context(kept)
+            if kept
+            else "CONTEXT\n(none — no relevant excerpts were retrieved for this question)"
+        )
+        if not aliases_applied:
+            return body
+        # The alias map is operator-curated vocabulary for this KB, so handing
+        # it to the generator is grounding, not invention. Without it the model
+        # is asked about "onepass", shown excerpts that only ever say "Overseas
+        # Networks & Expertise Pass", and correctly concludes it was given
+        # nothing about "onepass".
+        lines = "\n".join(
+            f'- "{alias}" refers to: {expansion}' for alias, expansion in aliases_applied
+        )
+        return f"VOCABULARY (names this knowledge base uses)\n{lines}\n\n{body}"
 
     @staticmethod
     def _cited_paths(kept: list[RetrievedChunk]) -> list[str]:
@@ -615,7 +676,9 @@ class RagAgent:
                 self._logger.error("rag_agent.retrieval.crash", error=reason)
             return f"[retrieval_error] {reason}"
 
-        msgs = self._build_messages(user_message, self._context_block(kept))
+        msgs = self._build_messages(
+            user_message, self._context_block(kept, metrics.aliases_applied)
+        )
 
         try:
             resp = self._llm.chat(msgs, tools=[])
@@ -672,7 +735,9 @@ class RagAgent:
             sources=self._cited_paths(kept),
         )
 
-        msgs = self._build_messages(user_message, self._context_block(kept))
+        msgs = self._build_messages(
+            user_message, self._context_block(kept, metrics.aliases_applied)
+        )
         parts: list[str] = []
         answer = ""
         try:

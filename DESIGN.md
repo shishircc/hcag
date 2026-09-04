@@ -4186,6 +4186,10 @@ The reranker fuses the vector KNN result and the BM25 result via reciprocal-rank
 
 Every hit carries the columns fixed in §8.5: `id`, `kb_path`, `chunk_index`, `text`, `headings`, `image_path`, `token_estimate`.
 
+**Query-time vocabulary.** Hybrid insures each leg against the other's weakness — BM25 misses paraphrase, dense retrieval blurs rare exact tokens — but neither leg can bridge a name the corpus never spells. MOM's pages say "ONE Pass" and "Overseas Networks & Expertise Pass" and never "onepass": BM25 matched nothing at all, and a three-word question built on a coined compound gave the embedder too little to separate one pass from the 239 chunks that mention some pass. `[retrieval.aliases]` in `rag_agent.toml` (§9.6) maps what users type to what the corpus spells. Keys match on word boundaries, case-insensitively, and the value is **appended** to the retrieval query rather than substituted, so the user's own wording keeps its weight. The mechanism is general; the vocabulary is data about one KB, so it ships empty.
+
+**The generator has to be told too.** Fixing retrieval alone did not answer the question. With the defining excerpt in context, the model still refused — *"the context does not contain any information about 'onepass'"* — and it was right to under §9.3.3's grounding rule: nothing in the excerpts said that "onepass" IS that pass. The link exists only in the operator's alias map, so a turn whose query was expanded opens its context with a `VOCABULARY` block naming what the question's words refer to, and the system prompt's rule 2 tells the model to follow it into the excerpts. This is grounding, not invention: the names come from a curated file, the facts still come only from the excerpts, and the QUESTION the model answers stays the user's own wording. The measured effect on "what is one pass" is a refusal turning into a cited answer.
+
 ### 9.3.3 Chunk assembly
 
 Retrieved chunks are assembled into a single **context block** in three steps:
@@ -4382,6 +4386,15 @@ top_k               = 8       # hits requested from LanceDB
 reranker            = "rrf"   # rrf | linear | none
 max_context_tokens  = 6000    # sum of chunk token_estimates in the assembled prompt
 merge_adjacent      = true    # collapse consecutive chunks from the same file
+
+# Query-time vocabulary (§9.3.2): what users type -> what this corpus spells.
+# Empty by default; the mechanism is general, the names are data about one KB.
+# The value is appended to the retrieval query AND shown to the generator as a
+# VOCABULARY note, so write it as a name a sentence can contain while still
+# carrying the terms BM25 needs.
+[retrieval.aliases]
+"onepass"  = "the ONE Pass, formally the Overseas Networks & Expertise Pass"
+"ep"       = "the Employment Pass"
 
 # Optional: override the packaged system prompt for the RAG agent.
 # system_prompt_path = "prompts/rag_agent_system.md"
