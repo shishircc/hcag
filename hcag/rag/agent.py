@@ -405,6 +405,10 @@ class TurnMetrics:
     dropped_chunks: int = 0
     context_tokens: int = 0
     generation_tokens: int = 0
+    #: A retrieval leg failed and the turn ran on the other one alone. An
+    #: answer built on half the retriever is still an answer, but it is not
+    #: the same answer, so it is never reported as a clean turn.
+    degraded: str = ""
 
 
 class RagAgent:
@@ -468,19 +472,30 @@ class RagAgent:
         metrics = TurnMetrics()
         cfg = self.cfg.retrieval
 
-        # Embed the query.
+        # Embed the query. A failure here (no API key, provider down) must not
+        # take the whole retriever with it: full-text search needs no embedding
+        # and answers the same query on its own. Hybrid's point is that either
+        # leg can carry a turn — losing one is a degraded turn, not a blank one.
+        query_vec: list[float] | None = None
         try:
             embed_result = self._deps.embedder.embed([query_text])
             query_vec = embed_result.vectors[0]
         except Exception as e:  # noqa: BLE001
+            metrics.degraded = "vector"
             if self._logger:
-                self._logger.warn("rag_agent.embed.failed", error=f"{type(e).__name__}: {e}")
-            return [], metrics
+                self._logger.warn(
+                    "rag_agent.embed.failed",
+                    error=f"{type(e).__name__}: {e}",
+                    falling_back_to="fts",
+                )
 
         # Pull more than top_k per side so the fusion has something to work with.
         per_side = max(cfg.top_k * 2, cfg.top_k + 4)
-        vector_hits = self._vector_search(query_vec, per_side)
+        vector_hits = self._vector_search(query_vec, per_side) if query_vec else []
         fts_hits = self._fts_search(query_text, per_side)
+        if not fts_hits and metrics.degraded == "vector":
+            # Both legs are down — that is a failed retrieval, not an empty KB.
+            metrics.degraded = "all"
         metrics.vector_hits = len(vector_hits)
         metrics.fts_hits = len(fts_hits)
 
@@ -497,6 +512,14 @@ class RagAgent:
         kept = _source_order(kept)
         metrics.context_tokens = sum(c.token_estimate for c in kept)
 
+        if metrics.degraded and self._logger:
+            self._logger.warn(
+                "rag_agent.retrieval.degraded",
+                lost=metrics.degraded,
+                vector_hits=metrics.vector_hits,
+                fts_hits=metrics.fts_hits,
+                kept=metrics.kept_chunks,
+            )
         if self._logger:
             self._logger.debug(
                 "rag_agent.retrieve",
@@ -574,6 +597,7 @@ class RagAgent:
                 kept_chunks=metrics.kept_chunks,
                 dropped_chunks=metrics.dropped_chunks,
                 context_tokens=metrics.context_tokens,
+                degraded=metrics.degraded,
                 turns_in_history=len(self._history) // 2,
             )
 
@@ -644,6 +668,7 @@ class RagAgent:
             kept=metrics.kept_chunks,
             dropped=metrics.dropped_chunks,
             context_tokens=metrics.context_tokens,
+            degraded=metrics.degraded,
             sources=self._cited_paths(kept),
         )
 
