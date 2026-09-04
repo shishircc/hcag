@@ -3913,6 +3913,12 @@ For each in-scope textual file, `rag`:
    - the innermost heading path (for Markdown) as a `headings` array — useful to reconstruct provenance at query time,
    - a stable `id` derived from the file's relative path plus the chunk index (§8.4.5).
 
+**The heading path is prefixed to `text`.** `text` is both the string that gets embedded and the column the FTS index covers (§8.6), and only a document's *first* chunk contains its title — so without this, every later chunk is unreachable by a query naming the document it belongs to. Each chunk's stored text opens with one `Parent > Child` line, which reads as context to the generating model as well as supplying terms to BM25; a trailing component the text already opens with as a Markdown heading is not repeated. Measured over ten document-naming queries against the MOM KB, on-topic hits in the FTS top-8 rose from 35 to 41. It is not a cure for every miss: a query using a name the corpus does not use (`onepass` for "ONE Pass") still matches nothing lexically, since the prefix carries the document's own title and not its aliases.
+
+Note that `text` consequently does not slice out of the source at `char_start:char_end` — it already did not, since a chunk also carries the previous chunk's overlap tail. The offsets locate the chunk's *body* in the source; they are provenance, not a substring contract.
+
+**Empty headings are ignored.** A crawled page can contain a bare `#` with no title. Pushing it would supersede the document's real name with `""` for every chunk that follows, which is how a page titled "Eligibility for the Overseas Networks & Expertise Pass" came to carry `headings = ['', 'Who is eligible']` from its second chunk on.
+
 ### 8.4.3 Image description
 
 Images are **indirectly indexed**: `rag` never embeds the raw bytes. Instead, each in-scope image is passed to a multimodal LLM (default: the same provider/model used for the text embeddings' companion LLM, configurable per §8.7) with a fixed description prompt. The prompt asks for:
@@ -3938,6 +3944,8 @@ Batches are dispatched sequentially (not concurrently) by default. The chunking 
 - Each row's `id` is a stable digest of `(<relative_path>, <chunk_index>, <source_content_hash>)`. Content changes flip the `id`, so old rows for a modified file are naturally superseded rather than mutated in place.
 - Without `--recreate`, `rag` **upserts** by `id` and issues a **delete-by-`kb_path`-then-insert** for any file whose current content hash differs from the stored one. Untouched files skip the embed step entirely — the run's cost scales with the size of the diff, not the size of the KB.
 - With `--recreate`, the target table is dropped first and every in-scope file is re-embedded. Useful when embedding model or chunk parameters change (§8.7).
+
+**A chunker change needs `--recreate`.** The skip decision compares the *source file's* content hash, so a run against an unchanged KB skips every file and no amount of re-running will apply a change to how chunks are built. Because `--recreate` drops the table before the first embed, verify the embedding credential is present before starting: a run that drops the table and then fails to embed leaves no index behind.
 
 The tool records a `manifest` row per source file containing its content hash, byte size, mtime, and chunk count, so a subsequent run can detect changes without re-reading whole files unnecessarily.
 

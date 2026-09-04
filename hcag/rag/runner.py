@@ -65,6 +65,31 @@ def _serialize_metadata(md: dict[str, Any]) -> str:
         return json.dumps({"error": "unserializable_metadata"})
 
 
+def with_heading_path(text: str, headings: list[str]) -> str:
+    """Prefix a chunk with the heading path it sits under.
+
+    Both retrieval legs read the ``text`` column — it is what gets embedded and
+    what the FTS index covers — and only a document's FIRST chunk contains its
+    title. Every later chunk was therefore invisible to a query naming the
+    thing it is about: "what is one pass" could not reach the middle of the
+    ONE Pass overview, because those chunks never say "Overseas Networks &
+    Expertise Pass" in their own body.
+
+    The prefix is one line, `Parent > Child`, so it reads as context to the
+    model as well as matching terms for BM25. A trailing component the text
+    already opens with as a Markdown heading is dropped rather than repeated.
+    """
+    path = [h.strip() for h in headings if h and h.strip()]
+    if not path:
+        return text
+    first_line = text.lstrip().split("\n", 1)[0].lstrip("#").strip()
+    if path and first_line and path[-1] == first_line:
+        path = path[:-1]
+    if not path:
+        return text
+    return " > ".join(path) + "\n\n" + text
+
+
 def _process_text_file(
     candidate: Candidate,
     cfg: RagConfig,
@@ -94,17 +119,22 @@ def _process_text_file(
 
     rows: list[_PendingRow] = []
     for idx, ch in enumerate(chunks):
+        # `text` is both the embedded string and the FTS-indexed column, so the
+        # heading path goes in here rather than in a column of its own.
+        # char_start/char_end stay offsets into the SOURCE — they already did
+        # not slice to `text`, which carries the previous chunk's overlap tail.
+        body = with_heading_path(ch.text, ch.headings)
         rows.append(
             _PendingRow(
                 kb_path=candidate.kb_path,
                 chunk_index=idx,
                 source_kind=candidate.source_kind,
-                text=ch.text,
+                text=body,
                 char_start=ch.char_start,
                 char_end=ch.char_end,
                 headings=ch.headings,
                 image_path="",
-                token_estimate=ch.token_estimate,
+                token_estimate=est(body),
                 file_hash=fh,
                 metadata=meta_base,
             )

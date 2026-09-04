@@ -178,10 +178,18 @@ def _segments(source: str, *, markdown: bool) -> list[_Segment]:
 
 
 def _current_headings(stack: dict[int, str]) -> list[str]:
-    return [stack[k] for k in sorted(stack.keys())]
+    return [stack[k] for k in sorted(stack.keys()) if stack[k].strip()]
 
 
 def _push_heading(stack: dict[int, str], level: int, title: str) -> None:
+    # An empty heading (`#` with no text) is a rendering artifact of the
+    # crawled page, not a section boundary. Pushing it would supersede the
+    # document's real title with "" for every chunk that follows — which is
+    # how a page called "Eligibility for the Overseas Networks & Expertise
+    # Pass" ended up with `headings = ['', 'Who is eligible']` from its second
+    # chunk on, unfindable by the name of the thing it is about.
+    if not title.strip():
+        return
     # A heading at level N supersedes N and everything deeper.
     for k in [k for k in stack if k >= level]:
         stack.pop(k, None)
