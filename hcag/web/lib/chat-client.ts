@@ -104,6 +104,12 @@ export type TurnEvent = {
   loaded?: string[];
   active_after?: string[];
   detail?: string;
+  // RAG baseline (§9.5): its retrieve step reports counts and cited KB paths
+  // where an HCAG load reports packet ids.
+  kept?: number;
+  dropped?: number;
+  sources?: string[];
+  stage?: string;
 };
 
 export class StreamUnsupported extends Error {}
@@ -112,8 +118,9 @@ export class StreamUnsupported extends Error {}
  * Stream a turn, invoking `onEvent` as each event arrives.
  *
  * Resolves with the final answer. Throws `StreamUnsupported` when the backend
- * does not stream (501 — the RAG baseline, §9.5) so the caller can fall back
- * to `sendChat`, and throws on any other failure.
+ * does not stream (501) so the caller can fall back to `sendChat`, and throws
+ * on any other failure. Both shipped agents stream (§9.5); the fallback is for
+ * a third-party agent behind the same route.
  */
 export async function streamChat(
   sessionId: string,

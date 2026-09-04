@@ -4269,13 +4269,17 @@ The intended narrative when scoring both: **`simple` and `medium`** questions (�
 | Route | Response | Consumer |
 |---|---|---|
 | `POST /chat` | `{ text, session_id }` — one JSON object when the turn finishes | `evalrun` (§7.3), curl, any non-streaming client |
-| `POST /chat/stream` | `text/event-stream` — §2.14.1 events as SSE frames | the chat widget (§10.4) |
+| `POST /chat/stream` | `text/event-stream` — §2.14.1 events as SSE frames | the chat widget (§10.4); both agents implement it |
 
 Both take the same request body and share a session; a client may stream one turn and not the next.
 
 **A separate path, not content negotiation.** Switching on `Accept: text/event-stream` would have kept one route, and was rejected: `POST /chat`'s shape is depended on by `evalrun` and is the contract the RAG baseline implements identically (§9.4), so making its response type depend on a header risks silent divergence between the two agents and turns a mis-set header into what looks like an agent bug. A distinct path is greppable in logs, routable in a proxy, and impossible to hit by accident. The two also differ in more than framing — §2.14.3's post-first-byte error semantics have no equivalent in the synchronous route.
 
-**The RAG baseline implements `POST /chat` only.** It has no tool loop and retrieves once up front, so its stream would carry deltas and nothing else; the comparison in §9.4 is about retrieval architecture and is run by `evalrun`, which is synchronous anyway. A client asking `--agent rag` for `/chat/stream` gets `501`, not a degraded imitation.
+**Both agents stream.** The RAG baseline implements `run_turn_stream` too, emitting the same §2.14.1 vocabulary: `assistant.start`, a `tool.start`/`tool.end` pair around retrieval — reporting chunks kept, chunks dropped, context tokens and the KB paths cited, where an HCAG turn reports packet ids — then `assistant.delta` tokens and `assistant.final`. One client reducer therefore renders both agents, and the §9.4 comparison covers what the two feel like as well as what they retrieve, which matters because perceived latency is half of what the architectures differ on.
+
+This reverses an earlier decision to answer `501` for `--agent rag` on the grounds that its stream "would carry deltas and nothing else". That was wrong on the facts — a RAG turn's retrieval is worth showing, and is the part of a RAG answer a reader needs in order to judge it — and it broke the widget (§10.4), which posts every turn to `/chat/stream`. `501` remains the answer for any agent that genuinely has no streaming path; it is a property of the agent, not of the route.
+
+`run_turn` keeps its own non-streaming provider call rather than draining the stream: `evalrun` (§7.3) runs the comparison through `POST /chat`, and the synchronous path should keep issuing the request it always has. The two paths share every step that decides an answer — retrieval, context block, message build, history — so they can differ in transport but not in substance.
 
 ```
 $ hcag-server --agent {hcag|rag} [options]

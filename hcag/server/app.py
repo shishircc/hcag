@@ -60,9 +60,9 @@ class TokenReply(BaseModel):
 class _AgentLike(Protocol):
     def run_turn(self, user_message: str) -> str: ...
 
-    #: Optional. Absent on the RAG baseline, which retrieves once up front and
-    #: has no tool loop to report — it answers 501 rather than imitating a
-    #: stream that would carry deltas and nothing else (§9.5).
+    #: Optional. Both shipped agents implement it — the RAG baseline reports
+    #: its retrieval as the tool events an HCAG turn uses for packet loads
+    #: (§9.5). An agent without it gets 501, not a faked stream.
     def run_turn_stream(self, user_message: str): ...
 
 

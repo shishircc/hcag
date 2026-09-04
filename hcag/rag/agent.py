@@ -1,7 +1,8 @@
 """The RAG chat agent (§9).
 
 Presents the same public surface as ``AgentRuntime`` (``bootstrap`` +
-``run_turn``) so ``hcag-server`` can swap the two behind one HTTP route.
+``run_turn`` + ``run_turn_stream``) so ``hcag-server`` can swap the two behind
+one HTTP route, streaming or not.
 
 Retrieval strategy: for each turn we run a vector search and a full-text
 search separately against the LanceDB ``kb`` table and fuse the two ranked
@@ -16,13 +17,17 @@ import json
 from dataclasses import dataclass, field
 from importlib import resources
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..logger import HcagLogger
-from ..runtime.llm import LiteLLMAdapter, Message
+from ..runtime.events import Event, EventStream
+from ..runtime.llm import Final, LiteLLMAdapter, Message, TextDelta
 from .agent_config import RagAgentConfig, RerankerKind
 from .chunker import make_token_estimator
 from .embedder import Embedder
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 
 class AgentBootstrapError(RuntimeError):
@@ -419,6 +424,7 @@ class RagAgent:
         # attached per-turn and does NOT bloat the stored history.
         self._history: list[tuple[str, str]] = []  # [(role, text), ...]
         self._est = make_token_estimator()
+        self._turn_index = 0
 
     def bootstrap(self) -> None:
         """Idempotent — builds deps if not injected."""
@@ -542,6 +548,35 @@ class RagAgent:
         msgs.append(Message(role="user", content=wrapped))
         return msgs
 
+    # --- Turn helpers -----------------------------------------------------
+
+    @staticmethod
+    def _context_block(kept: list[RetrievedChunk]) -> str:
+        if not kept:
+            return "CONTEXT\n(none — no relevant excerpts were retrieved for this question)"
+        return _format_context(kept)
+
+    @staticmethod
+    def _cited_paths(kept: list[RetrievedChunk]) -> list[str]:
+        """The KB paths behind the answer, once each, best-ranked first."""
+        return list(dict.fromkeys(c.kb_path for c in kept))
+
+    def _record_turn(self, user_message: str, answer: str, metrics: TurnMetrics) -> None:
+        # Store plain user + assistant text so history stays cache-friendly and
+        # doesn't accumulate stale CONTEXT blocks turn over turn.
+        self._history.append(("user", user_message))
+        self._history.append(("assistant", answer))
+        if self._logger:
+            self._logger.info(
+                "rag_agent.turn",
+                user_chars=len(user_message),
+                answer_chars=len(answer),
+                kept_chunks=metrics.kept_chunks,
+                dropped_chunks=metrics.dropped_chunks,
+                context_tokens=metrics.context_tokens,
+                turns_in_history=len(self._history) // 2,
+            )
+
     # --- Public turn ------------------------------------------------------
 
     def run_turn(self, user_message: str) -> str:
@@ -556,12 +591,7 @@ class RagAgent:
                 self._logger.error("rag_agent.retrieval.crash", error=reason)
             return f"[retrieval_error] {reason}"
 
-        if not kept:
-            context_block = "CONTEXT\n(none — no relevant excerpts were retrieved for this question)"
-        else:
-            context_block = _format_context(kept)
-
-        msgs = self._build_messages(user_message, context_block)
+        msgs = self._build_messages(user_message, self._context_block(kept))
 
         try:
             resp = self._llm.chat(msgs, tools=[])
@@ -572,22 +602,77 @@ class RagAgent:
             return f"[generation_error] {reason}"
 
         answer = resp.text or ""
-        # Store plain user + assistant text so history stays cache-friendly and
-        # doesn't accumulate stale CONTEXT blocks turn over turn.
-        self._history.append(("user", user_message))
-        self._history.append(("assistant", answer))
-
-        if self._logger:
-            self._logger.info(
-                "rag_agent.turn",
-                user_chars=len(user_message),
-                answer_chars=len(answer),
-                kept_chunks=metrics.kept_chunks,
-                dropped_chunks=metrics.dropped_chunks,
-                context_tokens=metrics.context_tokens,
-                turns_in_history=len(self._history) // 2,
-            )
+        self._record_turn(user_message, answer, metrics)
         return answer
+
+    def run_turn_stream(self, user_message: str) -> "Iterator[Event]":
+        """Yield §2.14.1 events for one turn — the same vocabulary the HCAG
+        runtime emits, so one client reducer renders both agents (§9.5).
+
+        A RAG turn has no tool loop, but it does have a retrieval step worth
+        watching: `tool.start`/`tool.end` report what the search kept, dropped
+        and cited, which is the part of a RAG answer a reader needs in order to
+        judge it — and the part that makes the §9.4 comparison legible when the
+        two agents are driven from the same widget.
+
+        `run_turn` keeps its own non-streaming path deliberately rather than
+        draining this one: `evalrun` (§7.3) runs the comparison through `/chat`,
+        and it should keep issuing the same non-streaming provider call it
+        always has. The two share every step that decides an answer — retrieval,
+        context block, message build, history — so they cannot drift on
+        substance, only on transport.
+        """
+        self.bootstrap()
+        assert self._deps is not None and self._llm is not None
+
+        self._turn_index += 1
+        stream = EventStream(turn_id=f"r_{self._turn_index}")
+        yield stream.emit("assistant.start")
+
+        yield stream.emit("tool.start", tool="retrieve", context=user_message[:512])
+        try:
+            kept, metrics = self._retrieve(user_message)
+        except Exception as e:  # noqa: BLE001
+            reason = f"{type(e).__name__}: {e}"
+            if self._logger:
+                self._logger.error("rag_agent.retrieval.crash", error=reason)
+            yield stream.emit("error", stage="retrieval", detail=reason)
+            return
+        yield stream.emit(
+            "tool.end",
+            tool="retrieve",
+            kept=metrics.kept_chunks,
+            dropped=metrics.dropped_chunks,
+            context_tokens=metrics.context_tokens,
+            sources=self._cited_paths(kept),
+        )
+
+        msgs = self._build_messages(user_message, self._context_block(kept))
+        parts: list[str] = []
+        answer = ""
+        try:
+            for chunk in self._llm.chat_stream(msgs, tools=[]):
+                if isinstance(chunk, TextDelta):
+                    parts.append(chunk.text)
+                    yield stream.emit("assistant.delta", text=chunk.text)
+                elif isinstance(chunk, Final):
+                    # The Final carries the assembled text; prefer it, since a
+                    # provider may deliver an answer with no deltas at all.
+                    answer = chunk.response.text or "".join(parts)
+        except Exception as e:  # noqa: BLE001
+            reason = f"{type(e).__name__}: {e}"
+            if self._logger:
+                self._logger.error("rag_agent.generate.failed", error=reason)
+            # Past the first frame the 200 is committed, so the failure travels
+            # in-band (§2.14.3) rather than as an HTTP error.
+            yield stream.emit("error", stage="generation", detail=reason)
+            return
+
+        answer = answer or "".join(parts)
+        self._record_turn(user_message, answer, metrics)
+        yield stream.emit(
+            "assistant.final", text=answer, sources=self._cited_paths(kept)
+        )
 
 
 __all__ = [
