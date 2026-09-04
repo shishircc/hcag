@@ -416,8 +416,8 @@ The agent classifies the task's domain / subdomain / topic at the first turn and
 ### D6. Delta-only responses from `check_and_load_kb`
 The tool returns only **newly loaded packets** (with content) and **newly evicted packet IDs** (without content). It does not re-send content of packets already in the active set. **Rationale:** Minimizes token traffic **and** — critically for Problem 3 — keeps prior tool-result blocks byte-stable in history, so the prompt prefix remains cacheable turn after turn.
 
-### D7. Agent tracks the active set; passes it in each call
-The memory module is **stateless across calls**. The agent LLM tracks currently-loaded packet IDs (they are in its conversation history) and passes them as an argument to `check_and_load_kb`. **Rationale:** Framework-agnostic; no session store; the ground truth is the conversation itself.
+### D7. Agent tracks the active set; the module keeps its order
+The agent LLM tracks currently-loaded packet IDs (they are in its conversation history) and passes them as an argument to `check_and_load_kb`; that claim decides **membership**, including for ids the module never loaded (a resumed session, a voice startup that preloaded elsewhere). **Order** is the module's: it remembers the sequence packets were first loaded in, and returns the active set in that sequence. **Rationale:** Framework-agnostic and no session store for what is loaded — the ground truth is the conversation itself — but the sequence of packet blocks in that conversation is a fact about history, not an opinion the model gets to restate. A model that re-orders (or garbles) `active_packet_ids` would otherwise reshuffle the cached prefix and change which packet is evicted next.
 
 ### D8. Token-budget-bounded active set with LRU eviction
 The module enforces a hard token budget. If new loads would exceed budget, the module evicts least-recently-used packets from the caller-supplied active set to make room, and reports the eviction in the delta. **Rationale:** Predictable context growth; the agent never has to reason about tokens itself.
@@ -664,7 +664,7 @@ A textual **metadata header** precedes each folder's content so the LLM can alwa
 
 ### 2.3.3 Selection semantics
 
-The agent picks `requested_packet_ids` by consulting the catalog (already in its context). The module does **not** perform semantic matching. If `requested_packet_ids` is a subset of `active_packet_ids`, the module returns an empty delta (no-op) whose result text says so in as many words — `no packets loaded: every requested id was already active` — and logs the call as redundant (§2.7.1). The module does not reject the call: D7 keeps the agent authoritative over its own active set. But a silent empty delta teaches the model nothing, and the call it should not have made is the one behavior §2.7.1 exists to suppress.
+The agent picks `requested_packet_ids` by consulting the catalog (already in its context), and names every id the turn needs in one call (§2.4). The module does **not** perform semantic matching. If `requested_packet_ids` is a subset of `active_packet_ids`, the module returns an empty delta (no-op) whose result text says so in as many words — `no packets loaded: every requested id was already active` — and logs the call as redundant (§2.7.1). The module does not reject the call: D7 keeps the agent authoritative over its own active set. But a silent empty delta teaches the model nothing, and the call it should not have made is the one behavior §2.7.1 exists to suppress.
 
 ## 2.4 Active-Set Protocol
 
@@ -672,10 +672,17 @@ The agent picks `requested_packet_ids` by consulting the catalog (already in its
 - The **module** is stateless across calls; it treats `active_packet_ids` as authoritative input each call.
 - The module returns `active_after` so the agent can reconcile in case of eviction. The agent trusts `active_after` over its own prior tracking.
 
-**Ordering (LRU):**
+**Ordering (load order):**
 
-- On each call, the module treats the concatenation `active_packet_ids ++ requested_packet_ids` (with duplicates removed, keeping the last occurrence) as the LRU-ordered candidate set. Most-recently-used is at the tail.
-- Eviction, when needed, removes from the **head** (least-recently-used).
+- The module holds the active set in **load order** — the sequence packets were first loaded in — and that order, not the caller's, is what `active_after` reports. A caller-claimed id the module has no record of is appended at the tail in the order given; a claim that disagrees with the module's record is logged as `check_and_load_kb.active_drift`.
+- On each call the candidate set is the effective active set `++ requested_packet_ids` (duplicates removed). Newly loaded packets append at the tail, so the prefix only ever grows at the end — which is what keeps it cacheable (§2.12) and keeps the packet blocks in the conversation in the same sequence as the ids in `active_after`.
+- Re-requesting an already-active packet does **not** promote it: the redundant call is named and the order is left alone (§2.7.1).
+- Eviction, when needed, removes from the **head** (the oldest-loaded packet).
+
+**One call per turn.** A turn's retrieval need is decided once, and `check_and_load_kb` carries every id it implies — a multi-part question usually needs a packet per part, often from different branches. Two enforcement layers back the prompt wording:
+
+- Sibling calls in one assistant message are **merged by the runtime** into a single load (`check_and_load_kb.merged`), so they cost one eviction pass and land in the conversation in one deterministic order. Each absorbed `tool_call_id` still receives a tool result pointing at the merged one, since the provider requires every call to be answered.
+- A **sequential** second call in the same turn cannot be merged — it is already a second model round-trip — so it is counted (`turn.end.turn_reload_calls`), logged (`check_and_load_kb.extra_call_in_turn`) and answered with an in-band note telling the model to batch next time.
 
 ## 2.5 Token Budget & Eviction Algorithm
 
@@ -979,7 +986,7 @@ classDiagram
 |---|---|---|
 | `AgentRuntime` | Owns the conversation loop. On bootstrap calls `MemoryModule.get_catalog()` to inject the catalog into the system prompt (§2.7). On each user turn, invokes the LLM; forwards any `check_and_load_kb` tool calls to the memory module. Exposes the turn twice — `run_turn_stream` (the primitive) and `run_turn` (drains it) — per §2.14. | §1.9, §2.7, §2.10, §2.14 |
 | `LLM` (interface) | Abstract chat interface, streaming and non-streaming. Any concrete binding (Anthropic SDK, framework SDK) implements this. A binding that cannot stream degrades to one `assistant.delta` carrying the whole answer, so §2.14's contract holds for every provider. | §1.5 (framework-agnostic) |
-| `MemoryModule` (interface) | The tool contract exposed to the LLM. Stateless across calls (D7). | §1.10, §2.3 |
+| `MemoryModule` (interface) | The tool contract exposed to the LLM. Holds no packet content between calls; remembers only the active set's load order (D7). | §1.10, §2.3 |
 | `FileSystemMemoryModule` | Concrete implementation. Composes a `KBStorage`, an `EvictionPolicy`, and a `TokenBudget`. Assembles `Packet` objects from storage-returned bytes. | §2.5, §2.6 |
 | `KBStorage` (interface) | Backing-store abstraction. The seam that lets the KB move off local disk later (D4a). | §1.9, D4a |
 | `LocalFsStorage` | Default implementation: reads catalog and packet files from a local KB root. | §2.1 |
