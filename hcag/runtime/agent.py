@@ -9,7 +9,12 @@ from ..config import AgentConfig
 from ..logger import HcagLogger, build_logger
 from ..memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 from ..memory.module import MemoryModule
-from ..models import CheckAndLoadRequest, Delta
+from ..models import (
+    CheckAndLoadRequest,
+    Delta,
+    coerce_packet_ids,
+    is_well_formed_id_list,
+)
 from ..prompting import PromptLibrary, load_prompts
 from ..tracing import build_tracer, json_payload, messages_payload, set_attrs, truncate_middle
 from .events import Event, EventStream
@@ -412,11 +417,29 @@ class AgentRuntime:
 
         if call.name == "check_and_load_kb":
             args = call.arguments or {}
+            # The schema says `array of string`, but a model can hand back the
+            # array as JSON text. `list()` over that string would shred it into
+            # single characters, each failing as an unknown packet id, so
+            # coerce first and record that the arguments arrived malformed.
+            raw_requested = args.get("requested_packet_ids")
+            raw_active = args.get("active_packet_ids")
             req = CheckAndLoadRequest(
                 context=str(args.get("context", "")),
-                requested_packet_ids=list(args.get("requested_packet_ids", []) or []),
-                active_packet_ids=list(args.get("active_packet_ids", []) or []),
+                requested_packet_ids=coerce_packet_ids(raw_requested),
+                active_packet_ids=coerce_packet_ids(raw_active),
             )
+            for field_name, raw, recovered in (
+                ("requested_packet_ids", raw_requested, req.requested_packet_ids),
+                ("active_packet_ids", raw_active, req.active_packet_ids),
+            ):
+                if not is_well_formed_id_list(raw):
+                    self.logger.warn(
+                        "check_and_load_kb.malformed_args",
+                        turn=self._turn_index,
+                        field=field_name,
+                        raw=str(raw)[:512],
+                        recovered=recovered,
+                    )
             set_attrs(
                 span,
                 {

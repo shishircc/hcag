@@ -33,6 +33,7 @@ from ..models import (
     Delta,
     LoadError,
     Packet,
+    coerce_packet_ids,
 )
 from .eviction import EvictionPolicy, LRUEvictionPolicy, TokenBudget
 from .packet_loader import assemble_packet
@@ -240,8 +241,11 @@ class FileSystemMemoryModule:
         # own active set, so this is not rejected — but a silent empty delta
         # teaches the model nothing, and the reflex call is the behavior
         # §2.7.1 exists to suppress. Name it, in the result and in the log.
-        requested = list(request.requested_packet_ids)
-        active = list(request.active_packet_ids)
+        # Defensive: callers other than the tool boundary (voice startup, the
+        # eval harness) build the request themselves, so normalize here too
+        # rather than trust every construction site.
+        requested = coerce_packet_ids(request.requested_packet_ids)
+        active = coerce_packet_ids(request.active_packet_ids)
         if requested and all(pid in active for pid in requested):
             note = self.prompts.get(
                 "memory.redundant_note", requested=", ".join(requested)
@@ -265,30 +269,30 @@ class FileSystemMemoryModule:
             self.logger.info(
                 "check_and_load_kb.call",
                 context=(request.context or "")[:512],
-                requested=list(request.requested_packet_ids),
-                active_in=list(request.active_packet_ids),
+                requested=requested,
+                active_in=active,
             )
 
         # Resolve every requested id so its token estimate is known before the
         # eviction policy runs. Unknown ids produce a LoadError.
         prelim_errors: list[LoadError] = []
-        for pid in request.requested_packet_ids:
+        for pid in requested:
             if self._resolve(pid) is None and pid not in self._index:
                 prelim_errors.append(
                     LoadError(packet_id=pid, reason="unknown_packet_id")
                 )
         # Active ids should already be in the index (they were loaded before)
         # but resolve defensively.
-        for pid in request.active_packet_ids:
+        for pid in active:
             if pid not in self._index:
                 self._resolve(pid)
 
         catalog = self._catalog_view()
 
         plan = self.eviction.plan(
-            active=list(request.active_packet_ids),
+            active=list(active),
             incoming=[
-                pid for pid in request.requested_packet_ids if pid in self._index
+                pid for pid in requested if pid in self._index
             ],
             budget=self.budget,
             catalog=catalog,
@@ -298,7 +302,7 @@ class FileSystemMemoryModule:
             delta = Delta(
                 loaded=[],
                 evicted=[],
-                active_after=list(request.active_packet_ids),
+                active_after=list(active),
                 errors=[*prelim_errors, plan.error],
             )
             if self.logger:
