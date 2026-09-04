@@ -416,8 +416,8 @@ The agent classifies the task's domain / subdomain / topic at the first turn and
 ### D6. Delta-only responses from `check_and_load_kb`
 The tool returns only **newly loaded packets** (with content) and **newly evicted packet IDs** (without content). It does not re-send content of packets already in the active set. **Rationale:** Minimizes token traffic **and** — critically for Problem 3 — keeps prior tool-result blocks byte-stable in history, so the prompt prefix remains cacheable turn after turn.
 
-### D7. Agent tracks the active set; passes it in each call
-The memory module is **stateless across calls**. The agent LLM tracks currently-loaded packet IDs (they are in its conversation history) and passes them as an argument to `check_and_load_kb`. **Rationale:** Framework-agnostic; no session store; the ground truth is the conversation itself.
+### D7. Agent tracks the active set; the module keeps its order
+The agent LLM tracks currently-loaded packet IDs (they are in its conversation history) and passes them as an argument to `check_and_load_kb`; that claim decides **membership**, including for ids the module never loaded (a resumed session, a voice startup that preloaded elsewhere). **Order** is the module's: it remembers the sequence packets were first loaded in, and returns the active set in that sequence. **Rationale:** Framework-agnostic and no session store for what is loaded — the ground truth is the conversation itself — but the sequence of packet blocks in that conversation is a fact about history, not an opinion the model gets to restate. A model that re-orders (or garbles) `active_packet_ids` would otherwise reshuffle the cached prefix and change which packet is evicted next.
 
 ### D8. Token-budget-bounded active set with LRU eviction
 The module enforces a hard token budget. If new loads would exceed budget, the module evicts least-recently-used packets from the caller-supplied active set to make room, and reports the eviction in the delta. **Rationale:** Predictable context growth; the agent never has to reason about tokens itself.
@@ -664,7 +664,7 @@ A textual **metadata header** precedes each folder's content so the LLM can alwa
 
 ### 2.3.3 Selection semantics
 
-The agent picks `requested_packet_ids` by consulting the catalog (already in its context). The module does **not** perform semantic matching. If `requested_packet_ids` is a subset of `active_packet_ids`, the module returns an empty delta (no-op) whose result text says so in as many words — `no packets loaded: every requested id was already active` — and logs the call as redundant (§2.7.1). The module does not reject the call: D7 keeps the agent authoritative over its own active set. But a silent empty delta teaches the model nothing, and the call it should not have made is the one behavior §2.7.1 exists to suppress.
+The agent picks `requested_packet_ids` by consulting the catalog (already in its context), and names every id the turn needs in one call (§2.4). The module does **not** perform semantic matching. If `requested_packet_ids` is a subset of `active_packet_ids`, the module returns an empty delta (no-op) whose result text says so in as many words — `no packets loaded: every requested id was already active` — and logs the call as redundant (§2.7.1). The module does not reject the call: D7 keeps the agent authoritative over its own active set. But a silent empty delta teaches the model nothing, and the call it should not have made is the one behavior §2.7.1 exists to suppress.
 
 ## 2.4 Active-Set Protocol
 
@@ -672,10 +672,17 @@ The agent picks `requested_packet_ids` by consulting the catalog (already in its
 - The **module** is stateless across calls; it treats `active_packet_ids` as authoritative input each call.
 - The module returns `active_after` so the agent can reconcile in case of eviction. The agent trusts `active_after` over its own prior tracking.
 
-**Ordering (LRU):**
+**Ordering (load order):**
 
-- On each call, the module treats the concatenation `active_packet_ids ++ requested_packet_ids` (with duplicates removed, keeping the last occurrence) as the LRU-ordered candidate set. Most-recently-used is at the tail.
-- Eviction, when needed, removes from the **head** (least-recently-used).
+- The module holds the active set in **load order** — the sequence packets were first loaded in — and that order, not the caller's, is what `active_after` reports. A caller-claimed id the module has no record of is appended at the tail in the order given; a claim that disagrees with the module's record is logged as `check_and_load_kb.active_drift`.
+- On each call the candidate set is the effective active set `++ requested_packet_ids` (duplicates removed). Newly loaded packets append at the tail, so the prefix only ever grows at the end — which is what keeps it cacheable (§2.12) and keeps the packet blocks in the conversation in the same sequence as the ids in `active_after`.
+- Re-requesting an already-active packet does **not** promote it: the redundant call is named and the order is left alone (§2.7.1).
+- Eviction, when needed, removes from the **head** (the oldest-loaded packet).
+
+**One call per turn.** A turn's retrieval need is decided once, and `check_and_load_kb` carries every id it implies — a multi-part question usually needs a packet per part, often from different branches. Two enforcement layers back the prompt wording:
+
+- Sibling calls in one assistant message are **merged by the runtime** into a single load (`check_and_load_kb.merged`), so they cost one eviction pass and land in the conversation in one deterministic order. Each absorbed `tool_call_id` still receives a tool result pointing at the merged one, since the provider requires every call to be answered.
+- A **sequential** second call in the same turn cannot be merged — it is already a second model round-trip — so it is counted (`turn.end.turn_reload_calls`), logged (`check_and_load_kb.extra_call_in_turn`) and answered with an in-band note telling the model to batch next time.
 
 ## 2.5 Token Budget & Eviction Algorithm
 
@@ -979,7 +986,7 @@ classDiagram
 |---|---|---|
 | `AgentRuntime` | Owns the conversation loop. On bootstrap calls `MemoryModule.get_catalog()` to inject the catalog into the system prompt (§2.7). On each user turn, invokes the LLM; forwards any `check_and_load_kb` tool calls to the memory module. Exposes the turn twice — `run_turn_stream` (the primitive) and `run_turn` (drains it) — per §2.14. | §1.9, §2.7, §2.10, §2.14 |
 | `LLM` (interface) | Abstract chat interface, streaming and non-streaming. Any concrete binding (Anthropic SDK, framework SDK) implements this. A binding that cannot stream degrades to one `assistant.delta` carrying the whole answer, so §2.14's contract holds for every provider. | §1.5 (framework-agnostic) |
-| `MemoryModule` (interface) | The tool contract exposed to the LLM. Stateless across calls (D7). | §1.10, §2.3 |
+| `MemoryModule` (interface) | The tool contract exposed to the LLM. Holds no packet content between calls; remembers only the active set's load order (D7). | §1.10, §2.3 |
 | `FileSystemMemoryModule` | Concrete implementation. Composes a `KBStorage`, an `EvictionPolicy`, and a `TokenBudget`. Assembles `Packet` objects from storage-returned bytes. | §2.5, §2.6 |
 | `KBStorage` (interface) | Backing-store abstraction. The seam that lets the KB move off local disk later (D4a). | §1.9, D4a |
 | `LocalFsStorage` | Default implementation: reads catalog and packet files from a local KB root. | §2.1 |
@@ -3974,6 +3981,12 @@ For each in-scope textual file, `rag`:
    - the innermost heading path (for Markdown) as a `headings` array — useful to reconstruct provenance at query time,
    - a stable `id` derived from the file's relative path plus the chunk index (§8.4.5).
 
+**The heading path is prefixed to `text`.** `text` is both the string that gets embedded and the column the FTS index covers (§8.6), and only a document's *first* chunk contains its title — so without this, every later chunk is unreachable by a query naming the document it belongs to. Each chunk's stored text opens with one `Parent > Child` line, which reads as context to the generating model as well as supplying terms to BM25; a trailing component the text already opens with as a Markdown heading is not repeated. Measured over ten document-naming queries against the MOM KB, on-topic hits in the FTS top-8 rose from 35 to 41. It is not a cure for every miss: a query using a name the corpus does not use (`onepass` for "ONE Pass") still matches nothing lexically, since the prefix carries the document's own title and not its aliases.
+
+Note that `text` consequently does not slice out of the source at `char_start:char_end` — it already did not, since a chunk also carries the previous chunk's overlap tail. The offsets locate the chunk's *body* in the source; they are provenance, not a substring contract.
+
+**Empty headings are ignored.** A crawled page can contain a bare `#` with no title. Pushing it would supersede the document's real name with `""` for every chunk that follows, which is how a page titled "Eligibility for the Overseas Networks & Expertise Pass" came to carry `headings = ['', 'Who is eligible']` from its second chunk on.
+
 ### 8.4.3 Image description
 
 Images are **indirectly indexed**: `rag` never embeds the raw bytes. Instead, each in-scope image is passed to a multimodal LLM (default: the same provider/model used for the text embeddings' companion LLM, configurable per §8.7) with a fixed description prompt. The prompt asks for:
@@ -3999,6 +4012,8 @@ Batches are dispatched sequentially (not concurrently) by default. The chunking 
 - Each row's `id` is a stable digest of `(<relative_path>, <chunk_index>, <source_content_hash>)`. Content changes flip the `id`, so old rows for a modified file are naturally superseded rather than mutated in place.
 - Without `--recreate`, `rag` **upserts** by `id` and issues a **delete-by-`kb_path`-then-insert** for any file whose current content hash differs from the stored one. Untouched files skip the embed step entirely — the run's cost scales with the size of the diff, not the size of the KB.
 - With `--recreate`, the target table is dropped first and every in-scope file is re-embedded. Useful when embedding model or chunk parameters change (§8.7).
+
+**A chunker change needs `--recreate`.** The skip decision compares the *source file's* content hash, so a run against an unchanged KB skips every file and no amount of re-running will apply a change to how chunks are built. Because `--recreate` drops the table before the first embed, verify the embedding credential is present before starting: a run that drops the table and then fails to embed leaves no index behind.
 
 The tool records a `manifest` row per source file containing its content hash, byte size, mtime, and chunk count, so a subsequent run can detect changes without re-reading whole files unnecessarily.
 
@@ -4239,6 +4254,10 @@ The reranker fuses the vector KNN result and the BM25 result via reciprocal-rank
 
 Every hit carries the columns fixed in §8.5: `id`, `kb_path`, `chunk_index`, `text`, `headings`, `image_path`, `token_estimate`.
 
+**Query-time vocabulary.** Hybrid insures each leg against the other's weakness — BM25 misses paraphrase, dense retrieval blurs rare exact tokens — but neither leg can bridge a name the corpus never spells. MOM's pages say "ONE Pass" and "Overseas Networks & Expertise Pass" and never "onepass": BM25 matched nothing at all, and a three-word question built on a coined compound gave the embedder too little to separate one pass from the 239 chunks that mention some pass. `[retrieval.aliases]` in `rag_agent.toml` (§9.6) maps what users type to what the corpus spells. Keys match on word boundaries, case-insensitively, and the value is **appended** to the retrieval query rather than substituted, so the user's own wording keeps its weight. The mechanism is general; the vocabulary is data about one KB, so it ships empty.
+
+**The generator has to be told too.** Fixing retrieval alone did not answer the question. With the defining excerpt in context, the model still refused — *"the context does not contain any information about 'onepass'"* — and it was right to under §9.3.3's grounding rule: nothing in the excerpts said that "onepass" IS that pass. The link exists only in the operator's alias map, so a turn whose query was expanded opens its context with a `VOCABULARY` block naming what the question's words refer to, and the system prompt's rule 2 tells the model to follow it into the excerpts. This is grounding, not invention: the names come from a curated file, the facts still come only from the excerpts, and the QUESTION the model answers stays the user's own wording. The measured effect on "what is one pass" is a refusal turning into a cited answer.
+
 ### 9.3.3 Chunk assembly
 
 Retrieved chunks are assembled into a single **context block** in three steps:
@@ -4330,13 +4349,19 @@ The intended narrative when scoring both: **`simple` and `medium`** questions (�
 | Route | Response | Consumer |
 |---|---|---|
 | `POST /chat` | `{ text, session_id }` — one JSON object when the turn finishes | `evalrun` (§7.3), curl, any non-streaming client |
-| `POST /chat/stream` | `text/event-stream` — §2.14.1 events as SSE frames | the chat widget (§10.4) |
+| `POST /chat/stream` | `text/event-stream` — §2.14.1 events as SSE frames | the chat widget (§10.4); both agents implement it |
 
 Both take the same request body and share a session; a client may stream one turn and not the next.
 
 **A separate path, not content negotiation.** Switching on `Accept: text/event-stream` would have kept one route, and was rejected: `POST /chat`'s shape is depended on by `evalrun` and is the contract the RAG baseline implements identically (§9.4), so making its response type depend on a header risks silent divergence between the two agents and turns a mis-set header into what looks like an agent bug. A distinct path is greppable in logs, routable in a proxy, and impossible to hit by accident. The two also differ in more than framing — §2.14.3's post-first-byte error semantics have no equivalent in the synchronous route.
 
-**The RAG baseline implements `POST /chat` only.** It has no tool loop and retrieves once up front, so its stream would carry deltas and nothing else; the comparison in §9.4 is about retrieval architecture and is run by `evalrun`, which is synchronous anyway. A client asking `--agent rag` for `/chat/stream` gets `501`, not a degraded imitation.
+**Degradation, not collapse.** Retrieval runs two independent legs (§9.3.2) and either can carry a turn alone, so the failure of one is a degraded turn rather than a blank one: if the query cannot be embedded (no credential, provider down), the vector leg is skipped and full-text search — which needs no embedding — answers on its own. `TurnMetrics.degraded` records which leg was lost (`vector`, or `all` when nothing came back), a `rag_agent.retrieval.degraded` WARN names it, and the `tool.end` stream event carries it to the client. This matters because the alternative is indistinguishable from a content gap: an empty context makes the agent say "I don't have enough information to answer that from the knowledge base", which reads like a retrieval-quality problem and is in fact a missing API key.
+
+**Both agents stream.** The RAG baseline implements `run_turn_stream` too, emitting the same §2.14.1 vocabulary: `assistant.start`, a `tool.start`/`tool.end` pair around retrieval — reporting chunks kept, chunks dropped, context tokens and the KB paths cited, where an HCAG turn reports packet ids — then `assistant.delta` tokens and `assistant.final`. One client reducer therefore renders both agents, and the §9.4 comparison covers what the two feel like as well as what they retrieve, which matters because perceived latency is half of what the architectures differ on.
+
+This reverses an earlier decision to answer `501` for `--agent rag` on the grounds that its stream "would carry deltas and nothing else". That was wrong on the facts — a RAG turn's retrieval is worth showing, and is the part of a RAG answer a reader needs in order to judge it — and it broke the widget (§10.4), which posts every turn to `/chat/stream`. `501` remains the answer for any agent that genuinely has no streaming path; it is a property of the agent, not of the route.
+
+`run_turn` keeps its own non-streaming provider call rather than draining the stream: `evalrun` (§7.3) runs the comparison through `POST /chat`, and the synchronous path should keep issuing the request it always has. The two paths share every step that decides an answer — retrieval, context block, message build, history — so they can differ in transport but not in substance.
 
 ```
 $ hcag-server --agent {hcag|rag} [options]
@@ -4429,6 +4454,15 @@ top_k               = 8       # hits requested from LanceDB
 reranker            = "rrf"   # rrf | linear | none
 max_context_tokens  = 6000    # sum of chunk token_estimates in the assembled prompt
 merge_adjacent      = true    # collapse consecutive chunks from the same file
+
+# Query-time vocabulary (§9.3.2): what users type -> what this corpus spells.
+# Empty by default; the mechanism is general, the names are data about one KB.
+# The value is appended to the retrieval query AND shown to the generator as a
+# VOCABULARY note, so write it as a name a sentence can contain while still
+# carrying the terms BM25 needs.
+[retrieval.aliases]
+"onepass"  = "the ONE Pass, formally the Overseas Networks & Expertise Pass"
+"ep"       = "the Employment Pass"
 
 # Optional: override the packaged system prompt for the RAG agent.
 # system_prompt_path = "prompts/rag_agent_system.md"

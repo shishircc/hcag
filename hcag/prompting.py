@@ -204,6 +204,15 @@ REGISTRY: list[PromptSpec] = [
         frozenset({"catalog"}),
         "INDEX ONLY block wrapping the injected catalog (D3b)",
     ),
+    PromptSpec(
+        "agent.merged_load_note",
+        description="tool result for a load call merged into a sibling (§2.4)",
+    ),
+    PromptSpec(
+        "agent.batch_reminder",
+        frozenset({"calls"}),
+        "in-band nudge after a second load call in one turn (§2.7.1)",
+    ),
     PromptSpec("tool.get_catalog", description="get_catalog description (§1.10)"),
     PromptSpec(
         "tool.check_and_load_kb", description="check_and_load_kb description (§2.7.1)"

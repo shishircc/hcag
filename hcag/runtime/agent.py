@@ -9,7 +9,12 @@ from ..config import AgentConfig
 from ..logger import HcagLogger, build_logger
 from ..memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 from ..memory.module import MemoryModule
-from ..models import CheckAndLoadRequest, Delta
+from ..models import (
+    CheckAndLoadRequest,
+    Delta,
+    coerce_packet_ids,
+    is_well_formed_id_list,
+)
 from ..prompting import PromptLibrary, load_prompts
 from ..tracing import build_tracer, json_payload, messages_payload, set_attrs, truncate_middle
 from .events import Event, EventStream
@@ -98,12 +103,12 @@ def build_tool_defs(prompts: "PromptLibrary") -> list[dict[str, Any]]:
                         "requested_packet_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Packet IDs to add to the active set.",
+                            "description": "Every packet ID this turn needs, in one call — not one call per ID.",
                         },
                         "active_packet_ids": {
                             "type": "array",
                             "items": {"type": "string"},
-                            "description": "Packet IDs you currently believe are active (LRU order, most recent last).",
+                            "description": "Packet IDs you currently believe are active. The module keeps load order (oldest first) and returns it as active_after.",
                         },
                     },
                     "required": ["context", "requested_packet_ids", "active_packet_ids"],
@@ -154,6 +159,9 @@ class AgentRuntime:
         # that says whether the discipline is holding; healthy is at or near 0.
         self._reload_calls = 0
         self._redundant_reloads = 0
+        # Reset per turn: one turn should need at most one load call, and the
+        # second is the latency the batching guidance exists to remove.
+        self._turn_reload_calls = 0
         # Mirrors the delta's authoritative `active_after` so `assistant.final`
         # can report what the turn ended up holding (§2.14.1).
         self._active_ids: list[str] = []
@@ -203,6 +211,7 @@ class AgentRuntime:
             self.bootstrap()
 
         self._turn_index += 1
+        self._turn_reload_calls = 0
         self.logger.info("turn.start", turn=self._turn_index, user_chars=len(user_message))
 
         stream = EventStream(turn_id=f"t_{self._turn_index}")
@@ -257,6 +266,7 @@ class AgentRuntime:
                     turn=self._turn_index,
                     output_chars=len(response.text),
                     reload_calls=self._reload_calls,
+                    turn_reload_calls=self._turn_reload_calls,
                     redundant_reloads=self._redundant_reloads,
                     redundant_rate=round(self._redundant_reloads / self._turn_index, 3),
                 )
@@ -265,8 +275,16 @@ class AgentRuntime:
                 )
                 return
 
-            for call in response.tool_calls:
+            calls, absorbed = self._merge_load_calls(response.tool_calls)
+            for call in calls:
                 yield from self._handle_tool_call(call, stream)
+            # Every tool_call_id in the assistant message still needs a result,
+            # so the absorbed siblings get a pointer to the merged one.
+            for call_id in absorbed:
+                self._append_tool_result(
+                    call_id,
+                    [{"type": "text", "text": self.prompts.get("agent.merged_load_note")}],
+                )
 
         self.logger.warn("turn.tool_loop_exhausted", turn=self._turn_index)
         tail = self._history[-1].content if isinstance(self._history[-1].content, str) else ""
@@ -355,6 +373,58 @@ class AgentRuntime:
                 },
             )
 
+    # ---- Load batching ---------------------------------------------------
+
+    def _merge_load_calls(self, calls: list[ToolCall]) -> tuple[list[ToolCall], list[str]]:
+        """Collapse sibling `check_and_load_kb` calls into a single load.
+
+        Two load calls in ONE assistant message are one retrieval the model
+        happened to write twice. Merging them spends one eviction pass instead
+        of two competing over the same budget, and puts every packet from that
+        message into the conversation in one deterministic order.
+
+        Returns the calls to dispatch (siblings replaced by the merged call, in
+        place) and the tool_call_ids the merge absorbed — those still owe the
+        provider a tool result.
+        """
+        loads = [c for c in calls if c.name == "check_and_load_kb"]
+        if len(loads) < 2:
+            return list(calls), []
+
+        requested: list[str] = []
+        active: list[str] = []
+        contexts: list[str] = []
+        for c in loads:
+            args = c.arguments or {}
+            requested.extend(coerce_packet_ids(args.get("requested_packet_ids")))
+            active.extend(coerce_packet_ids(args.get("active_packet_ids")))
+            ctx = str(args.get("context", "")).strip()
+            if ctx:
+                contexts.append(ctx)
+
+        merged = ToolCall(
+            id=loads[0].id,
+            name="check_and_load_kb",
+            arguments={
+                "context": "; ".join(dict.fromkeys(contexts)),
+                # Requested order is load order, so keep first appearance.
+                "requested_packet_ids": coerce_packet_ids(requested),
+                "active_packet_ids": coerce_packet_ids(active),
+            },
+        )
+        self.logger.info(
+            "check_and_load_kb.merged",
+            turn=self._turn_index,
+            merged_calls=len(loads),
+            requested=merged.arguments["requested_packet_ids"],
+        )
+        dispatch = [
+            merged if c is loads[0] else c
+            for c in calls
+            if c is loads[0] or c.name != "check_and_load_kb"
+        ]
+        return dispatch, [c.id for c in loads[1:]]
+
     # ---- Tool dispatch --------------------------------------------------
 
     def _handle_tool_call(self, call: ToolCall, stream: EventStream) -> "Iterator[Event]":
@@ -373,7 +443,7 @@ class AgentRuntime:
         yield stream.emit(
             "tool.start",
             tool=call.name,
-            requested=list(args.get("requested_packet_ids", []) or []),
+            requested=coerce_packet_ids(args.get("requested_packet_ids")),
             context=str(args.get("context", ""))[:512],
         )
         with self.tracer.start_as_current_span(f"tool.{call.name}") as span:
@@ -412,11 +482,29 @@ class AgentRuntime:
 
         if call.name == "check_and_load_kb":
             args = call.arguments or {}
+            # The schema says `array of string`, but a model can hand back the
+            # array as JSON text. `list()` over that string would shred it into
+            # single characters, each failing as an unknown packet id, so
+            # coerce first and record that the arguments arrived malformed.
+            raw_requested = args.get("requested_packet_ids")
+            raw_active = args.get("active_packet_ids")
             req = CheckAndLoadRequest(
                 context=str(args.get("context", "")),
-                requested_packet_ids=list(args.get("requested_packet_ids", []) or []),
-                active_packet_ids=list(args.get("active_packet_ids", []) or []),
+                requested_packet_ids=coerce_packet_ids(raw_requested),
+                active_packet_ids=coerce_packet_ids(raw_active),
             )
+            for field_name, raw, recovered in (
+                ("requested_packet_ids", raw_requested, req.requested_packet_ids),
+                ("active_packet_ids", raw_active, req.active_packet_ids),
+            ):
+                if not is_well_formed_id_list(raw):
+                    self.logger.warn(
+                        "check_and_load_kb.malformed_args",
+                        turn=self._turn_index,
+                        field=field_name,
+                        raw=str(raw)[:512],
+                        recovered=recovered,
+                    )
             set_attrs(
                 span,
                 {
@@ -450,10 +538,30 @@ class AgentRuntime:
                 },
             )
             self._reload_calls += 1
+            self._turn_reload_calls += 1
             if delta.redundant:
                 self._redundant_reloads += 1
             self._active_ids = list(delta.active_after)
-            self._append_tool_result(call.id, self._serialize_delta(delta))
+            blocks = self._serialize_delta(delta)
+            if self._turn_reload_calls > 1:
+                # A second round-trip in one turn is latency the model can
+                # avoid by naming every id up front, so say so in-band as well
+                # as in the log — the next turn is the one that can act on it.
+                self.logger.warn(
+                    "check_and_load_kb.extra_call_in_turn",
+                    turn=self._turn_index,
+                    calls=self._turn_reload_calls,
+                    requested=req.requested_packet_ids,
+                )
+                blocks.append(
+                    {
+                        "type": "text",
+                        "text": self.prompts.get(
+                            "agent.batch_reminder", calls=self._turn_reload_calls
+                        ),
+                    }
+                )
+            self._append_tool_result(call.id, blocks)
             return {
                 "loaded": [p.id for p in delta.loaded],
                 "evicted": list(delta.evicted),

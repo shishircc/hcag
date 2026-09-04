@@ -7,6 +7,7 @@ bindings translate them to whatever content-block format their SDK expects.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Literal
@@ -116,6 +117,75 @@ class CheckAndLoadRequest:
     context: str
     requested_packet_ids: list[str]
     active_packet_ids: list[str]
+
+
+def _ids_from_text(raw: str) -> list[str]:
+    """Recover packet ids from a single string that should have been a list.
+
+    Handles the shapes a model actually emits when it stringifies the array
+    argument: ``'["a.b"], '``, ``'"a.b"'``, ``'a.b, c.d'``. Packet ids never
+    contain whitespace or commas, so splitting on those is safe; dots are the
+    id separator and are left alone.
+    """
+    import json
+
+    text = raw.strip().strip(",").strip()
+    if not text:
+        return []
+    if text[0] in "[{":
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = None
+        if isinstance(parsed, list):
+            return [pid for item in parsed for pid in _ids_from_text(str(item))]
+        if isinstance(parsed, str):
+            return _ids_from_text(parsed)
+        if isinstance(parsed, dict):
+            # No sane reading of an object as a list of ids — drop it rather
+            # than shred it into punctuation.
+            return []
+    out: list[str] = []
+    for part in re.split(r"[,\s]+", text):
+        pid = part.strip().strip("[]").strip("\"'").strip()
+        if pid:
+            out.append(pid)
+    return out
+
+
+def coerce_packet_ids(value: object) -> list[str]:
+    """Normalize a tool-call argument into a de-duplicated list of packet ids.
+
+    The schema says ``array of string``, but models sometimes send the array as
+    JSON *text* instead (``'["www.example.a-b"],'``). Plain ``list()`` over that
+    string yields one entry per character, and every character then comes back
+    as ``unknown_packet_id`` while the packet the model actually wanted is never
+    loaded. Coercing here keeps that model-side slip from becoming a failed
+    retrieval.
+    """
+    if value is None:
+        return []
+    if isinstance(value, str):
+        candidates = _ids_from_text(value)
+    elif isinstance(value, (list, tuple, set)):
+        candidates = [pid for item in value for pid in coerce_packet_ids(item)]
+    else:
+        candidates = _ids_from_text(str(value))
+
+    seen: set[str] = set()
+    ids: list[str] = []
+    for pid in candidates:
+        if pid not in seen:
+            seen.add(pid)
+            ids.append(pid)
+    return ids
+
+
+def is_well_formed_id_list(value: object) -> bool:
+    """True when the raw argument already arrived as the schema promises."""
+    return value is None or (
+        isinstance(value, list) and all(isinstance(item, str) for item in value)
+    )
 
 
 @dataclass

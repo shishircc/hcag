@@ -33,6 +33,7 @@ from ..models import (
     Delta,
     LoadError,
     Packet,
+    coerce_packet_ids,
 )
 from .eviction import EvictionPolicy, LRUEvictionPolicy, TokenBudget
 from .packet_loader import assemble_packet
@@ -129,6 +130,11 @@ class FileSystemMemoryModule:
         # Populated wholesale from the root catalog; only grows further for
         # KBs built with `catalog.max_depth` set, or by an older build.
         self._index: dict[str, _ResolvedFolder] = {}
+        # Load order of the active set — the sequence packets were FIRST
+        # loaded in, which is the sequence their blocks sit in the
+        # conversation. The module keeps it so the model's bookkeeping cannot
+        # reorder a prefix the provider is caching (§2.4, §2.12).
+        self._active_order: list[str] = []
 
     # ---- get_catalog -----------------------------------------------------
 
@@ -229,6 +235,30 @@ class FileSystemMemoryModule:
         base = self._catalog.raw_markdown if self._catalog else ""
         return Catalog(entries=entries, raw_markdown=base)
 
+    # ---- Active-set order ------------------------------------------------
+
+    def _reconcile_active(self, claimed: list[str]) -> list[str]:
+        """The effective active set, ordered by when each packet was loaded.
+
+        Load order belongs to the module, not to the model: a packet keeps the
+        position it was first loaded into, so `active_after` and the packet
+        blocks already in the conversation stay in the same sequence turn after
+        turn (§2.4). A caller's claim still decides membership for ids the
+        module has never loaded — a resumed session, or a voice startup that
+        preloaded elsewhere — and those append at the tail in the order given.
+        """
+        known = set(self._active_order)
+        effective = [*self._active_order, *[pid for pid in claimed if pid not in known]]
+        if self.logger and claimed and claimed != effective:
+            drift = "membership" if set(claimed) != set(effective) else "order"
+            self.logger.warn(
+                "check_and_load_kb.active_drift",
+                drift=drift,
+                claimed=claimed,
+                effective=effective,
+            )
+        return effective
+
     # ---- check_and_load_kb ----------------------------------------------
 
     def check_and_load_kb(self, request: CheckAndLoadRequest) -> Delta:
@@ -240,8 +270,11 @@ class FileSystemMemoryModule:
         # own active set, so this is not rejected — but a silent empty delta
         # teaches the model nothing, and the reflex call is the behavior
         # §2.7.1 exists to suppress. Name it, in the result and in the log.
-        requested = list(request.requested_packet_ids)
-        active = list(request.active_packet_ids)
+        # Defensive: callers other than the tool boundary (voice startup, the
+        # eval harness) build the request themselves, so normalize here too
+        # rather than trust every construction site.
+        requested = coerce_packet_ids(request.requested_packet_ids)
+        active = self._reconcile_active(coerce_packet_ids(request.active_packet_ids))
         if requested and all(pid in active for pid in requested):
             note = self.prompts.get(
                 "memory.redundant_note", requested=", ".join(requested)
@@ -253,6 +286,7 @@ class FileSystemMemoryModule:
                     requested=requested,
                     active_in=active,
                 )
+            self._active_order = list(active)
             return Delta(
                 loaded=[],
                 evicted=[],
@@ -265,30 +299,30 @@ class FileSystemMemoryModule:
             self.logger.info(
                 "check_and_load_kb.call",
                 context=(request.context or "")[:512],
-                requested=list(request.requested_packet_ids),
-                active_in=list(request.active_packet_ids),
+                requested=requested,
+                active_in=active,
             )
 
         # Resolve every requested id so its token estimate is known before the
         # eviction policy runs. Unknown ids produce a LoadError.
         prelim_errors: list[LoadError] = []
-        for pid in request.requested_packet_ids:
+        for pid in requested:
             if self._resolve(pid) is None and pid not in self._index:
                 prelim_errors.append(
                     LoadError(packet_id=pid, reason="unknown_packet_id")
                 )
         # Active ids should already be in the index (they were loaded before)
         # but resolve defensively.
-        for pid in request.active_packet_ids:
+        for pid in active:
             if pid not in self._index:
                 self._resolve(pid)
 
         catalog = self._catalog_view()
 
         plan = self.eviction.plan(
-            active=list(request.active_packet_ids),
+            active=list(active),
             incoming=[
-                pid for pid in request.requested_packet_ids if pid in self._index
+                pid for pid in requested if pid in self._index
             ],
             budget=self.budget,
             catalog=catalog,
@@ -298,7 +332,7 @@ class FileSystemMemoryModule:
             delta = Delta(
                 loaded=[],
                 evicted=[],
-                active_after=list(request.active_packet_ids),
+                active_after=list(active),
                 errors=[*prelim_errors, plan.error],
             )
             if self.logger:
@@ -353,6 +387,7 @@ class FileSystemMemoryModule:
             except Exception as e:  # noqa: BLE001
                 errors.append(LoadError(packet_id=pid, reason=f"packet_read_failed: {e}"))
 
+        self._active_order = list(plan.ordered_active_after)
         delta = Delta(
             loaded=loaded,
             evicted=plan.evicted,

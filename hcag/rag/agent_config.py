@@ -33,6 +33,20 @@ class RagAgentRetrievalConfig(BaseModel):
     max_context_tokens: int = Field(default=6000, ge=64)
     merge_adjacent: bool = True
 
+    aliases: dict[str, str] = Field(default_factory=dict)
+    """Query-time synonym expansion: ``{name users type: name the corpus uses}``.
+
+    Neither retrieval leg can bridge a name the corpus never spells: BM25
+    cannot match a token that is absent, and a short query built on a coined
+    compound gives the embedder little to work with. The mapping is *data*
+    about a particular KB, so it is empty by default and lives in
+    ``rag_agent.toml`` — the mechanism is general, the vocabulary is not.
+
+    Keys match on word boundaries, case-insensitively; the value is appended to
+    the retrieval query, never substituted, so the user's own wording keeps its
+    weight. The QUESTION the generator sees is untouched.
+    """
+
 
 class RagAgentConfig(BaseModel):
     """Top-level ``rag_agent.toml`` schema (§9.6)."""

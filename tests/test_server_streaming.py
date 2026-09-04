@@ -25,7 +25,7 @@ class _StreamingAgent:
 
 
 class _SyncOnlyAgent:
-    """The RAG baseline's shape: no tool loop, so no stream (§9.5)."""
+    """An agent with no streaming path at all — 501 is still correct for it."""
 
     def run_turn(self, user_message: str) -> str:  # noqa: ARG002
         return "hello"
@@ -87,6 +87,30 @@ def test_non_streaming_agent_gets_501_not_a_fake_stream() -> None:
     r = _client(_SyncOnlyAgent()).post("/chat/stream", json={"session_id": "s", "message": "hi"})
     assert r.status_code == 501
     assert "POST /chat" in r.json()["detail"]
+
+
+def test_the_rag_agent_streams_rather_than_answering_501() -> None:
+    """The widget posts every turn to /chat/stream; `--agent rag` used to
+    answer 501 there and leave the panel dead (§9.5)."""
+    from tests.test_rag_streaming import _agent as _rag_agent, _FakeLLM
+
+    r = _client(_rag_agent(_FakeLLM())).post(
+        "/chat/stream", json={"session_id": "s", "message": "hi"}
+    )
+
+    assert r.status_code == 200
+    events = _events(r.text)
+    assert [e["kind"] for e in events] == [
+        "assistant.start",
+        "tool.start",
+        "tool.end",
+        "assistant.delta",
+        "assistant.delta",
+        "assistant.delta",
+        "assistant.final",
+    ]
+    assert events[2]["sources"]  # retrieval is reported, not just deltas
+    assert events[-1]["text"] == "The fee is $65.40."
 
 
 def test_failure_after_the_first_frame_is_an_in_band_error() -> None:
