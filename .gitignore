@@ -3,3 +3,6 @@ pycache
 kb
 .DS_Store
 *.log
+.claude
+local_lancedb
+

@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import os
 import threading
+import time
 from typing import Any
 
 # NOTE: promptfoo loads this file via `file://<abs>` — outside its package
@@ -25,6 +26,7 @@ from typing import Any
 from hcag.eval.config import EvalConfig
 from hcag.eval.csv_io import EvalRow
 from hcag.eval.llm_calls import score_answer
+from hcag.eval.progress import emit
 from hcag.prompting import load_prompts
 from hcag.eval.loop import RowExchange, run_row
 
@@ -75,6 +77,8 @@ def call_api(prompt: str, options: dict, context: dict) -> dict:  # noqa: ARG001
     row = _row_from_context(context)
 
     if not row.question:
+        emit({"event": "row.done", "question_id": row.question_id,
+              "kind": row.kind, "score": None, "error": "missing_question_var"})
         return {
             "output": "",
             "metadata": {
@@ -87,6 +91,7 @@ def call_api(prompt: str, options: dict, context: dict) -> dict:  # noqa: ARG001
     scope = cfg.backend.session_scope
     shared = _cached_shared_session if scope == "per-run" else None
 
+    started = time.monotonic()
     exchange: RowExchange = run_row(row, cfg, shared_session_id=shared)
 
     judge = score_answer(
@@ -97,6 +102,20 @@ def call_api(prompt: str, options: dict, context: dict) -> dict:  # noqa: ARG001
         actual_answer=exchange.actual_answer,
         transcript=exchange.transcript_text(),
         retries=cfg.judge.retries,
+    )
+
+    # Report before returning: this is the only moment the parent can learn
+    # that a row finished, and promptfoo does not surface per-test completion
+    # until the whole run is done (§7.11.1).
+    emit(
+        {
+            "event": "row.done",
+            "question_id": row.question_id,
+            "kind": row.kind,
+            "score": judge.score,
+            "turns": exchange.turn_count,
+            "elapsed_ms": int((time.monotonic() - started) * 1000),
+        }
     )
 
     return {

@@ -9,7 +9,8 @@ Flow (§7.3 + §7.6):
 4. Serialize the resolved ``EvalConfig`` to a temp JSON file the provider
    will read at test time (via ``HCAG_EVAL_CONFIG_JSON``).
 5. Emit a ``promptfooconfig.yaml`` in the tempdir; invoke
-   ``npx promptfoo eval --config <yaml> --output <json>``.
+   ``npx promptfoo eval --config <yaml> --output <json>``, rendering live
+   per-row progress from the workers' reports while it runs (§7.11.1).
 6. Parse promptfoo's JSON output. Merge per-row results back into input order.
 7. Write the completed CSV atomically, then render the HTML report.
 """
@@ -34,6 +35,7 @@ from .backend import BackendClient
 from .config import EvalConfig
 from .csv_io import EvalRow, VALID_KINDS, read_csv, write_csv
 from .llm_calls import preflight
+from .progress import PROGRESS_ENV, ProgressReporter
 from .promptfoo_config import PROVIDER_MODULE_PATH, write_config
 from .report import render_report
 
@@ -45,6 +47,7 @@ class ResolvedRun:
     report_path: Path
     kinds: set[str] | None = None
     skip_completed: bool = False
+    quiet: bool = False
 
 
 @dataclass
@@ -77,6 +80,79 @@ def _resolve_promptfoo_bin() -> list[str]:
         "promptfoo is not available. Install with `npm i -g promptfoo` and re-run, "
         "or set HCAG_PROMPTFOO_BIN to a launcher command."
     )
+
+
+@dataclass
+class _Completed:
+    """What the caller of `_run_promptfoo` needs — the same shape as
+    `subprocess.run`'s result, minus everything unused."""
+
+    returncode: int
+    stdout: str
+    stderr: str
+
+
+def _run_promptfoo(
+    argv: list[str],
+    *,
+    env: dict[str, str],
+    cwd: Path,
+    progress: ProgressReporter,
+    logger: HcagLogger,
+) -> _Completed:
+    """Run promptfoo, rendering progress while it works.
+
+    promptfoo's own output is captured to files rather than pipes. Pipes would
+    have to be drained concurrently or the child blocks once a buffer fills —
+    a hang that would look exactly like the slow eval this progress display
+    exists to distinguish from a slow eval. Files cannot deadlock, and the
+    output is still there in full for the failure path.
+    """
+    out_path = cwd / "promptfoo-stdout.txt"
+    err_path = cwd / "promptfoo-stderr.txt"
+
+    with out_path.open("wb") as out_f, err_path.open("wb") as err_f:
+        proc = subprocess.Popen(argv, env=env, cwd=str(cwd), stdout=out_f, stderr=err_f)
+        try:
+            while True:
+                try:
+                    proc.wait(timeout=_POLL_SECONDS)
+                    break
+                except subprocess.TimeoutExpired:
+                    progress.poll()
+                    progress.render()
+        except KeyboardInterrupt:
+            # Leave nothing running in the background: the operator asked for
+            # it to stop, and an orphaned promptfoo keeps calling the backend
+            # and spending judge tokens.
+            progress.finish()
+            proc.terminate()
+            try:
+                proc.wait(timeout=10)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+            logger.warn("eval.promptfoo.interrupted", rows_done=progress.state.done)
+            raise
+
+    progress.finish()
+    return _Completed(
+        returncode=proc.returncode,
+        stdout=_read_text(out_path),
+        stderr=_read_text(err_path),
+    )
+
+
+def _read_text(path: Path) -> str:
+    try:
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return ""
+
+
+#: How often to refresh progress while promptfoo runs. Short enough that the
+#: display feels live, long enough that polling costs nothing next to rows
+#: that take seconds each.
+_POLL_SECONDS = 1.0
 
 
 def _filter_rows(
@@ -231,8 +307,12 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
         results_json_path = workdir / "promptfoo-results.json"
         write_config(all_rows, cfg, config_yaml_path)
 
+        progress_path = workdir / "progress.jsonl"
+        progress_path.touch()
+
         env = os.environ.copy()
         env["HCAG_EVAL_CONFIG_JSON"] = str(cfg_json_path)
+        env[PROGRESS_ENV] = str(progress_path)
         # promptfoo spawns its own Python for the provider. Pin it to the same
         # interpreter that's running the CLI so the `hcag` package is on sys.path
         # for the provider's absolute imports.
@@ -250,12 +330,24 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
         ]
 
         logger.info("eval.promptfoo.spawn", argv=argv)
-        proc = subprocess.run(
+        proc = _run_promptfoo(
             argv,
             env=env,
-            cwd=str(workdir),
-            capture_output=True,
-            text=True,
+            cwd=workdir,
+            progress=ProgressReporter(
+                progress_path,
+                total=len(all_rows),
+                quiet=resolved.quiet,
+                on_row=lambda e: logger.info(
+                    "eval.row.done",
+                    question_id=e.get("question_id"),
+                    kind=e.get("kind"),
+                    score=e.get("score"),
+                    turns=e.get("turns"),
+                    elapsed_ms=e.get("elapsed_ms"),
+                ),
+            ),
+            logger=logger,
         )
         if proc.returncode not in (0, 100):
             # promptfoo returns 100 when some tests failed assertions — that's OK,

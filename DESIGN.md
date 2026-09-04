@@ -1910,12 +1910,32 @@ The `## Sub-topics` section is what makes a folder's `compiled.md` navigate-able
 
 **A folder's description must describe that folder's own content.** The scoping differs by kind, and the difference is load-bearing:
 
-- **`leaf` / `mixed`** — describe what *this* folder's `## Content` says. Children's descriptions are supplied as context, so the summarizer can tell what kind of branch it is looking at, but their **specifics must not be borrowed**. If the folder's own content states a rule, threshold, or definition, the description says so, because that is what callers route on.
+- **`leaf` / `mixed`** — describe what *this* folder's `## Content` says. Children's descriptions are supplied as context, so the summarizer can tell what kind of branch it is looking at, but their **specifics must not be borrowed**. If the folder's own content *defines* a rule, threshold, or definition, the description says so, because that is what callers route on — but a rule the content merely **invokes** is not defined here (see "aboutness, not coverage" below).
 - **`node`** — a waypoint with no content of its own, so its children are all there is to describe. Summarize across them; the result must characterize the whole branch rather than its first or largest child.
 
 **Why a parent must not advertise its children's contents.** Before the subtree roll-up (D3a), it had to: a one-level catalog was the only way an agent could guess what lay below, so a parent's description doubled as a table of contents. After D3a every descendant has its own entry in the same catalog, so that duplication buys nothing — and it costs precision. A parent's entry that names its children's particulars matches questions its own `## Content` cannot answer, and it is often the *stronger* lexical match, because particulars are what queries contain.
 
 Observed on a real KB: an `…employment-pass.eligibility` folder whose description absorbed a child's *"sector-specific salary benchmark tables"* pulled the agent to that child — whose description named the query's terms *Insurance* and *45+* verbatim — and away from the parent, which held the qualifying-salary floor that actually decided the question and which the child does not contain. The catalog was describing the branch accurately and routing to it wrongly.
+
+#### Aboutness, not coverage
+
+The same failure has a second form, and it does not involve borrowing from a child at all. A folder's own content names topics the folder does not cover: it cites neighbouring rules, defers to definitions held elsewhere, and links out for detail. Those mentions are real text, so a summarizer asked what the folder contains reports them — accurately, and destructively.
+
+Observed on the same KB, after the fix above. `…eligibility.compass-c1-salary-benchmarks` is 47 KB of COMPASS sector benchmark tables. Two bullets in it read *"candidates who do not meet the EP qualifying salary will not be eligible for an EP, regardless of the points they would have scored under C1"* and *"EP candidates earning at least $22,500 are exempted from COMPASS"* — both hyperlinked to the **parent** `eligibility` folder, which is where the qualifying-salary tables live. The generated `short_description` came out as *"Sector-specific salary benchmarks (65th & 90th percentile) by age for COMPASS C1 scoring, **with rules on EP qualifying salary and exemptions**."*
+
+Every word of that is true. The packet does state rules that mention EP qualifying salary and exemptions. And a question about EP qualifying salary by sector, age and renewal timing then loaded `compass-c1-salary-benchmarks`, `key-facts` and `renew-a-pass` — none of which contains the qualifying-salary table, the age schedule, or the 1 Jan 2027 timing rule — while `eligibility`, which contains all three, was not loaded at all.
+
+**The distinction the summarizer has to make** is between a document that is *about* a topic and a document that *mentions* one:
+
+- A catalog description is read by something choosing **one** folder to open. A topic named in the description is a promise that opening this folder answers questions about that topic.
+- A passing mention cannot keep that promise. The reader arrives with the question unanswered and, worse, no signal they are in the wrong place — a pointer reads as an answer that is merely brief.
+- The operative test is therefore not "is this in the text" but **"would someone opening this folder for that topic find the answer here, or only a pointer elsewhere?"** Only the first belongs in the description.
+
+**Cross-references to a parent or sibling are the common case and the most costly.** A child folder naturally cites its parent's subject — that is what makes it a child. Surfacing that citation names precisely the topic that should have routed to the *other* folder, and the two entries then compete, with the child advertising a subject the parent holds. Where a reference is genuinely important context it is phrased as the pointer it is ("notes that the X gate applies, defined under `<folder>`"), so a router can tell direction from possession.
+
+**Proportion is part of accuracy here.** Two sentences out of 47 KB were given the same billing as the document's entire subject. A description weights what it names by how much of the folder is devoted to it; a passing caveat must not read like a co-equal subject.
+
+**Titles carry lexical signal and are chosen accordingly.** In the same incident `eligibility` was titled *"Employment Pass Eligibility & COMPASS Framework"* — containing neither "salary" nor "renewal" — while its sibling's title read *"COMPASS C1 Salary Benchmarks by Sector"*. The folder holding the answer advertised none of the query's terms and the folder deferring it advertised two. A title leads with what the folder is about, in the words a reader would search for, rather than the section heading it happened to sit under.
 
 For a leaf folder the summary is drawn from the folder's own content alone. For a taxonomy node it is drawn from the children's long descriptions alone. For a mixed folder it is drawn from its own content, with the children as framing only. This bubble-up logic gives every level's summary meaningful prose — the root's `compiled.md` describes the KB in aggregate; a mid-tree folder describes what it itself holds; a leaf describes itself. Crucially, the *summarization* still looks one level down while the *index* rolls up the whole subtree: LLM cost stays at one call per folder, and the roll-up is pure record copying.
 
@@ -3525,6 +3545,9 @@ $ evalrun <input.csv> --backend-url <url> --out <output.csv> --report <report.ht
 | `--skip-completed` | no | Skip input rows whose `score` column is already populated. Off by default so re-runs re-score deterministically. |
 | `--seed <int>` | no | Seed for the judge LLM's sampling and any tie-breaking in the clarification generator. Fixed seed → reproducible scoring. |
 | `--config <path>` | no | Path to `evalrun.toml` (§7.9). Defaults to `./evalrun.toml` if present. |
+| `--baseline <path>` | no | A prior `--out` CSV to compare against in the HTML report (§7.8). |
+| `--quiet` | no | Suppress the live per-row progress line on stderr (§7.11.1). The run summary on stdout is unaffected. |
+| `--verbose` / `-v` | no | Also stream the log to stderr, same JSON-lines shape as the file sink (§7.11). |
 
 Example invocation:
 
@@ -3633,7 +3656,14 @@ The classifier (§7.4.2) and clarifier (§7.4.2) are the registry's `eval.classi
 
 ## 7.6 Test Harness (promptfoo)
 
-`evalrun` is implemented on top of [promptfoo](https://www.promptfoo.dev/) — each CSV row becomes one promptfoo test case, and promptfoo drives the parallel execution, retry policy, assertion evaluation, and HTML report generation. This choice buys three things that would otherwise be one-off code: (a) concurrent test execution with a stable, well-tested rate limiter; (b) a mature HTML report renderer with pass/fail visualization and drill-down; (c) a plugin surface for custom assertions — `evalrun` registers the LLM-judge scorer (§7.5) as a promptfoo `assert` of type `llm-rubric`.
+`evalrun` is implemented on top of [promptfoo](https://www.promptfoo.dev/) — each CSV row becomes one promptfoo test case, and promptfoo drives the parallel execution and retry policy. What it buys is process orchestration: concurrent test execution with a stable, well-tested rate limiter, and a worker model that isolates one row's crash from the rest of the run.
+
+**What it does not do is score or report.** Both live in HCAG:
+
+- **Scoring happens inside the provider**, not as a promptfoo `llm-rubric` assertion. By the time `call_api` returns, the row has already been judged (§7.5) and the score rides back in `metadata`. The multi-turn loop (§7.4) is the reason: an assertion sees one prompt and one response, but a row's score depends on the whole transcript — how many clarifications the chatbot needed, and whether the user had to lead it. That is not expressible as an assertion over a single output.
+- **The HTML report is rendered by HCAG** (`render_report`, §7.8), not by `promptfoo view`. The per-kind panels, the score histogram, and the `--baseline` comparison are all shaped by the five question kinds of §6.4, which promptfoo has no concept of.
+
+The generated `promptfooconfig.yaml` is deliberately minimal: one provider (our Python file), one prompt (`{{question}}`), one test per row, no assertions. Concurrency and output path go on the CLI rather than in the YAML, because promptfoo's YAML surface for those has moved across versions while the flags have stayed put.
 
 The promptfoo integration is an implementation detail — the CLI surface, input CSV schema, and output CSV schema are stable. The mapping is:
 
@@ -3643,9 +3673,10 @@ The promptfoo integration is an implementation detail — the CLI surface, input
 | `question` | rendered into the `prompt` sent to the provider |
 | `POST /chat` conversation loop (§7.4) | a custom promptfoo `provider` that speaks the `{ session_id, message, history[] }` protocol and returns the final `actual_answer` |
 | Multi-turn clarification (§7.4.2) | handled inside the provider before returning — promptfoo sees one prompt → one final response |
-| LLM-as-judge scoring (§7.5) | a `llm-rubric` assertion with the rubric text and structured-output contract from §7.5 |
-| Per-kind breakdown (§7.8) | promptfoo `tags` set to `{ kind: <row.kind> }` |
-| HTML report | `promptfoo view --output <report.html>` invoked by `evalrun` after the run |
+| LLM-as-judge scoring (§7.5) | performed inside the provider before it returns; the score and remark ride back in the result's `metadata` |
+| Per-kind breakdown (§7.8) | promptfoo test `metadata` carries `kind` and `question_id`; the breakdown itself is computed by HCAG from the completed rows |
+| HTML report | rendered by HCAG from the merged rows (§7.8) — promptfoo's own report is not used |
+| Live progress (§7.11.1) | not promptfoo's; the provider reports per row and the parent renders |
 
 `evalrun` writes the completed CSV itself (§7.7) rather than deriving it from promptfoo's native output — CSV round-tripping is part of the tool's contract with `evalgen`, and decoupling it from promptfoo's output format shields callers from harness changes.
 
@@ -3774,6 +3805,43 @@ If any `ERROR`-level event fires, `evalrun` exits with a non-zero status. Per-ro
 - `ERROR`: startup failures — unreadable input, unwritable output, unreachable backend, empty kind filter.
 
 If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`eval.run`, `eval.row`, `eval.chat_turn`, `eval.judge`, `eval.clarify`) are exported — symmetric with §2.11, §3.9, §4.7, and §6.10.
+
+### 7.11.1 Live progress
+
+`evalrun` hands the run to a promptfoo subprocess and consumes its results only at the end. Without a progress channel that makes the CLI silent for the whole run — commonly half an hour at 100 rows — during which **a slow eval and a wedged one are indistinguishable**. That ambiguity is the real cost: not the missing entertainment, but having no basis to decide whether to keep waiting or kill it, and no way to notice in minute two that the backend is returning errors on every row.
+
+The parent process cannot observe the loop directly: promptfoo owns it and fans out to `--concurrency` workers. But our provider (§7.6) is what every worker calls, once per row, and by the time it returns it knows the question, the kind, the judge's score and the row's wall-clock. So **the workers report and the parent renders**.
+
+The channel is an append-only JSON-lines file whose path reaches the workers in `HCAG_EVAL_PROGRESS` — the same environment handoff `HCAG_EVAL_CONFIG_JSON` already uses. A file rather than a pipe, because the workers are processes promptfoo spawns and we never hold their stdout; a pipe with nobody draining it deadlocks once a buffer fills, which would look exactly like the hang this feature exists to rule out. A single `write()` of one line under `O_APPEND` does not tear, so concurrent workers interleave lines safely.
+
+While promptfoo runs, the parent polls that file once a second and renders one line to stderr:
+
+```
+running 100 row(s) — waiting for the first result
+42/100 rows · mean 2.14 · 3 unscored · 4m18s elapsed · ~6m07s left · last q042
+```
+
+Design points, each answering a way the display could mislead:
+
+- **Unscored rows are counted, never averaged in.** A `[judge_failed]` row has no score; folding it in as a `0` would report a quality collapse where there is an infrastructure problem. It gets its own counter, so a run whose judge key expired mid-way is visible as it happens.
+- **The ETA is a linear extrapolation from completed rows**, and is labelled `~`. It is wrong early and honest later; rows vary by kind and by how many clarification turns they take.
+- **Before the first row completes it says so**, rather than showing `0/N` with an ETA computed from no data.
+- **stderr, not stdout.** Progress is transient status; stdout carries the run summary. Same split as `crawl` (§4.7.1), and it keeps `evalrun ... > summary.json` clean.
+- **Non-TTY output is append-only.** A carriage return into a CI log or a file produces one unreadable mega-line, so when stderr is not a terminal the line is reprinted periodically instead of rewritten in place.
+- **Reporting is best-effort.** `emit` swallows every error: a row that scored must not fail because it could not announce that it scored.
+- **`--quiet` suppresses it**, symmetric with `crawl`.
+
+`Ctrl-C` terminates the promptfoo child rather than orphaning it. An abandoned run keeps calling the backend and spending judge tokens, and the operator who interrupted has already said they want it to stop.
+
+**Where the progress goes.** Three destinations, all fed from the same worker events, so they cannot disagree:
+
+| Destination | Content | When |
+|---|---|---|
+| `<tempdir>/progress.jsonl` | Raw events, one JSON object per row | Always. An internal channel inside the run's temp directory, deleted with it — not an artifact, and not a path to depend on. |
+| stderr | The rendered aggregate line | Unless `--quiet` |
+| The log file (`[log].file_path`) | One `eval.row.done` per row: `question_id`, `kind`, `score`, `turns`, `elapsed_ms` | Always, at `INFO` |
+
+The per-row records are the reason the transient display can stay a single line. Someone watching wants one number that moves; someone debugging afterwards wants every row, and the log already exists for that. `--verbose` mirrors the log to stderr in its JSON-lines shape (§7.11), so a run started with `-v` shows both: the aggregate line for the human and the per-row records for the file. Neither is a separate code path — the events are emitted once and fan out.
 
 ## 7.12 Non-Goals
 

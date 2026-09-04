@@ -39,8 +39,11 @@ def test_a_folder_with_content_is_told_to_describe_its_own(kind: str) -> None:
     prompt = _prompt_for(own_content="# E\nThreshold is $11,800.", children_longs=CHILD, kind=kind)
     assert "Describe what THIS folder's own content says" in prompt
     assert "do NOT describe their contents or borrow their" in prompt
-    # Routing depends on rules being stated, so the summarizer is told to.
-    assert "states a rule" in prompt and "definition" in prompt
+    # Routing depends on rules being stated, so the summarizer is told to —
+    # but only rules this folder DEFINES, not ones it merely cites (see
+    # test_cross_references_are_excluded_from_the_summary).
+    assert "DEFINES a rule" in prompt and "definition" in prompt
+    assert "merely invokes, cites, or links out for" in prompt
     # Children are still supplied, as framing.
     assert "Insurance" in prompt
 
@@ -106,3 +109,45 @@ def test_prompt_ranks_by_own_content_not_by_depth() -> None:
     assert "names your exact keywords but is a narrow sub-document" in prompt
     # `node` is still the one kind you should skip past.
     assert "waypoint with no content of its own" in prompt
+
+
+def test_cross_references_are_excluded_from_the_summary() -> None:
+    """A description is read by something choosing ONE folder to open, so a topic
+    it names is a promise that opening this folder answers questions about it.
+
+    The case this comes from: `compass-c1-salary-benchmarks` is 47KB of COMPASS
+    sector benchmark tables, and contains two cross-reference bullets — "candidates
+    who do not meet the EP qualifying salary will not be eligible" and the $22,500
+    COMPASS exemption. Both link to the *parent* `eligibility` folder, which is where
+    the qualifying-salary tables actually live. The summarizer named them, accurately,
+    and the resulting entry read "...with rules on EP qualifying salary and
+    exemptions" — so a question about qualifying salary routed to the child that
+    defers it instead of the parent that answers it.
+    """
+    prompt = _prompt_for(own_content="# C1\nBenchmarks.", children_longs="", kind="leaf")
+
+    # The distinction the summarizer has to make.
+    assert "ABOUT" in prompt
+    assert "merely references, defers, or links elsewhere for" in prompt
+
+    # The test it applies to decide.
+    assert "find the answer here — or only a pointer somewhere else?" in prompt
+
+    # Cross-references to a parent are called out as the costly case, because the
+    # referenced topic is precisely the one that should have routed elsewhere.
+    assert "parent or sibling" in prompt
+
+    # Proportion: a one-line caveat must not read like a co-equal subject.
+    assert "single sentence or bullet" in prompt
+
+    # A reference worth keeping is phrased as direction, not possession.
+    assert "pointer it is" in prompt
+
+
+def test_titles_lead_with_the_searchable_subject() -> None:
+    """`eligibility` holds the qualifying-salary tables but was titled "Employment
+    Pass Eligibility & COMPASS Framework" — neither "salary" nor "renewal" — while
+    a sibling's title said "Salary Benchmarks by Sector". Titles carry lexical
+    signal, so the one that reads like the answer wins."""
+    prompt = _prompt_for(own_content="# E\nThreshold is $11,800.", children_longs="", kind="leaf")
+    assert "the words a reader would search for" in prompt
