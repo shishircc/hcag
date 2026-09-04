@@ -1,0 +1,1476 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HCAG evalrun — work-pass KB</title>
+<style>
+    :root { --line: #e3e6e9; --ink: #24282c; --muted: #6b737a; --bg: #f6f7f8; --primary: #3554a5; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", "Source Sans 3", Helvetica, sans-serif;
+           color: var(--ink); background: #fff; margin: 0; padding: 32px; line-height: 1.5; }
+    h1 { margin: 0 0 4px; font-size: 26px; }
+    h2 { margin: 32px 0 12px; font-size: 18px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    h3 { margin: 24px 0 8px; font-size: 15px; }
+    .sub { color: var(--muted); font-size: 13px; }
+    .summary { display: flex; gap: 24px; flex-wrap: wrap; margin: 20px 0 4px; }
+    .summary .metric { min-width: 100px; }
+    .metric { padding: 10px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+    .metric-value { font-size: 22px; font-weight: 700; }
+    .metric-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+    .panel { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; background: #fff; }
+    .panel-title { font-weight: 700; margin-bottom: 6px; text-transform: capitalize; }
+    .panel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+    .panel .metric { padding: 6px 8px; text-align: center; }
+    .panel .metric-value { font-size: 16px; }
+    .hist-row { display: flex; gap: 6px; align-items: flex-end; height: 80px; padding: 4px 0; border-top: 1px dashed var(--line); }
+    .hist-col { display: flex; flex-direction: column; align-items: center; flex: 1; }
+    .hist-bar { width: 100%; border-radius: 3px 3px 0 0; }
+    .hist-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .hist-count { font-size: 11px; font-weight: 600; }
+    .baseline-table { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 12px; }
+    .baseline-table th, .baseline-table td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+    .baseline-table th { background: var(--bg); }
+    .filters { margin: 12px 0; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .chip { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
+            font-size: 12px; cursor: pointer; }
+    .chip.on { background: var(--primary); color: #fff; border-color: transparent; }
+    table.rows { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.rows th, table.rows td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+    table.rows th { background: var(--bg); position: sticky; top: 0; }
+    .clip { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .score-cell { font-weight: 700; text-align: center; }
+    tr.score-0 .score-cell { color: #c53030; }
+    tr.score-1 .score-cell { color: #dd8f3a; }
+    tr.score-2 .score-cell { color: #4a8f4a; }
+    tr.score-3 .score-cell { color: #2f7d32; }
+    tr.score-none .score-cell { color: var(--muted); }
+    .detail-block { margin: 8px 0; }
+    .detail-block pre { background: var(--bg); padding: 8px 12px; border-radius: 6px; overflow: auto;
+                        white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+    .toggle { background: transparent; border: 0; cursor: pointer; font-size: 14px; color: var(--muted); }
+    .muted { color: var(--muted); }
+    .bar-wrap { display: inline-block; background: var(--bg); border-radius: 3px; overflow: hidden;
+                border: 1px solid var(--line); height: 8px; vertical-align: middle; }
+    .bar-fill { background: var(--primary); height: 100%; }
+    </style>
+</head>
+<body>
+<h1>HCAG evalrun — work-pass KB</h1>
+<div class="sub">Generated 2026-09-03 12:36:38 UTC · backend <code>http://localhost:8000</code>
+· classifier <code>claude-haiku-4-5-20251001</code>
+· judge <code>claude-opus-4-6</code>
+· concurrency 4
+· seed 42</div>
+
+<div class="summary">
+  <div class="metric"><div class="metric-value">40</div><div class="metric-label">rows</div></div>
+  <div class="metric"><div class="metric-value">15</div><div class="metric-label">scored</div></div>
+  <div class="metric"><div class="metric-value">2.6</div><div class="metric-label">mean score</div></div>
+  <div class="metric"><div class="metric-value">93%</div><div class="metric-label">pass rate (≥2)</div></div>
+  <div class="metric"><div class="metric-value">25</div><div class="metric-label">unscored</div></div>
+</div>
+
+
+
+<h2>Per-kind breakdown</h2>
+<div class="panels">
+    <div class="panel">
+      <div class="panel-title">simple</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">8</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">3.0</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">100%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">0</div><div class="metric-label">unscored</div></div>
+      </div>
+      <div class="hist-row"><div class="hist-col"><div class="hist-bar" style="height:2px;background:#c53030"></div><div class="hist-label">0</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:2px;background:#dd8f3a"></div><div class="hist-label">1</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:2px;background:#4a8f4a"></div><div class="hist-label">2</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:60px;background:#2f7d32"></div><div class="hist-label">3</div><div class="hist-count">8</div></div></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">medium</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">8</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">2.143</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">85%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">1</div><div class="metric-label">unscored</div></div>
+      </div>
+      <div class="hist-row"><div class="hist-col"><div class="hist-bar" style="height:2px;background:#c53030"></div><div class="hist-label">0</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:15px;background:#dd8f3a"></div><div class="hist-label">1</div><div class="hist-count">1</div></div><div class="hist-col"><div class="hist-bar" style="height:60px;background:#4a8f4a"></div><div class="hist-label">2</div><div class="hist-count">4</div></div><div class="hist-col"><div class="hist-bar" style="height:30px;background:#2f7d32"></div><div class="hist-label">3</div><div class="hist-count">2</div></div></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">complex</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">8</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">0.0</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">0%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">8</div><div class="metric-label">unscored</div></div>
+      </div>
+      <span class='muted'>no scored rows</span>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">hard-1</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">8</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">0.0</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">0%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">8</div><div class="metric-label">unscored</div></div>
+      </div>
+      <span class='muted'>no scored rows</span>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">hard-2</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">8</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">0.0</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">0%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">8</div><div class="metric-label">unscored</div></div>
+      </div>
+      <span class='muted'>no scored rows</span>
+    </div>
+    </div>
+
+<h2>Overall score distribution</h2>
+<div class="hist-row"><div class="hist-col"><div class="hist-bar" style="height:2px;background:#c53030"></div><div class="hist-label">0</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:6px;background:#dd8f3a"></div><div class="hist-label">1</div><div class="hist-count">1</div></div><div class="hist-col"><div class="hist-bar" style="height:24px;background:#4a8f4a"></div><div class="hist-label">2</div><div class="hist-count">4</div></div><div class="hist-col"><div class="hist-bar" style="height:60px;background:#2f7d32"></div><div class="hist-label">3</div><div class="hist-count">10</div></div></div>
+
+<h2>Rows</h2>
+<div class="filters"><span class="muted">Filter:</span><button class="chip on" data-kind="all">all</button><button class="chip" data-kind="simple">simple</button><button class="chip" data-kind="medium">medium</button><button class="chip" data-kind="complex">complex</button><button class="chip" data-kind="hard-1">hard-1</button><button class="chip" data-kind="hard-2">hard-2</button></div>
+<table class="rows"><thead><tr><th>ID</th><th>Kind</th><th>Score</th><th>Question</th><th>Actual answer</th><th>Remark</th><th></th></tr></thead><tbody><tr class="score-3" data-kind="simple"><td class="mono">q-0001</td><td>simple</td><td class="score-cell">3</td><td class="clip">Under what conditions will MOM generally grant a Letter of Consent (LOC) for an Employment Pass holder to take up a secondary directorship appointment?</td><td class="clip">Based on the knowledge base, MOM will generally grant a Letter of Consent (LOC) for an Employment Pass holder to take up a secondary directorship under the following conditions:
+
+## For Related Companies
+
+MOM will grant an LOC if:
+
+1. **Corporate Shareholding Relationship**: Your company is related by shareholding to the Employment Pass holder&#x27;s primary employer, as reflected in ACRA records.
+
+2. **Related to Primary Employment**: The secondary directorship is for purposes related to the EP holder&#x27;s primary employment.
+
+3. **Indirect Shareholding Relationships**: MOM may also grant an LOC for indirect shareholding relationships, including:
+   - Holding companies of the primary employer
+   - Subsidiaries of the holding company of the primary employer
+   - Any companies other than the primary employer within this corporate structure
+
+## For Unrelated Companies
+
+If the secondary directorship is in an **unrelated** company, MOM relies on the assessment of a **sector government agency** regulating or promoting that industry. The LOC may be granted if the sector agency supports the application.
+
+## Key Requirements
+
+Regardless of the company relationship, the employer must:
+- Obtain the EP holder&#x27;s primary employer&#x27;s consent before proceeding
+- Provide MOM with an organisation chart explaining the relationship between the secondary employer and the primary employer (when applicable)
+- Apply for the LOC before the directorship duties commence
+
+The LOC remains valid until the expiry or cancellation date of the current Employment Pass.</td><td class="clip">The answer covers all key conditions: related companies (corporate shareholding, indirect relationships), purposes related to primary employment, unrelated companies (sector agency support), primary employer consent, organisation chart requirement, and LOC validity period. It also adds a minor point about applying before duties commence, which is reasonable and not misleading.</td><td><button class="toggle" onclick="toggleRow(0)">▸</button></td></tr><tr id="detail-0" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>MOM will generally grant an LOC only if the following conditions are met:
+
+1. **Directorships in related companies:** The company requesting the directorship must be related by corporate shareholding to the EP holder&#x27;s primary employer, as reflected in ACRA records. MOM may also grant an LOC where there is an indirect shareholding relationship with the EP holder&#x27;s primary employer — this may include holding companies of the primary employer or subsidiaries of the holding company of the primary employer. Secondary directorships are allowed in any of these related companies other than the primary employer. The secondary employer must provide MOM with an organisation chart explaining its relationship with the EP holder&#x27;s primary employer.
+
+2. The EP holder must be taking up the secondary directorship for purposes related to their primary employment.
+
+3. **Directorships in unrelated companies:** If the secondary directorship is in an unrelated company, MOM relies on the assessment of a sector government agency regulating or promoting the development of the industry. The LOC may be granted if the agency supports the application.
+
+Additionally, the EP holder&#x27;s primary employer must have no objections to the EP holder taking on the directorship. The LOC is valid up to the expiry or cancellation date of the current EP, and a new LOC must be applied for when the EP is successfully renewed.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the knowledge base, MOM will generally grant a Letter of Consent (LOC) for an Employment Pass holder to take up a secondary directorship under the following conditions:
+
+## For Related Companies
+
+MOM will grant an LOC if:
+
+1. **Corporate Shareholding Relationship**: Your company is related by shareholding to the Employment Pass holder&#x27;s primary employer, as reflected in ACRA records.
+
+2. **Related to Primary Employment**: The secondary directorship is for purposes related to the EP holder&#x27;s primary employment.
+
+3. **Indirect Shareholding Relationships**: MOM may also grant an LOC for indirect shareholding relationships, including:
+   - Holding companies of the primary employer
+   - Subsidiaries of the holding company of the primary employer
+   - Any companies other than the primary employer within this corporate structure
+
+## For Unrelated Companies
+
+If the secondary directorship is in an **unrelated** company, MOM relies on the assessment of a **sector government agency** regulating or promoting that industry. The LOC may be granted if the sector agency supports the application.
+
+## Key Requirements
+
+Regardless of the company relationship, the employer must:
+- Obtain the EP holder&#x27;s primary employer&#x27;s consent before proceeding
+- Provide MOM with an organisation chart explaining the relationship between the secondary employer and the primary employer (when applicable)
+- Apply for the LOC before the directorship duties commence
+
+The LOC remains valid until the expiry or cancellation date of the current Employment Pass.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Under what conditions will MOM generally grant a Letter of Consent (LOC) for an Employment Pass holder to take up a secondary directorship appointment?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the knowledge base, MOM will generally grant a Letter of Consent (LOC) for an Employment Pass holder to take up a secondary directorship under the following conditions:\n\n## For Related Companies\n\nMOM will grant an LOC if:\n\n1. **Corporate Shareholding Relationship**: Your company is related by shareholding to the Employment Pass holder's primary employer, as reflected in ACRA records.\n\n2. **Related to Primary Employment**: The secondary directorship is for purposes related to the EP holder's primary employment.\n\n3. **Indirect Shareholding Relationships**: MOM may also grant an LOC for indirect shareholding relationships, including:\n   - Holding companies of the primary employer\n   - Subsidiaries of the holding company of the primary employer\n   - Any companies other than the primary employer within this corporate structure\n\n## For Unrelated Companies\n\nIf the secondary directorship is in an **unrelated** company, MOM relies on the assessment of a **sector government agency** regulating or promoting that industry. The LOC may be granted if the sector agency supports the application.\n\n## Key Requirements\n\nRegardless of the company relationship, the employer must:\n- Obtain the EP holder's primary employer's consent before proceeding\n- Provide MOM with an organisation chart explaining the relationship between the secondary employer and the primary employer (when applicable)\n- Apply for the LOC before the directorship duties commence\n\nThe LOC remains valid until the expiry or cancellation date of the current Employment Pass.",
+    "source": "bot_final",
+    "elapsed_ms": 7469.431999998051,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-0002</td><td>simple</td><td class="score-cell">3</td><td class="clip">What are the eligibility criteria for the Overseas Networks &amp; Expertise Pass (ONE Pass)?</td><td class="clip">Based on the loaded information, here are the **eligibility criteria for the Overseas Networks &amp; Expertise Pass (ONE Pass)**:
+
+## Main Eligibility Categories
+
+You must meet **one of the following criteria**:
+
+### 1. **Current Employment (Earned Salary)**
+- Earned a fixed monthly salary of at least **S$30,000** for the 12 consecutive months leading up to the date of application
+- Worked for an **established company** (with market capitalisation ≥US$500M or annual revenue ≥US$200M) for those 12 consecutive months
+- If you drew salaries from multiple employers, your qualifying S$30,000 salary must come from **one employer only**
+
+### 2. **Prospective Employment**
+- Will earn a fixed monthly salary of at least **S$30,000** under an established company based in Singapore
+- The company must have market capitalisation ≥US$500M or annual revenue ≥US$200M
+- You must submit your application **only when your employment will start within 6 months**
+
+### 3. **Outstanding Achievements**
+- You may apply **without meeting the salary criteria** if you have outstanding achievements in at least one of these areas:
+  - Sports
+  - Arts and culture
+  - Academia and research
+- MOM and other agencies (MCCY, MOE, NRF, A*STAR) will holistically review your application based on your work and key achievements
+
+## Additional Requirements
+
+- **Existing pass holders** need to have worked in Singapore for at least 1 year to be eligible for renewal
+- The pass is **renewable for 5 years** each time upon meeting renewal criteria
+
+## Key Features
+
+- **No COMPASS or Fair Consideration Framework requirements**
+- **No foreign worker levy or quota**
+- Flexibility to work for multiple companies concurrently
+- No need to reapply if you change jobs
+- Family members can obtain passes to join you</td><td class="clip">The answer covers all three eligibility categories (current/past employment, prospective employment, outstanding achievements) with correct salary thresholds, established company criteria, and additional details matching the reference answer. It also includes accurate supplementary information about existing pass holders and key features.</td><td><button class="toggle" onclick="toggleRow(1)">▸</button></td></tr><tr id="detail-1" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Candidates are assessed on a case-by-case basis and must meet one of the following criteria:
+
+1. **Based on current or last held employment (overseas or in Singapore):** Earned a fixed monthly salary of at least S$30,000 (or its equivalent in foreign currency) for the 12 consecutive months leading up to the date of application. If employed overseas, the candidate must have worked for an established company for those 12 consecutive months. The qualifying salary of at least S$30,000 must come from one employer only if the candidate drew salaries from more than one employer; other sources of income may be considered on a case-by-case basis. Existing pass holders need to have worked in Singapore for at least 1 year.
+
+2. **Based on prospective employment in Singapore:** Will earn a fixed monthly salary of at least S$30,000 under an established company based in Singapore. The application should only be submitted when employment will start within 6 months.
+
+For both employment-based categories, a company is considered established if it has at least one of the following: a market capitalisation of at least US$500 million, or annual revenue of at least US$200 million. Combined amounts from the entire global office can also be considered and will be assessed on a case-by-case basis.
+
+3. **Based on outstanding achievements:** Candidates who do not meet the salary criteria may still qualify if they have outstanding achievements in at least one of the following areas: sports, arts and culture, or academia and research. MOM and other agencies such as MCCY, MOE, NRF, and A*STAR will holistically review applications based on the work and key achievements accomplished by each applicant.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the loaded information, here are the **eligibility criteria for the Overseas Networks &amp; Expertise Pass (ONE Pass)**:
+
+## Main Eligibility Categories
+
+You must meet **one of the following criteria**:
+
+### 1. **Current Employment (Earned Salary)**
+- Earned a fixed monthly salary of at least **S$30,000** for the 12 consecutive months leading up to the date of application
+- Worked for an **established company** (with market capitalisation ≥US$500M or annual revenue ≥US$200M) for those 12 consecutive months
+- If you drew salaries from multiple employers, your qualifying S$30,000 salary must come from **one employer only**
+
+### 2. **Prospective Employment**
+- Will earn a fixed monthly salary of at least **S$30,000** under an established company based in Singapore
+- The company must have market capitalisation ≥US$500M or annual revenue ≥US$200M
+- You must submit your application **only when your employment will start within 6 months**
+
+### 3. **Outstanding Achievements**
+- You may apply **without meeting the salary criteria** if you have outstanding achievements in at least one of these areas:
+  - Sports
+  - Arts and culture
+  - Academia and research
+- MOM and other agencies (MCCY, MOE, NRF, A*STAR) will holistically review your application based on your work and key achievements
+
+## Additional Requirements
+
+- **Existing pass holders** need to have worked in Singapore for at least 1 year to be eligible for renewal
+- The pass is **renewable for 5 years** each time upon meeting renewal criteria
+
+## Key Features
+
+- **No COMPASS or Fair Consideration Framework requirements**
+- **No foreign worker levy or quota**
+- Flexibility to work for multiple companies concurrently
+- No need to reapply if you change jobs
+- Family members can obtain passes to join you</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What are the eligibility criteria for the Overseas Networks &amp; Expertise Pass (ONE Pass)?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the loaded information, here are the **eligibility criteria for the Overseas Networks &amp; Expertise Pass (ONE Pass)**:\n\n## Main Eligibility Categories\n\nYou must meet **one of the following criteria**:\n\n### 1. **Current Employment (Earned Salary)**\n- Earned a fixed monthly salary of at least **S$30,000** for the 12 consecutive months leading up to the date of application\n- Worked for an **established company** (with market capitalisation \u2265US$500M or annual revenue \u2265US$200M) for those 12 consecutive months\n- If you drew salaries from multiple employers, your qualifying S$30,000 salary must come from **one employer only**\n\n### 2. **Prospective Employment**\n- Will earn a fixed monthly salary of at least **S$30,000** under an established company based in Singapore\n- The company must have market capitalisation \u2265US$500M or annual revenue \u2265US$200M\n- You must submit your application **only when your employment will start within 6 months**\n\n### 3. **Outstanding Achievements**\n- You may apply **without meeting the salary criteria** if you have outstanding achievements in at least one of these areas:\n  - Sports\n  - Arts and culture\n  - Academia and research\n- MOM and other agencies (MCCY, MOE, NRF, A*STAR) will holistically review your application based on your work and key achievements\n\n## Additional Requirements\n\n- **Existing pass holders** need to have worked in Singapore for at least 1 year to be eligible for renewal\n- The pass is **renewable for 5 years** each time upon meeting renewal criteria\n\n## Key Features\n\n- **No COMPASS or Fair Consideration Framework requirements**\n- **No foreign worker levy or quota**\n- Flexibility to work for multiple companies concurrently\n- No need to reapply if you change jobs\n- Family members can obtain passes to join you",
+    "source": "bot_final",
+    "elapsed_ms": 9572.106250008801,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-0003</td><td>simple</td><td class="score-cell">3</td><td class="clip">What is the qualifying salary for a Singapore Employment Pass?</td><td class="clip">Based on the loaded information, here is the qualifying salary for a Singapore Employment Pass:
+
+## EP Qualifying Salary
+
+The Employment Pass has **two different salary thresholds** depending on the sector and the candidate&#x27;s age:
+
+### Current Requirements (for applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028):
+
+**General Sector (all except financial services):**
+- Minimum: **$5,600** (age 23 or below)
+- Maximum: **$10,700** (age 45 and above)
+- Increases progressively with age
+
+**Financial Services Sector:**
+- Minimum: **$6,200** (age 23 or below)
+- Maximum: **$11,800** (age 45 and above)
+- Increases progressively with age
+
+### Future Requirements (from 1 Jan 2027 for new applications and from 1 Jan 2028 for renewals):
+
+**General Sector:**
+- Minimum: **$6,000** (age 23 or below)
+- Maximum: **$11,500** (age 45 and above)
+
+**Financial Services Sector:**
+- Minimum: **$6,600** (age 23 or below)
+- Maximum: **$12,700** (age 45 and above)
+
+## Important Note
+
+The EP qualifying salary is **different from the COMPASS C1 salary criterion**. The qualifying salary is the minimum bar that candidates must meet to be eligible for an EP. Even if a candidate scores well on COMPASS, they will not qualify if they don&#x27;t meet the EP qualifying salary requirement.</td><td class="clip">The chatbot&#x27;s answer covers all key points from the reference (starting from $5,600, progressive increase with age, up to $10,700 for mid-40s, higher for financial services) and provides additional accurate detail including specific financial services thresholds and upcoming changes.</td><td><button class="toggle" onclick="toggleRow(2)">▸</button></td></tr><tr id="detail-2" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The qualifying salary for an Employment Pass is a fixed monthly salary comparable to the top one-third of local PMET salaries, starting from $5,600 and increasing progressively with age, up to $10,700 for those in the mid-40s. Candidates in the financial services sector need higher salaries to qualify.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the loaded information, here is the qualifying salary for a Singapore Employment Pass:
+
+## EP Qualifying Salary
+
+The Employment Pass has **two different salary thresholds** depending on the sector and the candidate&#x27;s age:
+
+### Current Requirements (for applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028):
+
+**General Sector (all except financial services):**
+- Minimum: **$5,600** (age 23 or below)
+- Maximum: **$10,700** (age 45 and above)
+- Increases progressively with age
+
+**Financial Services Sector:**
+- Minimum: **$6,200** (age 23 or below)
+- Maximum: **$11,800** (age 45 and above)
+- Increases progressively with age
+
+### Future Requirements (from 1 Jan 2027 for new applications and from 1 Jan 2028 for renewals):
+
+**General Sector:**
+- Minimum: **$6,000** (age 23 or below)
+- Maximum: **$11,500** (age 45 and above)
+
+**Financial Services Sector:**
+- Minimum: **$6,600** (age 23 or below)
+- Maximum: **$12,700** (age 45 and above)
+
+## Important Note
+
+The EP qualifying salary is **different from the COMPASS C1 salary criterion**. The qualifying salary is the minimum bar that candidates must meet to be eligible for an EP. Even if a candidate scores well on COMPASS, they will not qualify if they don&#x27;t meet the EP qualifying salary requirement.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What is the qualifying salary for a Singapore Employment Pass?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the loaded information, here is the qualifying salary for a Singapore Employment Pass:\n\n## EP Qualifying Salary\n\nThe Employment Pass has **two different salary thresholds** depending on the sector and the candidate's age:\n\n### Current Requirements (for applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028):\n\n**General Sector (all except financial services):**\n- Minimum: **$5,600** (age 23 or below)\n- Maximum: **$10,700** (age 45 and above)\n- Increases progressively with age\n\n**Financial Services Sector:**\n- Minimum: **$6,200** (age 23 or below)\n- Maximum: **$11,800** (age 45 and above)\n- Increases progressively with age\n\n### Future Requirements (from 1 Jan 2027 for new applications and from 1 Jan 2028 for renewals):\n\n**General Sector:**\n- Minimum: **$6,000** (age 23 or below)\n- Maximum: **$11,500** (age 45 and above)\n\n**Financial Services Sector:**\n- Minimum: **$6,600** (age 23 or below)\n- Maximum: **$12,700** (age 45 and above)\n\n## Important Note\n\nThe EP qualifying salary is **different from the COMPASS C1 salary criterion**. The qualifying salary is the minimum bar that candidates must meet to be eligible for an EP. Even if a candidate scores well on COMPASS, they will not qualify if they don't meet the EP qualifying salary requirement.",
+    "source": "bot_final",
+    "elapsed_ms": 8680.010208001477,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-0004</td><td>simple</td><td class="score-cell">3</td><td class="clip">What are the EP qualifying salary requirements by sector, age, and application/renewal timing for Singapore&#x27;s Employment Pass?</td><td class="clip">Based on the loaded information, here are the **EP qualifying salary requirements by sector, age, and application/renewal timing** for Singapore&#x27;s Employment Pass:
+
+## EP Qualifying Salary Framework
+
+Singapore uses a **two-stage eligibility framework** for Employment Pass applications:
+
+- **Stage 1**: Meet the EP qualifying salary (minimum threshold)
+- **Stage 2**: Pass COMPASS (points-based assessment) — unless exempted
+
+---
+
+## Salary Requirements by Sector and Age
+
+### **Current Requirements** (for new applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028)
+
+#### **All Sectors (except Financial Services)**
+Ranges from **$5,600** (age 23 and below) to **$10,700** (age 45 and above)
+
+| Age | Minimum Salary |
+|-----|---|
+| 23 or below | $5,600 |
+| 24 | $5,832 |
+| 25 | $6,064 |
+| 30 | $7,223 |
+| 35 | $8,382 |
+| 40 | $9,541 |
+| 45 or above | $10,700 |
+
+#### **Financial Services Sector**
+Ranges from **$6,200** (age 23 and below) to **$11,800** (age 45 and above)
+
+| Age | Minimum Salary |
+|-----|---|
+| 23 or below | $6,200 |
+| 24 | $6,455 |
+| 25 | $6,709 |
+| 30 | $7,982 |
+| 35 | $9,255 |
+| 40 | $10,527 |
+| 45 or above | $11,800 |
+
+---
+
+### **New Requirements** (for new applications from 1 Jan 2027 and renewals expiring from 1 Jan 2028)
+
+#### **All Sectors (except Financial Services)**
+Ranges from **$6,000** (age 23 and below) to **$11,500** (age 45 and above)
+
+| Age | Minimum Salary |
+|-----|---|
+| 23 or below | $6,000 |
+| 24 | $6,250 |
+| 25 | $6,500 |
+| 30 | $7,750 |
+| 35 | $9,000 |
+| 40 | $10,250 |
+| 45 or above | $11,500 |
+
+#### **Financial Services Sector**
+Ranges from **$6,600** (age 23 and below) to **$12,700** (age 45 and above)
+
+| Age | Minimum Salary |
+|-----|---|
+| 23 or below | $6,600 |
+| 24 | $6,877 |
+| 25 | $7,155 |
+| 30 | $8,541 |
+| 35 | $9,927 |
+| 40 | $11,314 |
+| 45 or above | $12,700 |
+
+---
+
+## Key Points
+
+1. **Salary increases progressively with age** — the older the candidate, the higher the qualifying salary requirement.
+
+2. **Financial services sector has higher thresholds** — approximately $600–$1,000 higher than other sectors at each age level.
+
+3. **COMPASS exemption threshold**: Candidates earning a **fixed monthly salary of at least $22,500** are exempted from COMPASS requirements.
+
+4. **Timing matters**: The salary requirement that applies depends on whether the application is new or a renewal, and the date of submission/expiry.
+
+5. **Salary benchmarking**: The EP qualifying salary is distinct from the COMPASS C1 (Salary) criterion, which benchmarks candidate salaries against local PMET salaries in their specific sector.</td><td class="clip">The answer is accurate and comprehensive, matching all salary figures from the reference answer across all sectors, age brackets, and timing periods. It also correctly explains the two-stage framework and includes additional helpful context.</td><td><button class="toggle" onclick="toggleRow(3)">▸</button></td></tr><tr id="detail-3" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The EP qualifying salary depends on the sector (all sectors except financial services, or financial services), the candidate&#x27;s age, and whether the application/renewal falls under current or upcoming rules.
+
+**All sectors except financial services:**
+- For new applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028: minimum $5,600 for age 23 or below, increasing progressively with age from age 23 (e.g. $5,832 at age 24, $6,064 at age 25, $7,223 at age 30, $8,382 at age 35, $9,541 at age 40), up to $10,700 at age 45 and above.
+- For new applications from 1 Jan 2027 and renewals expiring from 1 Jan 2028: minimum $6,000 for age 23 or below, increasing progressively with age from age 23 (e.g. $6,250 at age 24, $6,500 at age 25, $7,750 at age 30, $9,000 at age 35, $10,250 at age 40), up to $11,500 at age 45 and above.
+
+**Financial services sector:**
+- For new applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028: minimum $6,200 for age 23 or below, increasing progressively with age from age 23 (e.g. $6,455 at age 24, $6,709 at age 25, $7,982 at age 30, $9,255 at age 35, $10,527 at age 40), up to $11,800 at age 45 and above.
+- For new applications from 1 Jan 2027 and renewals expiring from 1 Jan 2028: minimum $6,600 for age 23 or below, increasing progressively with age from age 23 (e.g. $6,877 at age 24, $7,155 at age 25, $8,541 at age 30, $9,927 at age 35, $11,314 at age 40), up to $12,700 at age 45 and above.
+
+The EP qualifying salary is benchmarked to the top 1/3 of local PMET salaries by age. Meeting the qualifying salary is Stage 1 of the EP eligibility framework; candidates who do not meet Stage 1 will not be eligible for an EP regardless of their COMPASS score under Stage 2.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the loaded information, here are the **EP qualifying salary requirements by sector, age, and application/renewal timing** for Singapore&#x27;s Employment Pass:
+
+## EP Qualifying Salary Framework
+
+Singapore uses a **two-stage eligibility framework** for Employment Pass applications:
+
+- **Stage 1**: Meet the EP qualifying salary (minimum threshold)
+- **Stage 2**: Pass COMPASS (points-based assessment) — unless exempted
+
+---
+
+## Salary Requirements by Sector and Age
+
+### **Current Requirements** (for new applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028)
+
+#### **All Sectors (except Financial Services)**
+Ranges from **$5,600** (age 23 and below) to **$10,700** (age 45 and above)
+
+| Age | Minimum Salary |
+|-----|---|
+| 23 or below | $5,600 |
+| 24 | $5,832 |
+| 25 | $6,064 |
+| 30 | $7,223 |
+| 35 | $8,382 |
+| 40 | $9,541 |
+| 45 or above | $10,700 |
+
+#### **Financial Services Sector**
+Ranges from **$6,200** (age 23 and below) to **$11,800** (age 45 and above)
+
+| Age | Minimum Salary |
+|-----|---|
+| 23 or below | $6,200 |
+| 24 | $6,455 |
+| 25 | $6,709 |
+| 30 | $7,982 |
+| 35 | $9,255 |
+| 40 | $10,527 |
+| 45 or above | $11,800 |
+
+---
+
+### **New Requirements** (for new applications from 1 Jan 2027 and renewals expiring from 1 Jan 2028)
+
+#### **All Sectors (except Financial Services)**
+Ranges from **$6,000** (age 23 and below) to **$11,500** (age 45 and above)
+
+| Age | Minimum Salary |
+|-----|---|
+| 23 or below | $6,000 |
+| 24 | $6,250 |
+| 25 | $6,500 |
+| 30 | $7,750 |
+| 35 | $9,000 |
+| 40 | $10,250 |
+| 45 or above | $11,500 |
+
+#### **Financial Services Sector**
+Ranges from **$6,600** (age 23 and below) to **$12,700** (age 45 and above)
+
+| Age | Minimum Salary |
+|-----|---|
+| 23 or below | $6,600 |
+| 24 | $6,877 |
+| 25 | $7,155 |
+| 30 | $8,541 |
+| 35 | $9,927 |
+| 40 | $11,314 |
+| 45 or above | $12,700 |
+
+---
+
+## Key Points
+
+1. **Salary increases progressively with age** — the older the candidate, the higher the qualifying salary requirement.
+
+2. **Financial services sector has higher thresholds** — approximately $600–$1,000 higher than other sectors at each age level.
+
+3. **COMPASS exemption threshold**: Candidates earning a **fixed monthly salary of at least $22,500** are exempted from COMPASS requirements.
+
+4. **Timing matters**: The salary requirement that applies depends on whether the application is new or a renewal, and the date of submission/expiry.
+
+5. **Salary benchmarking**: The EP qualifying salary is distinct from the COMPASS C1 (Salary) criterion, which benchmarks candidate salaries against local PMET salaries in their specific sector.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What are the EP qualifying salary requirements by sector, age, and application/renewal timing for Singapore's Employment Pass?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the loaded information, here are the **EP qualifying salary requirements by sector, age, and application/renewal timing** for Singapore's Employment Pass:\n\n## EP Qualifying Salary Framework\n\nSingapore uses a **two-stage eligibility framework** for Employment Pass applications:\n\n- **Stage 1**: Meet the EP qualifying salary (minimum threshold)\n- **Stage 2**: Pass COMPASS (points-based assessment) \u2014 unless exempted\n\n---\n\n## Salary Requirements by Sector and Age\n\n### **Current Requirements** (for new applications before 1 Jan 2027 and renewals expiring before 1 Jan 2028)\n\n#### **All Sectors (except Financial Services)**\nRanges from **$5,600** (age 23 and below) to **$10,700** (age 45 and above)\n\n| Age | Minimum Salary |\n|-----|---|\n| 23 or below | $5,600 |\n| 24 | $5,832 |\n| 25 | $6,064 |\n| 30 | $7,223 |\n| 35 | $8,382 |\n| 40 | $9,541 |\n| 45 or above | $10,700 |\n\n#### **Financial Services Sector**\nRanges from **$6,200** (age 23 and below) to **$11,800** (age 45 and above)\n\n| Age | Minimum Salary |\n|-----|---|\n| 23 or below | $6,200 |\n| 24 | $6,455 |\n| 25 | $6,709 |\n| 30 | $7,982 |\n| 35 | $9,255 |\n| 40 | $10,527 |\n| 45 or above | $11,800 |\n\n---\n\n### **New Requirements** (for new applications from 1 Jan 2027 and renewals expiring from 1 Jan 2028)\n\n#### **All Sectors (except Financial Services)**\nRanges from **$6,000** (age 23 and below) to **$11,500** (age 45 and above)\n\n| Age | Minimum Salary |\n|-----|---|\n| 23 or below | $6,000 |\n| 24 | $6,250 |\n| 25 | $6,500 |\n| 30 | $7,750 |\n| 35 | $9,000 |\n| 40 | $10,250 |\n| 45 or above | $11,500 |\n\n#### **Financial Services Sector**\nRanges from **$6,600** (age 23 and below) to **$12,700** (age 45 and above)\n\n| Age | Minimum Salary |\n|-----|---|\n| 23 or below | $6,600 |\n| 24 | $6,877 |\n| 25 | $7,155 |\n| 30 | $8,541 |\n| 35 | $9,927 |\n| 40 | $11,314 |\n| 45 or above | $12,700 |\n\n---\n\n## Key Points\n\n1. **Salary increases progressively with age** \u2014 the older the candidate, the higher the qualifying salary requirement.\n\n2. **Financial services sector has higher thresholds** \u2014 approximately $600\u2013$1,000 higher than other sectors at each age level.\n\n3. **COMPASS exemption threshold**: Candidates earning a **fixed monthly salary of at least $22,500** are exempted from COMPASS requirements.\n\n4. **Timing matters**: The salary requirement that applies depends on whether the application is new or a renewal, and the date of submission/expiry.\n\n5. **Salary benchmarking**: The EP qualifying salary is distinct from the COMPASS C1 (Salary) criterion, which benchmarks candidate salaries against local PMET salaries in their specific sector.",
+    "source": "bot_final",
+    "elapsed_ms": 13313.221290998627,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-0005</td><td>simple</td><td class="score-cell">3</td><td class="clip">How often is the Shortage Occupation List (SOL) updated, and how often is it comprehensively reviewed?</td><td class="clip">Based on the loaded content, here is the information about the Shortage Occupation List (SOL) update frequency:
+
+## SOL Update Frequency
+
+**Annual Updates:**
+Occupations may be added or removed from the SOL **once a year**, to remain responsive to market conditions.
+
+**Comprehensive Review:**
+The SOL will be comprehensively reviewed every **3 years**.
+
+This means that while the list is updated annually to reflect changing labour market needs, a more thorough and detailed review of all occupations on the list occurs every three years. The SOL is created by MOM and the Ministry of Trade and Industry (MTI) in consultation with sector agencies and tripartite partners, with occupations identified based on their strategic importance to Singapore&#x27;s economic priorities, the degree and nature of labour shortage, and the sector&#x27;s commitment to developing the local pipeline to address these shortages.</td><td class="clip">The answer accurately covers all key points: annual updates, comprehensive review every 3 years, and the creation process involving MOM, MTI, sector agencies, and tripartite partners. The only minor omission is the specific detail about the November 2025 SOL applying from 1 January 2026, but this is not essential to answering the question asked.</td><td><button class="toggle" onclick="toggleRow(4)">▸</button></td></tr><tr id="detail-4" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Occupations may be added or removed from the SOL once a year, to remain responsive to market conditions. The SOL will be comprehensively reviewed every 3 years. The SOL released in November 2025 applies to new and renewal EP applications from 1 January 2026. The SOL is created by MOM and the Ministry of Trade and Industry (MTI) in consultation with sector agencies and tripartite partners, and occupations are identified based on their strategic importance to Singapore&#x27;s economic priorities, the degree and nature of labour shortage, and the sector&#x27;s commitment to developing the local pipeline to address these shortages in the medium term.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the loaded content, here is the information about the Shortage Occupation List (SOL) update frequency:
+
+## SOL Update Frequency
+
+**Annual Updates:**
+Occupations may be added or removed from the SOL **once a year**, to remain responsive to market conditions.
+
+**Comprehensive Review:**
+The SOL will be comprehensively reviewed every **3 years**.
+
+This means that while the list is updated annually to reflect changing labour market needs, a more thorough and detailed review of all occupations on the list occurs every three years. The SOL is created by MOM and the Ministry of Trade and Industry (MTI) in consultation with sector agencies and tripartite partners, with occupations identified based on their strategic importance to Singapore&#x27;s economic priorities, the degree and nature of labour shortage, and the sector&#x27;s commitment to developing the local pipeline to address these shortages.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "How often is the Shortage Occupation List (SOL) updated, and how often is it comprehensively reviewed?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the loaded content, here is the information about the Shortage Occupation List (SOL) update frequency:\n\n## SOL Update Frequency\n\n**Annual Updates:**\nOccupations may be added or removed from the SOL **once a year**, to remain responsive to market conditions.\n\n**Comprehensive Review:**\nThe SOL will be comprehensively reviewed every **3 years**.\n\nThis means that while the list is updated annually to reflect changing labour market needs, a more thorough and detailed review of all occupations on the list occurs every three years. The SOL is created by MOM and the Ministry of Trade and Industry (MTI) in consultation with sector agencies and tripartite partners, with occupations identified based on their strategic importance to Singapore's economic priorities, the degree and nature of labour shortage, and the sector's commitment to developing the local pipeline to address these shortages.",
+    "source": "bot_final",
+    "elapsed_ms": 8205.125833002967,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-0006</td><td>simple</td><td class="score-cell">3</td><td class="clip">What are the situations involving a change in business entity that require an employer to inform MOM, and what should the employer do in those scenarios?</td><td class="clip">Based on the loaded documentation, here are the situations involving a change in business entity that require an employer to inform MOM, and what the employer should do:
+
+## Situations Requiring Notification to MOM
+
+An employer must inform MOM if the company is undergoing the following types of changes that will result in a change in the **CPF submission numbers**:
+
+1. **Changing to another type of business entity** — for example, converting from a sole proprietorship to a private limited company, where at least one of the directors, partners, or sole proprietor will move to the new entity.
+
+2. **Undergoing full merger, acquisition, or amalgamation of entities** — when the company merges with, acquires, or is amalgamated with other entities.
+
+3. **Renewing a business registration with a different ACRA number** — while keeping the company name the same.
+
+## What the Employer Should Do
+
+For all three scenarios above, the employer should:
+
+**Find out how to transfer workers to the new company** — The documentation directs employers to refer to guidance on transferring the company&#x27;s work pass holders if it is undergoing business restructuring.
+
+This is a critical step because when a business entity changes in a way that affects CPF submission numbers, the existing Employment Pass holders cannot simply continue under the old pass arrangement. The employer must follow the proper procedures to transfer these workers to the new entity, which typically involves:
+- Having the new company apply for new Employment Passes for the affected workers
+- Cancelling the existing Employment Passes before the new ones are issued
+
+This ensures compliance with MOM regulations and maintains the legal status of foreign workers during the business restructuring process.</td><td class="clip">The answer accurately covers all three situations (changing business entity type, full merger/acquisition/amalgamation, renewing business registration with different ACRA number) and correctly states the employer should transfer workers to the new company. The additional detail about Employment Passes is reasonable elaboration, though slightly speculative, but does not detract from the core accuracy.</td><td><button class="toggle" onclick="toggleRow(5)">▸</button></td></tr><tr id="detail-5" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>An employer needs to inform MOM if the company is undergoing changes that will result in a change in the CPF submission numbers. Specifically, the situations are: (1) changing to another type of business entity (e.g. from a sole proprietorship to a private limited company), where at least one of the directors, partners or sole proprietor will move to the new entity; (2) undergoing full merger, acquisition or amalgamation of entities; and (3) renewing a business registration with a different ACRA number while keeping the company name. For all of these scenarios, the employer should follow the process to transfer their workers to the new company.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the loaded documentation, here are the situations involving a change in business entity that require an employer to inform MOM, and what the employer should do:
+
+## Situations Requiring Notification to MOM
+
+An employer must inform MOM if the company is undergoing the following types of changes that will result in a change in the **CPF submission numbers**:
+
+1. **Changing to another type of business entity** — for example, converting from a sole proprietorship to a private limited company, where at least one of the directors, partners, or sole proprietor will move to the new entity.
+
+2. **Undergoing full merger, acquisition, or amalgamation of entities** — when the company merges with, acquires, or is amalgamated with other entities.
+
+3. **Renewing a business registration with a different ACRA number** — while keeping the company name the same.
+
+## What the Employer Should Do
+
+For all three scenarios above, the employer should:
+
+**Find out how to transfer workers to the new company** — The documentation directs employers to refer to guidance on transferring the company&#x27;s work pass holders if it is undergoing business restructuring.
+
+This is a critical step because when a business entity changes in a way that affects CPF submission numbers, the existing Employment Pass holders cannot simply continue under the old pass arrangement. The employer must follow the proper procedures to transfer these workers to the new entity, which typically involves:
+- Having the new company apply for new Employment Passes for the affected workers
+- Cancelling the existing Employment Passes before the new ones are issued
+
+This ensures compliance with MOM regulations and maintains the legal status of foreign workers during the business restructuring process.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What are the situations involving a change in business entity that require an employer to inform MOM, and what should the employer do in those scenarios?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the loaded documentation, here are the situations involving a change in business entity that require an employer to inform MOM, and what the employer should do:\n\n## Situations Requiring Notification to MOM\n\nAn employer must inform MOM if the company is undergoing the following types of changes that will result in a change in the **CPF submission numbers**:\n\n1. **Changing to another type of business entity** \u2014 for example, converting from a sole proprietorship to a private limited company, where at least one of the directors, partners, or sole proprietor will move to the new entity.\n\n2. **Undergoing full merger, acquisition, or amalgamation of entities** \u2014 when the company merges with, acquires, or is amalgamated with other entities.\n\n3. **Renewing a business registration with a different ACRA number** \u2014 while keeping the company name the same.\n\n## What the Employer Should Do\n\nFor all three scenarios above, the employer should:\n\n**Find out how to transfer workers to the new company** \u2014 The documentation directs employers to refer to guidance on transferring the company's work pass holders if it is undergoing business restructuring.\n\nThis is a critical step because when a business entity changes in a way that affects CPF submission numbers, the existing Employment Pass holders cannot simply continue under the old pass arrangement. The employer must follow the proper procedures to transfer these workers to the new entity, which typically involves:\n- Having the new company apply for new Employment Passes for the affected workers\n- Cancelling the existing Employment Passes before the new ones are issued\n\nThis ensures compliance with MOM regulations and maintains the legal status of foreign workers during the business restructuring process.",
+    "source": "bot_final",
+    "elapsed_ms": 8762.876916996902,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-0007</td><td>simple</td><td class="score-cell">3</td><td class="clip">How early can I apply to renew an Employment Pass, and what happens to the remaining validity on my current pass if I renew early?</td><td class="clip">Based on the Employment Pass renewal information, here are the answers to your questions:
+
+## How Early Can You Apply?
+
+You can apply to renew an Employment Pass **up to 6 months (180 days) before the pass expires**. For EP (Sponsorship) specifically, you can start applying **3 months** before expiry.
+
+## What Happens to Remaining Validity?
+
+**Your remaining validity is preserved and added to your renewal.** According to the guidance:
+
+&gt; &quot;Your new work pass validity will not be reduced or lost when you renew early. Any remaining validity from your current pass (up to six months) is added on to your renewal.&quot;
+
+This means if you renew early, you don&#x27;t lose any time—the duration of your renewed pass will start when your current pass expires, and any unused validity from your current pass is carried forward.
+
+## Important Note
+
+If you miss the renewal deadline and your pass expires, you will need to apply for a **new pass** rather than a renewal, which is a different process.</td><td class="clip">The answer covers all key points from the reference: 6 months for standard EP, 3 months for EP (Sponsorship), remaining validity is added on, and missing the deadline requires a new pass application. Accurate and comprehensive.</td><td><button class="toggle" onclick="toggleRow(6)">▸</button></td></tr><tr id="detail-6" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>For a standard Employment Pass, you can apply to renew up to 6 months (180 days) before the pass expires. For an EP (Sponsorship), you can start applying to renew 3 months before the pass expires. You must apply before the expiry date. Your new work pass validity will not be reduced or lost when you renew early; any remaining validity from your current pass (up to six months) is added on to your renewal. If you miss the deadline, you need to apply for a new pass.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the Employment Pass renewal information, here are the answers to your questions:
+
+## How Early Can You Apply?
+
+You can apply to renew an Employment Pass **up to 6 months (180 days) before the pass expires**. For EP (Sponsorship) specifically, you can start applying **3 months** before expiry.
+
+## What Happens to Remaining Validity?
+
+**Your remaining validity is preserved and added to your renewal.** According to the guidance:
+
+&gt; &quot;Your new work pass validity will not be reduced or lost when you renew early. Any remaining validity from your current pass (up to six months) is added on to your renewal.&quot;
+
+This means if you renew early, you don&#x27;t lose any time—the duration of your renewed pass will start when your current pass expires, and any unused validity from your current pass is carried forward.
+
+## Important Note
+
+If you miss the renewal deadline and your pass expires, you will need to apply for a **new pass** rather than a renewal, which is a different process.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "How early can I apply to renew an Employment Pass, and what happens to the remaining validity on my current pass if I renew early?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the Employment Pass renewal information, here are the answers to your questions:\n\n## How Early Can You Apply?\n\nYou can apply to renew an Employment Pass **up to 6 months (180 days) before the pass expires**. For EP (Sponsorship) specifically, you can start applying **3 months** before expiry.\n\n## What Happens to Remaining Validity?\n\n**Your remaining validity is preserved and added to your renewal.** According to the guidance:\n\n&gt; \"Your new work pass validity will not be reduced or lost when you renew early. Any remaining validity from your current pass (up to six months) is added on to your renewal.\"\n\nThis means if you renew early, you don't lose any time\u2014the duration of your renewed pass will start when your current pass expires, and any unused validity from your current pass is carried forward.\n\n## Important Note\n\nIf you miss the renewal deadline and your pass expires, you will need to apply for a **new pass** rather than a renewal, which is a different process.",
+    "source": "bot_final",
+    "elapsed_ms": 6576.0662499960745,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-0008</td><td>simple</td><td class="score-cell">3</td><td class="clip">What are the fees involved when applying for and getting issued an Overseas Networks &amp; Expertise Pass, and what payment methods are accepted at each stage?</td><td class="clip">Based on the information from the Ministry of Manpower, here are the fees and payment methods for the Overseas Networks &amp; Expertise (ONE) Pass:
+
+## Fees
+
+| Stage | Fee | 
+|---|---|
+| **Application submission** | $105 |
+| **Pass issuance** | $225 per pass |
+| **Multiple Journey Visa** (if applicable) | $30 per visa |
+
+## Payment Methods
+
+### At Application Submission
+- **Visa or Mastercard** only
+
+### At Pass Issuance
+
+The payment methods available depend on how you get your pass issued:
+
+**Via EP eService (online):**
+- GIRO
+- Visa
+- Mastercard
+- Amex
+
+**At Employment Pass Services Centre (EPSC) counter:**
+- Visa
+- MasterCard
+- Amex
+- NETS
+- CashCard
+
+**Note:** If your credit or debit card was not issued in Singapore, please ensure it has been activated for overseas use before attempting payment at the EPSC.
+
+## Timeline
+- Application processing typically takes **4 weeks**
+- Pass issuance must occur **within 6 months of receiving your IPA letter** and is processed immediately once you submit your documents and payment</td><td class="clip">The answer covers all fees ($105 application, $225 issuance, $30 MJV), all payment methods at each stage and channel, and the overseas card activation note, matching the reference answer comprehensively. The extra timeline info is minor and non-misleading.</td><td><button class="toggle" onclick="toggleRow(7)">▸</button></td></tr><tr id="detail-7" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>There are two stages of fees. When submitting the application, there is a $105 application fee, payable via Visa or Mastercard. When getting the pass issued, the fee is $225 for each pass, plus (if applicable) $30 for each Multiple Journey Visa. For pass issuance, the accepted payment methods depend on the channel: if issuing via EP eService (for candidates with a Singpass account), payment can be made using GIRO, Visa, Mastercard, or Amex; if issuing over the counter at the Employment Pass Services Centre (EPSC) (for candidates without a Singpass account), payment can be made using VISA, MasterCard, AMEX, NETS, or CashCard (and if the credit or debit card was not issued in Singapore, it must be activated for overseas use).</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the information from the Ministry of Manpower, here are the fees and payment methods for the Overseas Networks &amp; Expertise (ONE) Pass:
+
+## Fees
+
+| Stage | Fee | 
+|---|---|
+| **Application submission** | $105 |
+| **Pass issuance** | $225 per pass |
+| **Multiple Journey Visa** (if applicable) | $30 per visa |
+
+## Payment Methods
+
+### At Application Submission
+- **Visa or Mastercard** only
+
+### At Pass Issuance
+
+The payment methods available depend on how you get your pass issued:
+
+**Via EP eService (online):**
+- GIRO
+- Visa
+- Mastercard
+- Amex
+
+**At Employment Pass Services Centre (EPSC) counter:**
+- Visa
+- MasterCard
+- Amex
+- NETS
+- CashCard
+
+**Note:** If your credit or debit card was not issued in Singapore, please ensure it has been activated for overseas use before attempting payment at the EPSC.
+
+## Timeline
+- Application processing typically takes **4 weeks**
+- Pass issuance must occur **within 6 months of receiving your IPA letter** and is processed immediately once you submit your documents and payment</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What are the fees involved when applying for and getting issued an Overseas Networks &amp; Expertise Pass, and what payment methods are accepted at each stage?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the information from the Ministry of Manpower, here are the fees and payment methods for the Overseas Networks &amp; Expertise (ONE) Pass:\n\n## Fees\n\n| Stage | Fee | \n|---|---|\n| **Application submission** | $105 |\n| **Pass issuance** | $225 per pass |\n| **Multiple Journey Visa** (if applicable) | $30 per visa |\n\n## Payment Methods\n\n### At Application Submission\n- **Visa or Mastercard** only\n\n### At Pass Issuance\n\nThe payment methods available depend on how you get your pass issued:\n\n**Via EP eService (online):**\n- GIRO\n- Visa\n- Mastercard\n- Amex\n\n**At Employment Pass Services Centre (EPSC) counter:**\n- Visa\n- MasterCard\n- Amex\n- NETS\n- CashCard\n\n**Note:** If your credit or debit card was not issued in Singapore, please ensure it has been activated for overseas use before attempting payment at the EPSC.\n\n## Timeline\n- Application processing typically takes **4 weeks**\n- Pass issuance must occur **within 6 months of receiving your IPA letter** and is processed immediately once you submit your documents and payment",
+    "source": "bot_final",
+    "elapsed_ms": 7990.140458001406,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="medium"><td class="mono">q-0009</td><td>medium</td><td class="score-cell">2</td><td class="clip">Based on the paragraph, what is the relationship between the SOL (Shortage Occupation List) and the COMPASS framework, and what specific benefit does being on the SOL provide?</td><td class="clip">Based on the loaded content, I can now provide you with a comprehensive answer about the relationship between the SOL and COMPASS framework, and the specific benefits of SOL inclusion.
+
+## Relationship Between SOL and COMPASS Framework
+
+The **Shortage Occupation List (SOL)** is directly integrated into the **COMPASS framework** as the **C5 Skills Bonus criterion**. Here&#x27;s how they relate:
+
+### The Connection
+
+The SOL lists all jobs eligible for the **COMPASS C5 Skills Bonus**, which is one of six criteria in the COMPASS points-based assessment system. COMPASS is a two-stage eligibility framework for Singapore Employment Pass (EP) applications:
+
+1. **Stage 1**: Meet the EP qualifying salary
+2. **Stage 2**: Pass COMPASS (earn at least 40 points)
+
+### How SOL Fits Into COMPASS
+
+The SOL occupations fall under the **bonus criteria** section of COMPASS, alongside the C6 Strategic Economic Priorities bonus. While the four foundational criteria (C1 Salary, C2 Qualifications, C3 Diversity, C4 Support for Local Employment) can earn up to 20 points each, the C5 Skills Bonus can earn:
+- **20 points** (if the candidate&#x27;s nationality forms less than 1/3 of the firm&#x27;s PMET employees)
+- **10 points** (if the candidate&#x27;s nationality forms 1/3 or more of the firm&#x27;s PMET employees)
+
+## Specific Benefits of Being on the SOL
+
+### 1. **COMPASS Points Bonus**
+Candidates performing jobs on the SOL can earn valuable bonus points (10-20 points) under the C5 criterion, which can help them pass the overall 40-point COMPASS requirement even if they score lower on other criteria.
+
+### 2. **5-Year Duration Employment Pass**
+A significant benefit is that **infocomm technology occupations on the SOL** qualify experienced tech professionals for a **longer 5-year duration EP** (instead of the standard 2-year duration). To qualify, candidates must:
+- Score at least 10 points on COMPASS Criterion 3 (Diversity)
+- Meet specific salary thresholds ($10,700–$15,499 depending on age and application timing)
+
+### 3. **Recognition of Specialized Skills**
+The SOL recognizes jobs that require highly specialized skills in shortage in the local workforce, spanning sectors including:
+- Agritech
+- Financial services (private banking)
+- Carbon services
+- Healthcare
+- Infocomm technology
+- Maritime
+- Semiconductors
+
+### 4. **Strategic Economic Importance**
+Occupations are selected for the SOL based on their **strategic importance to Singapore&#x27;s economic priorities**, the degree and nature of labour shortage, and the sector&#x27;s commitment to developing the local pipeline.
+
+### 5. **Flexibility in Application**
+Candidates on the SOL can leverage these bonus points to strengthen their overall COMPASS score, making it easier to meet the 40-point pass mark even if they have weaker performance in other criteria areas.
+
+The SOL is updated annually and comprehensively reviewed every three years to remain responsive to market conditions and Singapore&#x27;s evolving economic needs.</td><td class="clip">The answer correctly identifies the core relationship: SOL lists jobs eligible for the COMPASS C5 Skills Bonus, and being on the SOL provides bonus points under COMPASS for EP eligibility. However, it adds substantial extraneous detail (5-year EP, sector lists, point breakdowns by nationality) that goes well beyond the reference answer and may include unverifiable claims not grounded in the referenced paragraph.</td><td><button class="toggle" onclick="toggleRow(8)">▸</button></td></tr><tr id="detail-8" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The SOL (Shortage Occupation List) lists all jobs that are eligible for the COMPASS C5 Skills bonus, specifically referred to as the &#x27;Skills bonus (Shortage Occupation List).&#x27; This means that jobs appearing on the SOL qualify for the C5 Skills bonus under the COMPASS (Complementarity Assessment Framework) used for Employment Pass eligibility.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the loaded content, I can now provide you with a comprehensive answer about the relationship between the SOL and COMPASS framework, and the specific benefits of SOL inclusion.
+
+## Relationship Between SOL and COMPASS Framework
+
+The **Shortage Occupation List (SOL)** is directly integrated into the **COMPASS framework** as the **C5 Skills Bonus criterion**. Here&#x27;s how they relate:
+
+### The Connection
+
+The SOL lists all jobs eligible for the **COMPASS C5 Skills Bonus**, which is one of six criteria in the COMPASS points-based assessment system. COMPASS is a two-stage eligibility framework for Singapore Employment Pass (EP) applications:
+
+1. **Stage 1**: Meet the EP qualifying salary
+2. **Stage 2**: Pass COMPASS (earn at least 40 points)
+
+### How SOL Fits Into COMPASS
+
+The SOL occupations fall under the **bonus criteria** section of COMPASS, alongside the C6 Strategic Economic Priorities bonus. While the four foundational criteria (C1 Salary, C2 Qualifications, C3 Diversity, C4 Support for Local Employment) can earn up to 20 points each, the C5 Skills Bonus can earn:
+- **20 points** (if the candidate&#x27;s nationality forms less than 1/3 of the firm&#x27;s PMET employees)
+- **10 points** (if the candidate&#x27;s nationality forms 1/3 or more of the firm&#x27;s PMET employees)
+
+## Specific Benefits of Being on the SOL
+
+### 1. **COMPASS Points Bonus**
+Candidates performing jobs on the SOL can earn valuable bonus points (10-20 points) under the C5 criterion, which can help them pass the overall 40-point COMPASS requirement even if they score lower on other criteria.
+
+### 2. **5-Year Duration Employment Pass**
+A significant benefit is that **infocomm technology occupations on the SOL** qualify experienced tech professionals for a **longer 5-year duration EP** (instead of the standard 2-year duration). To qualify, candidates must:
+- Score at least 10 points on COMPASS Criterion 3 (Diversity)
+- Meet specific salary thresholds ($10,700–$15,499 depending on age and application timing)
+
+### 3. **Recognition of Specialized Skills**
+The SOL recognizes jobs that require highly specialized skills in shortage in the local workforce, spanning sectors including:
+- Agritech
+- Financial services (private banking)
+- Carbon services
+- Healthcare
+- Infocomm technology
+- Maritime
+- Semiconductors
+
+### 4. **Strategic Economic Importance**
+Occupations are selected for the SOL based on their **strategic importance to Singapore&#x27;s economic priorities**, the degree and nature of labour shortage, and the sector&#x27;s commitment to developing the local pipeline.
+
+### 5. **Flexibility in Application**
+Candidates on the SOL can leverage these bonus points to strengthen their overall COMPASS score, making it easier to meet the 40-point pass mark even if they have weaker performance in other criteria areas.
+
+The SOL is updated annually and comprehensively reviewed every three years to remain responsive to market conditions and Singapore&#x27;s evolving economic needs.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Based on the paragraph, what is the relationship between the SOL (Shortage Occupation List) and the COMPASS framework, and what specific benefit does being on the SOL provide?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the loaded content, I can now provide you with a comprehensive answer about the relationship between the SOL and COMPASS framework, and the specific benefits of SOL inclusion.\n\n## Relationship Between SOL and COMPASS Framework\n\nThe **Shortage Occupation List (SOL)** is directly integrated into the **COMPASS framework** as the **C5 Skills Bonus criterion**. Here's how they relate:\n\n### The Connection\n\nThe SOL lists all jobs eligible for the **COMPASS C5 Skills Bonus**, which is one of six criteria in the COMPASS points-based assessment system. COMPASS is a two-stage eligibility framework for Singapore Employment Pass (EP) applications:\n\n1. **Stage 1**: Meet the EP qualifying salary\n2. **Stage 2**: Pass COMPASS (earn at least 40 points)\n\n### How SOL Fits Into COMPASS\n\nThe SOL occupations fall under the **bonus criteria** section of COMPASS, alongside the C6 Strategic Economic Priorities bonus. While the four foundational criteria (C1 Salary, C2 Qualifications, C3 Diversity, C4 Support for Local Employment) can earn up to 20 points each, the C5 Skills Bonus can earn:\n- **20 points** (if the candidate's nationality forms less than 1/3 of the firm's PMET employees)\n- **10 points** (if the candidate's nationality forms 1/3 or more of the firm's PMET employees)\n\n## Specific Benefits of Being on the SOL\n\n### 1. **COMPASS Points Bonus**\nCandidates performing jobs on the SOL can earn valuable bonus points (10-20 points) under the C5 criterion, which can help them pass the overall 40-point COMPASS requirement even if they score lower on other criteria.\n\n### 2. **5-Year Duration Employment Pass**\nA significant benefit is that **infocomm technology occupations on the SOL** qualify experienced tech professionals for a **longer 5-year duration EP** (instead of the standard 2-year duration). To qualify, candidates must:\n- Score at least 10 points on COMPASS Criterion 3 (Diversity)\n- Meet specific salary thresholds ($10,700\u2013$15,499 depending on age and application timing)\n\n### 3. **Recognition of Specialized Skills**\nThe SOL recognizes jobs that require highly specialized skills in shortage in the local workforce, spanning sectors including:\n- Agritech\n- Financial services (private banking)\n- Carbon services\n- Healthcare\n- Infocomm technology\n- Maritime\n- Semiconductors\n\n### 4. **Strategic Economic Importance**\nOccupations are selected for the SOL based on their **strategic importance to Singapore's economic priorities**, the degree and nature of labour shortage, and the sector's commitment to developing the local pipeline.\n\n### 5. **Flexibility in Application**\nCandidates on the SOL can leverage these bonus points to strengthen their overall COMPASS score, making it easier to meet the 40-point pass mark even if they have weaker performance in other criteria areas.\n\nThe SOL is updated annually and comprehensively reviewed every three years to remain responsive to market conditions and Singapore's evolving economic needs.",
+    "source": "bot_final",
+    "elapsed_ms": 14781.505083010416,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="medium"><td class="mono">q-0010</td><td>medium</td><td class="score-cell">2</td><td class="clip">If you want your family to arrive in the country around the same time your Overseas Networks &amp; Expertise Pass is approved, when should you apply for their Dependant&#x27;s Pass or Long-Term Visit Pass, and why?</td><td class="clip">Based on the knowledge base, here&#x27;s the answer:
+
+## Timing Recommendation
+
+**You should apply for your family&#x27;s Dependant&#x27;s Pass or Long-Term Visit Pass *after* your Overseas Networks &amp; Expertise Pass is approved**, not before or at the same time.
+
+## Why
+
+The guidance provides two key reasons:
+
+1. **Processing time alignment**: Dependant&#x27;s Pass and Long-Term Visit Pass applications take **4 weeks to process**. Since your ONE Pass approval typically takes around 4 weeks as well, applying after your ONE Pass is approved means your family&#x27;s passes will be processed in parallel, allowing them to arrive around the same time you do.
+
+2. **Financial risk mitigation**: Although you *can* apply for family passes simultaneously with your ONE Pass application, **you may lose the application fees for each family pass if your ONE Pass application is rejected**. By waiting for approval confirmation first, you avoid this financial loss.
+
+In summary: wait for your ONE Pass approval → then apply for family passes → both will be ready within approximately the same timeframe (4 weeks each).</td><td class="clip">The chatbot correctly identifies that you should apply after ONE Pass approval and that the 4-week processing time is the key reason. However, it adds potentially misleading information about financial risk mitigation and parallel processing that isn&#x27;t in the reference answer, and the logic about &#x27;arriving around the same time&#x27; is slightly confused since applying after approval means a 4-week wait, not simultaneous arrival.</td><td><button class="toggle" onclick="toggleRow(9)">▸</button></td></tr><tr id="detail-9" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>You should apply for your family&#x27;s passes as soon as your own pass gets approved, because Dependant&#x27;s Pass and Long-Term Visit Pass applications take 4 weeks to process. Applying promptly upon your pass approval helps minimize the waiting period before your family can join you.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the knowledge base, here&#x27;s the answer:
+
+## Timing Recommendation
+
+**You should apply for your family&#x27;s Dependant&#x27;s Pass or Long-Term Visit Pass *after* your Overseas Networks &amp; Expertise Pass is approved**, not before or at the same time.
+
+## Why
+
+The guidance provides two key reasons:
+
+1. **Processing time alignment**: Dependant&#x27;s Pass and Long-Term Visit Pass applications take **4 weeks to process**. Since your ONE Pass approval typically takes around 4 weeks as well, applying after your ONE Pass is approved means your family&#x27;s passes will be processed in parallel, allowing them to arrive around the same time you do.
+
+2. **Financial risk mitigation**: Although you *can* apply for family passes simultaneously with your ONE Pass application, **you may lose the application fees for each family pass if your ONE Pass application is rejected**. By waiting for approval confirmation first, you avoid this financial loss.
+
+In summary: wait for your ONE Pass approval → then apply for family passes → both will be ready within approximately the same timeframe (4 weeks each).</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "If you want your family to arrive in the country around the same time your Overseas Networks &amp; Expertise Pass is approved, when should you apply for their Dependant's Pass or Long-Term Visit Pass, and why?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the knowledge base, here's the answer:\n\n## Timing Recommendation\n\n**You should apply for your family's Dependant's Pass or Long-Term Visit Pass *after* your Overseas Networks &amp; Expertise Pass is approved**, not before or at the same time.\n\n## Why\n\nThe guidance provides two key reasons:\n\n1. **Processing time alignment**: Dependant's Pass and Long-Term Visit Pass applications take **4 weeks to process**. Since your ONE Pass approval typically takes around 4 weeks as well, applying after your ONE Pass is approved means your family's passes will be processed in parallel, allowing them to arrive around the same time you do.\n\n2. **Financial risk mitigation**: Although you *can* apply for family passes simultaneously with your ONE Pass application, **you may lose the application fees for each family pass if your ONE Pass application is rejected**. By waiting for approval confirmation first, you avoid this financial loss.\n\nIn summary: wait for your ONE Pass approval \u2192 then apply for family passes \u2192 both will be ready within approximately the same timeframe (4 weeks each).",
+    "source": "bot_final",
+    "elapsed_ms": 4903.740875000949,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="medium"><td class="mono">q-0011</td><td>medium</td><td class="score-cell">3</td><td class="clip">Which supporting agency for the COMPASS SEP bonus requires an organisation to be progressive and committed to working with the Labour Movement to strengthen local workforce development, and what is the contact email for that agency?</td><td class="clip">Based on the loaded content, the supporting agency is **National Trades Union Congress (NTUC)**, and the contact email is **askme@ntuc.org.sg**.
+
+According to the COMPASS C6 SEP bonus eligible programmes list, NTUC requires an organisation to be a **progressive firm that is committed to work with the Labour Movement to strengthen local workforce development** through either:
+- NTUC&#x27;s Company Training Committees (CTCs), or
+- Participation in Government-supported programmes</td><td class="clip">The answer correctly identifies NTUC as the supporting agency and provides the correct contact email askme@ntuc.org.sg, matching the reference answer with additional relevant detail.</td><td><button class="toggle" onclick="toggleRow(10)">▸</button></td></tr><tr id="detail-10" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The National Trades Union Congress (NTUC) is the supporting agency whose SEP economic criteria require the organisation to be a progressive organisation committed to working with the Labour Movement to strengthen local workforce development (through either of the stated pathways). Its contact email is askme@ntuc.org.sg.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the loaded content, the supporting agency is **National Trades Union Congress (NTUC)**, and the contact email is **askme@ntuc.org.sg**.
+
+According to the COMPASS C6 SEP bonus eligible programmes list, NTUC requires an organisation to be a **progressive firm that is committed to work with the Labour Movement to strengthen local workforce development** through either:
+- NTUC&#x27;s Company Training Committees (CTCs), or
+- Participation in Government-supported programmes</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Which supporting agency for the COMPASS SEP bonus requires an organisation to be progressive and committed to working with the Labour Movement to strengthen local workforce development, and what is the contact email for that agency?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the loaded content, the supporting agency is **National Trades Union Congress (NTUC)**, and the contact email is **askme@ntuc.org.sg**.\n\nAccording to the COMPASS C6 SEP bonus eligible programmes list, NTUC requires an organisation to be a **progressive firm that is committed to work with the Labour Movement to strengthen local workforce development** through either:\n- NTUC's Company Training Committees (CTCs), or\n- Participation in Government-supported programmes",
+    "source": "bot_final",
+    "elapsed_ms": 5042.439666998689,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="medium"><td class="mono">q-0012</td><td>medium</td><td class="score-cell">3</td><td class="clip">If you hold a Dependant&#x27;s Pass linked to an Overseas Networks &amp; Expertise Pass and want to apply for employment, what prerequisite regarding your pass validity must you verify before submitting an application, and what action should you take if that prerequisite is not met?</td><td class="clip">Based on the information from the knowledge base, here is the prerequisite and required action:
+
+## Prerequisite to Verify
+
+Before submitting an employment application, you must **verify that your Dependant&#x27;s Pass has at least 3 months validity remaining**.
+
+## Action if Prerequisite is Not Met
+
+If your Dependant&#x27;s Pass has **less than 3 months validity**, you must **renew your pass** before proceeding with the employment application.
+
+## Context
+
+This requirement applies specifically when applying for a **Letter of Consent (LOC)** to work in Singapore as a spouse of an Overseas Networks &amp; Expertise Pass holder. The LOC is valid only up to the expiry date of your Dependant&#x27;s Pass, so MOM requires sufficient remaining validity to ensure the LOC will have meaningful duration.
+
+Note: If you are a non-spouse dependant seeking employment, you would need to obtain a separate work pass (EP, S Pass, or Work Permit) rather than an LOC, and the same 3-month validity requirement would apply to your Dependant&#x27;s Pass.</td><td class="clip">The chatbot correctly identifies the 3-month validity prerequisite and the renewal action, matching the reference answer. Additional context about LOC and non-spouse dependants is reasonable supplementary detail without introducing errors.</td><td><button class="toggle" onclick="toggleRow(11)">▸</button></td></tr><tr id="detail-11" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>You must check that your Dependant&#x27;s Pass has at least 3 months of validity remaining before submitting an application. If it has less than 3 months of validity, you need to renew your pass first. The application can then be submitted by yourself, by your prospective employer, or by an employment agent on your behalf.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the information from the knowledge base, here is the prerequisite and required action:
+
+## Prerequisite to Verify
+
+Before submitting an employment application, you must **verify that your Dependant&#x27;s Pass has at least 3 months validity remaining**.
+
+## Action if Prerequisite is Not Met
+
+If your Dependant&#x27;s Pass has **less than 3 months validity**, you must **renew your pass** before proceeding with the employment application.
+
+## Context
+
+This requirement applies specifically when applying for a **Letter of Consent (LOC)** to work in Singapore as a spouse of an Overseas Networks &amp; Expertise Pass holder. The LOC is valid only up to the expiry date of your Dependant&#x27;s Pass, so MOM requires sufficient remaining validity to ensure the LOC will have meaningful duration.
+
+Note: If you are a non-spouse dependant seeking employment, you would need to obtain a separate work pass (EP, S Pass, or Work Permit) rather than an LOC, and the same 3-month validity requirement would apply to your Dependant&#x27;s Pass.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "If you hold a Dependant's Pass linked to an Overseas Networks &amp; Expertise Pass and want to apply for employment, what prerequisite regarding your pass validity must you verify before submitting an application, and what action should you take if that prerequisite is not met?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the information from the knowledge base, here is the prerequisite and required action:\n\n## Prerequisite to Verify\n\nBefore submitting an employment application, you must **verify that your Dependant's Pass has at least 3 months validity remaining**.\n\n## Action if Prerequisite is Not Met\n\nIf your Dependant's Pass has **less than 3 months validity**, you must **renew your pass** before proceeding with the employment application.\n\n## Context\n\nThis requirement applies specifically when applying for a **Letter of Consent (LOC)** to work in Singapore as a spouse of an Overseas Networks &amp; Expertise Pass holder. The LOC is valid only up to the expiry date of your Dependant's Pass, so MOM requires sufficient remaining validity to ensure the LOC will have meaningful duration.\n\nNote: If you are a non-spouse dependant seeking employment, you would need to obtain a separate work pass (EP, S Pass, or Work Permit) rather than an LOC, and the same 3-month validity requirement would apply to your Dependant's Pass.",
+    "source": "bot_final",
+    "elapsed_ms": 6473.507959002745,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="medium"><td class="mono">q-0013</td><td>medium</td><td class="score-cell">2</td><td class="clip">Based on the COMPASS C1 salary benchmarks, how much more does a candidate aged 45 or older need to earn compared to a 37-year-old to achieve 20 points, and what percentile of local PMETs does this 20-point threshold correspond to?</td><td class="clip">Based on the COMPASS C1 salary benchmarks, I can now provide you with a comprehensive answer.
+
+## Salary Difference Between Age 45+ and Age 37 for 20 Points
+
+The salary difference varies by sector. Here are some examples from the current benchmarks (released Aug 2025):
+
+| **Sector** | **Age 37 (20 pts)** | **Age ≥45 (20 pts)** | **Difference** |
+|---|---|---|---|
+| Accommodation | $10,107 | $12,695 | **$2,588** |
+| Administrative &amp; Support | $14,642 | $17,643 | **$3,001** |
+| Banking &amp; Other Financial Services | $23,650 | $30,793 | **$7,143** |
+| Construction | $11,196 | $13,413 | **$2,217** |
+| Education | $11,520 | $14,267 | **$2,747** |
+| Info-communication Technology | $18,139 | $22,917 | **$4,778** |
+| Professional Services | $17,956 | $22,737 | **$4,781** |
+
+The differences range from approximately **$2,200 to $7,100** depending on the sector, with financial services showing the largest gap.
+
+## Percentile Correspondence
+
+The 20-point threshold corresponds to the **90th percentile of local PMET (Professional, Managerial, Executive, Technician) salaries** in each sector.
+
+This means that to earn 20 COMPASS C1 points, a candidate&#x27;s fixed monthly salary must meet or exceed the salary level earned by the top 10% of local PMETs in their sector—a significantly higher bar than the 10-point threshold, which corresponds to the 65th percentile.</td><td class="clip">The chatbot correctly identifies the 90th percentile threshold and provides sector-specific salary differences, but does not match the reference answer&#x27;s specific figures ($12,064 for age 37 and $14,996 for age 45+, difference of $2,932). The sector-specific breakdown may be accurate but diverges from the expected single-figure answer, adding complexity and potential confusion.</td><td><button class="toggle" onclick="toggleRow(12)">▸</button></td></tr><tr id="detail-12" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>A candidate aged 45 or older needs to earn $14,996 to achieve 20 points, while a 37-year-old needs $12,064 for the same 20 points. The difference is $2,932. The 20-point threshold corresponds to the 90th percentile of local PMETs.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the COMPASS C1 salary benchmarks, I can now provide you with a comprehensive answer.
+
+## Salary Difference Between Age 45+ and Age 37 for 20 Points
+
+The salary difference varies by sector. Here are some examples from the current benchmarks (released Aug 2025):
+
+| **Sector** | **Age 37 (20 pts)** | **Age ≥45 (20 pts)** | **Difference** |
+|---|---|---|---|
+| Accommodation | $10,107 | $12,695 | **$2,588** |
+| Administrative &amp; Support | $14,642 | $17,643 | **$3,001** |
+| Banking &amp; Other Financial Services | $23,650 | $30,793 | **$7,143** |
+| Construction | $11,196 | $13,413 | **$2,217** |
+| Education | $11,520 | $14,267 | **$2,747** |
+| Info-communication Technology | $18,139 | $22,917 | **$4,778** |
+| Professional Services | $17,956 | $22,737 | **$4,781** |
+
+The differences range from approximately **$2,200 to $7,100** depending on the sector, with financial services showing the largest gap.
+
+## Percentile Correspondence
+
+The 20-point threshold corresponds to the **90th percentile of local PMET (Professional, Managerial, Executive, Technician) salaries** in each sector.
+
+This means that to earn 20 COMPASS C1 points, a candidate&#x27;s fixed monthly salary must meet or exceed the salary level earned by the top 10% of local PMETs in their sector—a significantly higher bar than the 10-point threshold, which corresponds to the 65th percentile.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Based on the COMPASS C1 salary benchmarks, how much more does a candidate aged 45 or older need to earn compared to a 37-year-old to achieve 20 points, and what percentile of local PMETs does this 20-point threshold correspond to?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the COMPASS C1 salary benchmarks, I can now provide you with a comprehensive answer.\n\n## Salary Difference Between Age 45+ and Age 37 for 20 Points\n\nThe salary difference varies by sector. Here are some examples from the current benchmarks (released Aug 2025):\n\n| **Sector** | **Age 37 (20 pts)** | **Age \u226545 (20 pts)** | **Difference** |\n|---|---|---|---|\n| Accommodation | $10,107 | $12,695 | **$2,588** |\n| Administrative &amp; Support | $14,642 | $17,643 | **$3,001** |\n| Banking &amp; Other Financial Services | $23,650 | $30,793 | **$7,143** |\n| Construction | $11,196 | $13,413 | **$2,217** |\n| Education | $11,520 | $14,267 | **$2,747** |\n| Info-communication Technology | $18,139 | $22,917 | **$4,778** |\n| Professional Services | $17,956 | $22,737 | **$4,781** |\n\nThe differences range from approximately **$2,200 to $7,100** depending on the sector, with financial services showing the largest gap.\n\n## Percentile Correspondence\n\nThe 20-point threshold corresponds to the **90th percentile of local PMET (Professional, Managerial, Executive, Technician) salaries** in each sector.\n\nThis means that to earn 20 COMPASS C1 points, a candidate's fixed monthly salary must meet or exceed the salary level earned by the top 10% of local PMETs in their sector\u2014a significantly higher bar than the 10-point threshold, which corresponds to the 65th percentile.",
+    "source": "bot_final",
+    "elapsed_ms": 7639.612749990192,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-1" data-kind="medium"><td class="mono">q-0014</td><td>medium</td><td class="score-cell">1</td><td class="clip">Based on the instructions provided, what two actions must a person take after receiving their In-Principle Approval (IPA) and before arriving in Singapore?</td><td class="clip">Based on the content I&#x27;ve loaded, I can now answer your question about the two actions required after receiving an In-Principle Approval (IPA) and before arriving in Singapore.
+
+According to the **Pass map** section in the Employment Pass overview, under the &quot;Before candidate&#x27;s arrival&quot; phase, after receiving an in-principle approval letter, the two actions that must be taken are:
+
+1. **Ensure that the candidate complies with the latest travel requirements** — The candidate must meet all current travel requirements, which are referenced to the Immigration and Checkpoints Authority (ICA) website.
+
+2. **Get an in-principle approval letter** — While this is technically the approval itself, the document emphasizes that once the pass is approved, the employer receives the in-principle approval letter.
+
+However, looking more carefully at the regulatory conditions in the Employment of Foreign Manpower (Work Passes) Regulations 2012, there are specific employer obligations that must be fulfilled before the candidate&#x27;s arrival:
+
+1. **Ensure the candidate receives the in-principle approval letter** — The employer must take all necessary steps to ensure that the foreign employee&#x27;s copy of the in-principle approval letter, in its entirety as provided by the Ministry of Manpower, is received by the foreign employee **at least 3 days before the foreign employee&#x27;s departure for Singapore**.
+
+2. **Ensure compliance with travel requirements** — The employer must ensure that the candidate complies with the latest travel requirements set by the Immigration and Checkpoints Authority.
+
+These are the two critical actions that must be completed after IPA approval and before the candidate arrives in Singapore.</td><td class="clip">The chatbot correctly identifies compliance with ICA travel requirements but misses the explicit action of printing the IPA letter, instead discussing receiving/getting the IPA letter. The answer is also convoluted with multiple attempts and hedging.</td><td><button class="toggle" onclick="toggleRow(13)">▸</button></td></tr><tr id="detail-13" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The person must (1) print their IPA letter and (2) ensure that they comply with the latest travel requirements as specified by ICA (Immigration &amp; Checkpoints Authority) at their website.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the content I&#x27;ve loaded, I can now answer your question about the two actions required after receiving an In-Principle Approval (IPA) and before arriving in Singapore.
+
+According to the **Pass map** section in the Employment Pass overview, under the &quot;Before candidate&#x27;s arrival&quot; phase, after receiving an in-principle approval letter, the two actions that must be taken are:
+
+1. **Ensure that the candidate complies with the latest travel requirements** — The candidate must meet all current travel requirements, which are referenced to the Immigration and Checkpoints Authority (ICA) website.
+
+2. **Get an in-principle approval letter** — While this is technically the approval itself, the document emphasizes that once the pass is approved, the employer receives the in-principle approval letter.
+
+However, looking more carefully at the regulatory conditions in the Employment of Foreign Manpower (Work Passes) Regulations 2012, there are specific employer obligations that must be fulfilled before the candidate&#x27;s arrival:
+
+1. **Ensure the candidate receives the in-principle approval letter** — The employer must take all necessary steps to ensure that the foreign employee&#x27;s copy of the in-principle approval letter, in its entirety as provided by the Ministry of Manpower, is received by the foreign employee **at least 3 days before the foreign employee&#x27;s departure for Singapore**.
+
+2. **Ensure compliance with travel requirements** — The employer must ensure that the candidate complies with the latest travel requirements set by the Immigration and Checkpoints Authority.
+
+These are the two critical actions that must be completed after IPA approval and before the candidate arrives in Singapore.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Based on the instructions provided, what two actions must a person take after receiving their In-Principle Approval (IPA) and before arriving in Singapore?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the content I've loaded, I can now answer your question about the two actions required after receiving an In-Principle Approval (IPA) and before arriving in Singapore.\n\nAccording to the **Pass map** section in the Employment Pass overview, under the \"Before candidate's arrival\" phase, after receiving an in-principle approval letter, the two actions that must be taken are:\n\n1. **Ensure that the candidate complies with the latest travel requirements** \u2014 The candidate must meet all current travel requirements, which are referenced to the Immigration and Checkpoints Authority (ICA) website.\n\n2. **Get an in-principle approval letter** \u2014 While this is technically the approval itself, the document emphasizes that once the pass is approved, the employer receives the in-principle approval letter.\n\nHowever, looking more carefully at the regulatory conditions in the Employment of Foreign Manpower (Work Passes) Regulations 2012, there are specific employer obligations that must be fulfilled before the candidate's arrival:\n\n1. **Ensure the candidate receives the in-principle approval letter** \u2014 The employer must take all necessary steps to ensure that the foreign employee's copy of the in-principle approval letter, in its entirety as provided by the Ministry of Manpower, is received by the foreign employee **at least 3 days before the foreign employee's departure for Singapore**.\n\n2. **Ensure compliance with travel requirements** \u2014 The employer must ensure that the candidate complies with the latest travel requirements set by the Immigration and Checkpoints Authority.\n\nThese are the two critical actions that must be completed after IPA approval and before the candidate arrives in Singapore.",
+    "source": "bot_final",
+    "elapsed_ms": 8093.7167090014555,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="medium"><td class="mono">q-0015</td><td>medium</td><td class="score-cell">2</td><td class="clip">Under what legislation would a person be guilty of an offence if they falsely declared their salary, academic qualifications, or submitted forged documents in a work pass application, and what specific types of false information or fraudulent actions are covered?</td><td class="clip">Based on the knowledge base available, I can see that the catalog covers Singapore&#x27;s Employment Pass and ONE Pass schemes, but it does not appear to contain specific information about the offence provisions under the Employment of Foreign Manpower Act. The loaded content includes the Employment of Foreign Manpower (Work Passes) Regulations 2012, which sets out the conditions and requirements for work passes, but the specific criminal offence provisions are not included in the available materials.
+
+## Answer
+
+I apologize, but I cannot provide a complete answer to your question from the available knowledge base. While I have access to the **Employment of Foreign Manpower (Work Passes) Regulations 2012 (S 569/2012)**, which is the key regulatory framework for Singapore work passes, the specific offence provisions and penalties are not contained in the materials I have loaded.
+
+### What I Can Confirm
+
+The knowledge base confirms that the **Employment of Foreign Manpower Act (Chapter 91A)** is the governing legislation under which work pass offences would be prosecuted. The Work Passes Regulations 2012 are made under this Act and set out the conditions that applicants and employers must comply with.
+
+### What Would Be Covered
+
+Based on the regulatory framework visible in the loaded materials, offences would likely relate to:
+
+- **False declarations** in work pass applications regarding salary, qualifications, and employment details
+- **Submission of forged or fraudulent documents** (passports, educational certificates, employment verification documents)
+- **Misrepresentation** of candidate credentials or company information
+- **Breach of work pass conditions** by employers and employees
+
+However, to provide you with the **specific offence provisions, penalties, and the exact types of false information or fraudulent actions covered**, I would need access to the substantive offence sections of the Employment of Foreign Manpower Act itself, which are not currently in my active knowledge base.
+
+**I recommend consulting the Employment of Foreign Manpower Act (Chapter 91A) directly or contacting the Ministry of Manpower (MOM) for authoritative information on criminal offences and penalties related to false declarations and forged documents in work pass applications.**</td><td class="clip">The chatbot correctly identifies the Employment of Foreign Manpower Act (Cap. 91A) as the governing legislation and mentions the three specific types of misconduct (false declaration of salary, false declaration of academic qualifications, and submission of forged documents). However, it hedges excessively, claims uncertainty about details it actually covers, and adds extraneous speculative content beyond what was asked.</td><td><button class="toggle" onclick="toggleRow(14)">▸</button></td></tr><tr id="detail-14" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Under the Employment of Foreign Manpower Act (Cap.91A), a person would be guilty of an offence if they falsely declare salary, falsely declare academic qualifications, or submit forged documents in the work pass application. All three types of misconduct — false declaration of salary, false declaration of academic qualifications, and submission of forged documents — are covered under this Act.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the knowledge base available, I can see that the catalog covers Singapore&#x27;s Employment Pass and ONE Pass schemes, but it does not appear to contain specific information about the offence provisions under the Employment of Foreign Manpower Act. The loaded content includes the Employment of Foreign Manpower (Work Passes) Regulations 2012, which sets out the conditions and requirements for work passes, but the specific criminal offence provisions are not included in the available materials.
+
+## Answer
+
+I apologize, but I cannot provide a complete answer to your question from the available knowledge base. While I have access to the **Employment of Foreign Manpower (Work Passes) Regulations 2012 (S 569/2012)**, which is the key regulatory framework for Singapore work passes, the specific offence provisions and penalties are not contained in the materials I have loaded.
+
+### What I Can Confirm
+
+The knowledge base confirms that the **Employment of Foreign Manpower Act (Chapter 91A)** is the governing legislation under which work pass offences would be prosecuted. The Work Passes Regulations 2012 are made under this Act and set out the conditions that applicants and employers must comply with.
+
+### What Would Be Covered
+
+Based on the regulatory framework visible in the loaded materials, offences would likely relate to:
+
+- **False declarations** in work pass applications regarding salary, qualifications, and employment details
+- **Submission of forged or fraudulent documents** (passports, educational certificates, employment verification documents)
+- **Misrepresentation** of candidate credentials or company information
+- **Breach of work pass conditions** by employers and employees
+
+However, to provide you with the **specific offence provisions, penalties, and the exact types of false information or fraudulent actions covered**, I would need access to the substantive offence sections of the Employment of Foreign Manpower Act itself, which are not currently in my active knowledge base.
+
+**I recommend consulting the Employment of Foreign Manpower Act (Chapter 91A) directly or contacting the Ministry of Manpower (MOM) for authoritative information on criminal offences and penalties related to false declarations and forged documents in work pass applications.**</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Under what legislation would a person be guilty of an offence if they falsely declared their salary, academic qualifications, or submitted forged documents in a work pass application, and what specific types of false information or fraudulent actions are covered?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the knowledge base available, I can see that the catalog covers Singapore's Employment Pass and ONE Pass schemes, but it does not appear to contain specific information about the offence provisions under the Employment of Foreign Manpower Act. The loaded content includes the Employment of Foreign Manpower (Work Passes) Regulations 2012, which sets out the conditions and requirements for work passes, but the specific criminal offence provisions are not included in the available materials.\n\n## Answer\n\nI apologize, but I cannot provide a complete answer to your question from the available knowledge base. While I have access to the **Employment of Foreign Manpower (Work Passes) Regulations 2012 (S 569/2012)**, which is the key regulatory framework for Singapore work passes, the specific offence provisions and penalties are not contained in the materials I have loaded.\n\n### What I Can Confirm\n\nThe knowledge base confirms that the **Employment of Foreign Manpower Act (Chapter 91A)** is the governing legislation under which work pass offences would be prosecuted. The Work Passes Regulations 2012 are made under this Act and set out the conditions that applicants and employers must comply with.\n\n### What Would Be Covered\n\nBased on the regulatory framework visible in the loaded materials, offences would likely relate to:\n\n- **False declarations** in work pass applications regarding salary, qualifications, and employment details\n- **Submission of forged or fraudulent documents** (passports, educational certificates, employment verification documents)\n- **Misrepresentation** of candidate credentials or company information\n- **Breach of work pass conditions** by employers and employees\n\nHowever, to provide you with the **specific offence provisions, penalties, and the exact types of false information or fraudulent actions covered**, I would need access to the substantive offence sections of the Employment of Foreign Manpower Act itself, which are not currently in my active knowledge base.\n\n**I recommend consulting the Employment of Foreign Manpower Act (Chapter 91A) directly or contacting the Ministry of Manpower (MOM) for authoritative information on criminal offences and penalties related to false declarations and forged documents in work pass applications.**",
+    "source": "bot_final",
+    "elapsed_ms": 13016.18312500068,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="medium"><td class="mono">q-0016</td><td>medium</td><td class="score-cell">—</td><td class="clip">Based on the consent statement, what two broad categories of passes does the disclosed information relate to, and who is authorized to both display and disclose this information?</td><td class="clip">Perfect! I found the consent statement. Based on the declaration forms in both the Employment Pass (Sponsorship) Application form and the Overseas Networks &amp; Expertise (ONE) Pass Declaration Form, I can answer your question.
+
+## Two Broad Categories of Passes
+
+The disclosed information relates to the following two broad categories of passes:
+
+1. **Employment Pass (EP)** and related work passes
+2. **Passes for dependants** (such as Dependant&#x27;s Pass and Long-Term Visit Pass)
+
+## Authorization to Display and Disclose
+
+According to the consent statements in both application forms, the following entities are authorized to both display and disclose this information:
+
+**The Government of Singapore and its statutory authorities** — specifically:
+- The Ministry of Manpower
+- Any relevant person or organisation for the administration of matters relating to work pass and passes for dependants
+
+### Specific Language from the Forms
+
+From the **Employment Pass (Sponsorship) Application form** (Part 4 – Declaration by Candidate):
+
+&gt; &quot;I consent for the Government of Singapore and its statutory authorities to display my information on the Ministry of Manpower&#x27;s work pass systems, and to disclose such information to any relevant person or organisation for the administration of matters relating to work pass and passes for dependants.&quot;
+
+From the **ONE Pass Declaration Form**:
+
+&gt; &quot;I consent, for the purposes of assessing this Application for an Overseas Networks &amp; Expertise Pass, and the administration of matters relating to work pass and passes for dependants: For the Government of Singapore and statutory authorities to obtain from and verify information... and to display my information on the Ministry of Manpower&#x27;s work pass systems. To the release of all information obtained... to the Government of Singapore, statutory authorities, their agents, and any relevant person or organisation.&quot;</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWri4bTzrMqGgjGJG1g&quot;}</td><td><button class="toggle" onclick="toggleRow(15)">▸</button></td></tr><tr id="detail-15" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The consent covers two broad categories: work passes and passes for dependants. The Government of Singapore and its statutory authorities are authorized to display the individual&#x27;s information on the Ministry of Manpower&#x27;s work pass systems and to disclose such information to any relevant person or organisation for the administration of matters relating to these passes.</pre></div><div class="detail-block"><b>Actual:</b><pre>Perfect! I found the consent statement. Based on the declaration forms in both the Employment Pass (Sponsorship) Application form and the Overseas Networks &amp; Expertise (ONE) Pass Declaration Form, I can answer your question.
+
+## Two Broad Categories of Passes
+
+The disclosed information relates to the following two broad categories of passes:
+
+1. **Employment Pass (EP)** and related work passes
+2. **Passes for dependants** (such as Dependant&#x27;s Pass and Long-Term Visit Pass)
+
+## Authorization to Display and Disclose
+
+According to the consent statements in both application forms, the following entities are authorized to both display and disclose this information:
+
+**The Government of Singapore and its statutory authorities** — specifically:
+- The Ministry of Manpower
+- Any relevant person or organisation for the administration of matters relating to work pass and passes for dependants
+
+### Specific Language from the Forms
+
+From the **Employment Pass (Sponsorship) Application form** (Part 4 – Declaration by Candidate):
+
+&gt; &quot;I consent for the Government of Singapore and its statutory authorities to display my information on the Ministry of Manpower&#x27;s work pass systems, and to disclose such information to any relevant person or organisation for the administration of matters relating to work pass and passes for dependants.&quot;
+
+From the **ONE Pass Declaration Form**:
+
+&gt; &quot;I consent, for the purposes of assessing this Application for an Overseas Networks &amp; Expertise Pass, and the administration of matters relating to work pass and passes for dependants: For the Government of Singapore and statutory authorities to obtain from and verify information... and to display my information on the Ministry of Manpower&#x27;s work pass systems. To the release of all information obtained... to the Government of Singapore, statutory authorities, their agents, and any relevant person or organisation.&quot;</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Based on the consent statement, what two broad categories of passes does the disclosed information relate to, and who is authorized to both display and disclose this information?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "I don't have any loaded packets yet, so I cannot see the consent statement you're referring to. The catalog shows that the knowledge base covers Singapore's Employment Pass (EP) and Overseas Networks &amp; Expertise (ONE) Pass schemes, but I need to load the actual content to find and read the specific consent statement you're asking about.\n\nCould you provide more context about where this consent statement appears? For example:\n- Is it part of an application form?\n- Is it in a declaration or undertaking document?\n- Is it related to a specific pass type (EP or ONE Pass)?\n- Do you know which document or section it's in?\n\nWith that information, I can load the relevant packet and answer your question about the two broad categories of passes and the authorization details.",
+    "source": "bot",
+    "elapsed_ms": 3135.999042002368,
+    "http_status": 200
+  },
+  {
+    "role": "user",
+    "text": "It's part of a declaration or consent section in a work pass application form \u2014 I believe it relates to the consent given regarding the handling of personal information for work pass matters in Singapore. Please check the relevant documents you have access to.",
+    "source": "clarifier",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Perfect! I found the consent statement. Based on the declaration forms in both the Employment Pass (Sponsorship) Application form and the Overseas Networks &amp; Expertise (ONE) Pass Declaration Form, I can answer your question.\n\n## Two Broad Categories of Passes\n\nThe disclosed information relates to the following two broad categories of passes:\n\n1. **Employment Pass (EP)** and related work passes\n2. **Passes for dependants** (such as Dependant's Pass and Long-Term Visit Pass)\n\n## Authorization to Display and Disclose\n\nAccording to the consent statements in both application forms, the following entities are authorized to both display and disclose this information:\n\n**The Government of Singapore and its statutory authorities** \u2014 specifically:\n- The Ministry of Manpower\n- Any relevant person or organisation for the administration of matters relating to work pass and passes for dependants\n\n### Specific Language from the Forms\n\nFrom the **Employment Pass (Sponsorship) Application form** (Part 4 \u2013 Declaration by Candidate):\n\n&gt; \"I consent for the Government of Singapore and its statutory authorities to display my information on the Ministry of Manpower's work pass systems, and to disclose such information to any relevant person or organisation for the administration of matters relating to work pass and passes for dependants.\"\n\nFrom the **ONE Pass Declaration Form**:\n\n&gt; \"I consent, for the purposes of assessing this Application for an Overseas Networks &amp; Expertise Pass, and the administration of matters relating to work pass and passes for dependants: For the Government of Singapore and statutory authorities to obtain from and verify information... and to display my information on the Ministry of Manpower's work pass systems. To the release of all information obtained... to the Government of Singapore, statutory authorities, their agents, and any relevant person or organisation.\"",
+    "source": "bot_final",
+    "elapsed_ms": 9217.679709006916,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="complex"><td class="mono">q-0017</td><td>complex</td><td class="score-cell">—</td><td class="clip">An Overseas Networks &amp; Expertise Pass holder has both a legally married spouse and a common-law spouse (whose relationship is recognised under the laws of their country). What type of pass should each family member apply for, can both work in Singapore, and when should the ONE Pass holder submit these applications relative to their own pass approval?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWrsEVoEwDhreUeZKp1&quot;}</td><td><button class="toggle" onclick="toggleRow(16)">▸</button></td></tr><tr id="detail-16" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The legally married spouse should apply for a Dependant&#x27;s Pass, while the common-law spouse (whose common-law relationship is recognised under the laws of their country or region) should apply for a Long-Term Visit Pass (LTVP). Both can work in Singapore: the spouse with a Dependant&#x27;s Pass can apply for a Letter of Consent (LOC) to work, and the common-law spouse on an LTVP can also apply for a Letter of Consent (LOC) to work. The ONE Pass holder is recommended to apply for these family passes once their own pass gets approved, as both Dependant&#x27;s Pass and Long-Term Visit Pass applications take 4 weeks to process.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "An Overseas Networks &amp; Expertise Pass holder has both a legally married spouse and a common-law spouse (whose relationship is recognised under the laws of their country). What type of pass should each family member apply for, can both work in Singapore, and when should the ONE Pass holder submit these applications relative to their own pass approval?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="complex"><td class="mono">q-0018</td><td>complex</td><td class="score-cell">—</td><td class="clip">A high-growth startup incorporated in Singapore wants to qualify for the COMPASS Strategic Economic Priorities (SEP) bonus. What specific financial and funding criteria must it meet according to the eligible programmes list, and what is the general eligibility requirement that all firms—including this startup—must satisfy to be considered for the SEP bonus?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWs4rVfTFxUtcGL8REB&quot;}</td><td><button class="toggle" onclick="toggleRow(17)">▸</button></td></tr><tr id="detail-17" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>To qualify for the SEP bonus, all firms must be supported by economic agencies or NTUC and must participate in or meet the criteria for at least one of the eligible programmes listed by MOM. For the high-growth startup programme specifically (Programme S/N 8, under Enterprise Singapore/EnterpriseSG), the startup must be incorporated in Singapore, must have received a minimum investment amount of USD $10 million over the past 36 months, and must have received funding from EDBI, SEEDS Capital, or other recognised investment firms. More details on the eligible SEP programmes can be downloaded from MOM&#x27;s website, and queries should be directed to the supporting agencies.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "A high-growth startup incorporated in Singapore wants to qualify for the COMPASS Strategic Economic Priorities (SEP) bonus. What specific financial and funding criteria must it meet according to the eligible programmes list, and what is the general eligibility requirement that all firms\u2014including this startup\u2014must satisfy to be considered for the SEP bonus?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="complex"><td class="mono">q-0019</td><td>complex</td><td class="score-cell">—</td><td class="clip">If an Overseas Networks &amp; Expertise Pass (ONE Pass) holder needs to notify MOM about both a change of residential address and a change in employment details (such as a new employer and updated total annual income for the past calendar year), what steps and information are involved, and how does the process differ between these two types of updates?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWsF8Nduy7snP1i94vA&quot;}</td><td><button class="toggle" onclick="toggleRow(18)">▸</button></td></tr><tr id="detail-18" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>For a change of residential address, the pass holder must first ensure the new address meets the relevant housing requirements (as outlined on MOM&#x27;s housing requirements page). They then log in to the EP eService to update their address; the update is immediate. After updating, they should print the acknowledgement page and keep it with their pass card. For changes to employment details—such as employer(s), occupation(s), total annual income for the past calendar year, and other professional activities if applicable—the pass holder must submit the request online (via the designated link at go.gov.sg/update-passholder-particulars), together with the required supporting documents. Thus, address updates are done through the EP eService with an immediate effect and require checking housing requirements, while employment and income-related updates are submitted online with supporting documents through a separate submission process.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "If an Overseas Networks &amp; Expertise Pass (ONE Pass) holder needs to notify MOM about both a change of residential address and a change in employment details (such as a new employer and updated total annual income for the past calendar year), what steps and information are involved, and how does the process differ between these two types of updates?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="complex"><td class="mono">q-0020</td><td>complex</td><td class="score-cell">—</td><td class="clip">When applying for a Long-Term Visit Pass related to the Overseas Networks &amp; Expertise Pass, if an applicant has obtained support from a vetting agency, what documentary requirement applies, and what are at least three examples of recognized vetting agencies from different professional domains? Additionally, what personal history disclosures (from Part 5) must the applicant make regarding their past interactions with immigration or legal systems?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWsRELg2bmqD4WNaEF7&quot;}</td><td><button class="toggle" onclick="toggleRow(19)">▸</button></td></tr><tr id="detail-19" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>If the applicant has obtained support from a vetting agency, they must produce documentary proof of support from the agencies concerned together with the application. Recognized vetting agencies span multiple professional domains and include, among others: Allied Health Professions Council, Enterprise Singapore (Representative Office), Legal Services Regulatory Authority, Singapore Dental Council, Singapore Medical Council, Singapore Nursing Board, Singapore Pharmacy Council, Sport Singapore, TCM Practitioners Board, and Unit for Prehospital Emergency Care. In Part 5, the applicant must disclose whether they have ever: (a) been refused entry into or deported from any country, (b) been convicted in a court of law in any country, (c) been prohibited from entering Singapore, (d) entered Singapore using a passport issued by a different country, (e) entered Singapore using a passport showing another name, or (f) been a Singapore Citizen or Singapore Permanent Resident. Furthermore, the applicant consents to the release of all information thereby obtained to the Government of Singapore, statutory authorities, and their agents thereof.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "When applying for a Long-Term Visit Pass related to the Overseas Networks &amp; Expertise Pass, if an applicant has obtained support from a vetting agency, what documentary requirement applies, and what are at least three examples of recognized vetting agencies from different professional domains? Additionally, what personal history disclosures (from Part 5) must the applicant make regarding their past interactions with immigration or legal systems?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="complex"><td class="mono">q-0021</td><td>complex</td><td class="score-cell">—</td><td class="clip">A candidate is applying for an Employment Pass in Singapore for a role as a &#x27;Carbon project manager&#x27; at a firm in the Carbon Services space. They do not hold a Bachelor&#x27;s degree in any of the specified faculties. Under what alternative qualification pathway can they meet the additional requirements for this shortage occupation, and how does the general rule about sector-specificity for SOL bonus points potentially affect their eligibility? Additionally, contrast the type of credential required for a Marine Superintendent role on the SOL with the credential options available for the Carbon project manager role.</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWsbL4HL67yz4Q7LhcN&quot;}</td><td><button class="toggle" onclick="toggleRow(20)">▸</button></td></tr><tr id="detail-20" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>For the Carbon project/program manager shortage occupation (S/N 4 under the Green economy category), a candidate without a Bachelor&#x27;s degree in the specified faculties (Earth Sciences, Environmental Engineering, Environmental Management, Environmental Policy, Sustainability Management, or Sustainability Policy) can alternatively qualify under criterion (2b): they must have a minimum total of three years&#x27; work experience in at least one of a specified list of job titles, which includes Carbon auditor, Carbon programme manager, Carbon project manager, Carbon project originator, Carbon rating analyst, Carbon standards &amp; methodology developer, Carbon verification &amp; audit specialist, Chief sustainability officer, Conservation officer, Conservation scientist, Energy and sustainability manager, Environmental auditor, Environmental compliance officer, Environmental impact analyst, Environmental management consultant, Environmental officer (environmental protection), Environmental programme coordinator, Natural resource analyst, Sustainability officer, and Sustainability specialist. In addition, they must also satisfy criterion (1): being from a firm involved in the Carbon Services space, which MOM verifies directly with EDB and EnterpriseSG (no additional documentation required; new entrants can reach out to EDB/EnterpriseSG). Regarding sector-specificity, candidates working in occupations on the SOL may not need to be working in the respective sectors listed to qualify for the bonus points, meaning the Carbon project manager candidate could potentially qualify for SOL bonus points even if not strictly in the listed sector. In contrast, the Marine Superintendent role requires a specific maritime credential — at least a Level 1 Certificate of Competency from Singapore&#x27;s Maritime Port Authority (MPA) or from recognized foreign maritime administrations — which should be declared as a post-secondary diploma in the EP application form. This is a narrowly defined professional certification, unlike the Carbon project manager role which offers a choice between an academic degree in specified faculties or a minimum of three years&#x27; relevant work experience across a broad range of sustainability and carbon-related job titles.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "A candidate is applying for an Employment Pass in Singapore for a role as a 'Carbon project manager' at a firm in the Carbon Services space. They do not hold a Bachelor's degree in any of the specified faculties. Under what alternative qualification pathway can they meet the additional requirements for this shortage occupation, and how does the general rule about sector-specificity for SOL bonus points potentially affect their eligibility? Additionally, contrast the type of credential required for a Marine Superintendent role on the SOL with the credential options available for the Carbon project manager role.",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="complex"><td class="mono">q-0022</td><td>complex</td><td class="score-cell">—</td><td class="clip">Under the Employment of Foreign Manpower (Work Passes) Regulations 2012, if an employer discovers that a foreign employee has gone missing and the employee&#x27;s work permit subsequently expires without the employee being found or employed by another employer, what are the employer&#x27;s specific obligations regarding (a) notification and its timeline, and (b) repatriation and the destination standard, and how are disputes about the repatriation destination resolved?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWsmLKQ373nHqqtPwYd&quot;}</td><td><button class="toggle" onclick="toggleRow(21)">▸</button></td></tr><tr id="detail-21" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>(a) Under the Regulations (which came into operation on 9th November 2012), the employer must inform the Controller within 7 days after the employer becomes aware of the foreign employee going missing. (b) Subject to paragraphs 13 and 17 of the Regulations, the employer must repatriate the foreign employee to the international port of entry within the foreign employee&#x27;s home country that affords reasonable access to the foreign employee&#x27;s hometown, when the work permit or visit pass expires, is cancelled, or is revoked, provided the foreign employee is not earlier employed by another employer. In the event of any dispute about the international port of entry to which the foreign employee shall be repatriated, the dispute shall be referred to the Controller, whose decision shall be final.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Under the Employment of Foreign Manpower (Work Passes) Regulations 2012, if an employer discovers that a foreign employee has gone missing and the employee's work permit subsequently expires without the employee being found or employed by another employer, what are the employer's specific obligations regarding (a) notification and its timeline, and (b) repatriation and the destination standard, and how are disputes about the repatriation destination resolved?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="complex"><td class="mono">q-0023</td><td>complex</td><td class="score-cell">—</td><td class="clip">If a company submits its Overseas Networks &amp; Expertise Pass application using financial documents signed by its own management staff instead of third-party auditors, and the application is subsequently rejected, what is the deadline for submitting an appeal, and if the pass holder later decides not to work in Singapore, what are the rules for cancelling the pass?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWswDPiKk9Za5CUdD2D&quot;}</td><td><button class="toggle" onclick="toggleRow(22)">▸</button></td></tr><tr id="detail-22" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>First, regarding the financial documents: MOM will only consider documents from third party auditors; documents signed by the company&#x27;s management staff will not be accepted. If the company&#x27;s latest audited Profit &amp; Loss statements are provided in lieu of other information, they must still be from third party auditors. If the application is rejected (potentially due to unacceptable documentation), the appeal must be submitted within 3 months of the rejection; otherwise, a new application must be submitted. Separately, if the pass holder no longer plans to work in Singapore, the pass must be cancelled within 1 week before the departure date (for example, if the departure date is 10 February, the request should be submitted from 3 February onwards). The cancellation can be done by the pass holder or their employment agent, and the cancellation takes effect immediately.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "If a company submits its Overseas Networks &amp; Expertise Pass application using financial documents signed by its own management staff instead of third-party auditors, and the application is subsequently rejected, what is the deadline for submitting an appeal, and if the pass holder later decides not to work in Singapore, what are the rules for cancelling the pass?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="complex"><td class="mono">q-0024</td><td>complex</td><td class="score-cell">—</td><td class="clip">When renewing an Employment Pass in Singapore, what personal and professional details must the candidate provide on the renewal form, what digital tool should the pass holder use to view their work pass after renewal, and what income verification consent does the candidate give as part of the renewal process—including the fallback verification rule if the current year&#x27;s records are unavailable?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWt6Dd8TKrJy6ZQeYoq&quot;}</td><td><button class="toggle" onclick="toggleRow(23)">▸</button></td></tr><tr id="detail-23" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>On the Employment Pass (Sponsorship) Renewal Form (Part 1), the candidate must provide: a notification email address, the pass expiry date and duration of pass applied for (in years and months), their Foreign Identification Number (FIN), full name as on travel document (excluding salutations such as Mr, Miss, Professor, Doctor), nationality/citizenship and state/province of nationality/citizenship, travel document type, travel document number with issue and expiry dates (in DD/MM/YYYY format), marital status, residential address (block/house number, floor number, unit number, building name, street name, postal code), total period of working experience (years and months), and total relevant working experience relevant to the current occupation (years and months). After renewal, the pass holder should use the SGWorkPass app to view their digital work pass and employment information; they will need a Singpass account to do so. As part of the renewal, the candidate consents for the Comptroller of Income Tax to verify their income stated in their current and renewal applications based on their assessment record for the current Year of Assessment. If the current Year of Assessment record is not available or finalised at the point of verification, the Comptroller of Income Tax will instead verify income against the assessment records for the two previous Years of Assessment. The candidate also consents for the Comptroller of Income Tax to communicate the verification results to the Controller of Work Passes.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "When renewing an Employment Pass in Singapore, what personal and professional details must the candidate provide on the renewal form, what digital tool should the pass holder use to view their work pass after renewal, and what income verification consent does the candidate give as part of the renewal process\u2014including the fallback verification rule if the current year's records are unavailable?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-1"><td class="mono">q-0025</td><td>hard-1</td><td class="score-cell">—</td><td class="clip">For an Overseas Networks &amp; Expertise Pass (ONE Pass) holder in Singapore: (a) What pass types are available for their legally married spouse versus their common-law spouse, and what work-related benefit can each of these family members obtain? (b) What is the risk if the family pass applications are submitted at the same time as the ONE Pass application? (c) What is the deadline for the ONE Pass holder to notify MOM of a change in residential address or mobile number, and what is the consequence of failing to do so?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWtGEdT2zcPvxHRgnwu&quot;}</td><td><button class="toggle" onclick="toggleRow(24)">▸</button></td></tr><tr id="detail-24" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>(a) A legally married spouse of a ONE Pass holder can obtain a Dependant&#x27;s Pass, while a common-law spouse (defined as a common-law relationship between 2 people that is recognised under the laws of their country or region) can obtain a Long-Term Visit Pass (LTVP). Both the spouse on a Dependant&#x27;s Pass and the common-law spouse on an LTVP can apply for a Letter of Consent (LOC) to work in Singapore. (b) Although family pass applications can be submitted at the same time as the ONE Pass application, the applicant may lose the application fees for each family pass if the ONE Pass application gets rejected. (c) The ONE Pass holder must update MOM within 2 weeks of changing their residential address or mobile number. Otherwise, they may be penalised.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "For an Overseas Networks &amp; Expertise Pass (ONE Pass) holder in Singapore: (a) What pass types are available for their legally married spouse versus their common-law spouse, and what work-related benefit can each of these family members obtain? (b) What is the risk if the family pass applications are submitted at the same time as the ONE Pass application? (c) What is the deadline for the ONE Pass holder to notify MOM of a change in residential address or mobile number, and what is the consequence of failing to do so?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-1"><td class="mono">q-0026</td><td>hard-1</td><td class="score-cell">—</td><td class="clip">When an employer is cancelling a work pass for a foreign employee, what obligations does the employer have regarding repatriation costs, and how does this contrast with the process for an Overseas Networks &amp; Expertise Pass (ONE Pass) holder who no longer requires their pass? Additionally, if a ONE Pass holder&#x27;s company cannot provide specific financial information during the application process, what alternative documentation does MOM accept and what restrictions apply to that alternative?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWtSCAbxfob24ozdRCV&quot;}</td><td><button class="toggle" onclick="toggleRow(25)">▸</button></td></tr><tr id="detail-25" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>For an Employment Pass holder whose pass is being cancelled, the employer must: (1) give the pass holder reasonable notice on their upcoming repatriation; (2) seek tax clearance from the Inland Revenue Authority of Singapore (IRAS) at least 1 month before the last day of employment; (3) settle all outstanding employment issues that the pass holder may raise, including salary payments; and (4) buy an air ticket with check-in luggage and pay for all connecting transport costs to the international port of entry in the pass holder&#x27;s home country or the region nearest to their hometown — unless the pass holder agrees in writing to bear the cost instead. In contrast, for a ONE Pass holder who no longer requires their pass, the holder themselves cancels the pass directly (there is no employer-driven repatriation obligation described). ONE Pass holders are also required to notify MOM about their professional activities and annual income by 31 January of the next year, and to notify MOM about any changes to their residential address or personal information. Separately, regarding ONE Pass application documentation, if the required company financial information is not available, the applicant may provide the company&#x27;s latest audited Profit &amp; Loss statements instead. However, MOM will only consider documents from third-party auditors; documents signed by the company&#x27;s management staff will not be accepted.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "When an employer is cancelling a work pass for a foreign employee, what obligations does the employer have regarding repatriation costs, and how does this contrast with the process for an Overseas Networks &amp; Expertise Pass (ONE Pass) holder who no longer requires their pass? Additionally, if a ONE Pass holder's company cannot provide specific financial information during the application process, what alternative documentation does MOM accept and what restrictions apply to that alternative?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-1"><td class="mono">q-0027</td><td>hard-1</td><td class="score-cell">—</td><td class="clip">For an individual who holds an Overseas Networks &amp; Expertise Pass (ONE Pass), what ongoing obligation must they fulfill after obtaining the pass, and what specific limitation applies to the occupations they can take up? Additionally, what consent regarding their contact details is involved in the application process?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWtbew1StQ9BDR23H8c&quot;}</td><td><button class="toggle" onclick="toggleRow(26)">▸</button></td></tr><tr id="detail-26" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>An Overseas Networks &amp; Expertise Pass (ONE Pass) holder has an annual notification obligation to MOM and must also notify MOM of any changes to their details. Furthermore, ONE Pass holders cannot work in certain restricted occupations, such as media or religion related occupations, unless they have obtained approval from MOM. During the application process, the applicant consents to the use of their contact details to be contacted during emergencies and to receive messages related to their work pass and employment in Singapore, and to the sharing of their contact details with other Government agencies and statutory authorities for the same purpose.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "For an individual who holds an Overseas Networks &amp; Expertise Pass (ONE Pass), what ongoing obligation must they fulfill after obtaining the pass, and what specific limitation applies to the occupations they can take up? Additionally, what consent regarding their contact details is involved in the application process?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-1"><td class="mono">q-0028</td><td>hard-1</td><td class="score-cell">—</td><td class="clip">If a candidate already has an existing work pass application pending with MOM, can they simultaneously apply for an Overseas Networks &amp; Expertise Pass, and once they do hold an Overseas Networks &amp; Expertise Pass, what family-related benefit does it provide?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWtkjPCVt2xpfbgkTRf&quot;}</td><td><button class="toggle" onclick="toggleRow(27)">▸</button></td></tr><tr id="detail-27" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>No, a candidate cannot apply for an Overseas Networks &amp; Expertise Pass if they already have an existing work pass application, because only 1 work pass application per candidate may be submitted at a time. Additionally, the applicant must declare that the information in the application is, to the best of their knowledge, true and correct, and that all documents submitted in support of the application are true copies of the originals. Once a candidate holds an Overseas Networks &amp; Expertise Pass, they may apply for passes to allow their family members to join them in Singapore.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "If a candidate already has an existing work pass application pending with MOM, can they simultaneously apply for an Overseas Networks &amp; Expertise Pass, and once they do hold an Overseas Networks &amp; Expertise Pass, what family-related benefit does it provide?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-1"><td class="mono">q-0029</td><td>hard-1</td><td class="score-cell">—</td><td class="clip">What restriction applies to a foreign employee&#x27;s work under an S pass, and under what condition can an employer be exempted from granting that employee a rest day?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWtvsaT6gXPgwMa5AQc&quot;}</td><td><button class="toggle" onclick="toggleRow(28)">▸</button></td></tr><tr id="detail-28" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Under the S pass and visit pass, the foreign employee shall work only for the employer and in the occupation and sector specified in the S pass and visit pass (Packet A, paragraph 413). Regarding rest days, the employer does not have to grant a rest day to the foreign employee if there is a prior written agreement mutually agreed between the employer and the foreign employee (Packet A, paragraph 179). Additionally, when applying for a pass, the applicant must declare whether they have, among other things, been refused entry into or deported from any country, been convicted in a court of law in any country, been prohibited from entering Singapore, entered Singapore using a passport issued by a different country, entered Singapore using a different name, or been a Singapore Citizen or Singapore Permanent Resident (Packet B, paragraph 24). These declarations form part of the application process that determines eligibility for the pass under which these work restrictions and rest day provisions apply.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What restriction applies to a foreign employee's work under an S pass, and under what condition can an employer be exempted from granting that employee a rest day?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-1"><td class="mono">q-0030</td><td>hard-1</td><td class="score-cell">—</td><td class="clip">For an Overseas Networks &amp; Expertise (ONE) Pass holder who wants to bring family members to Singapore, which family members are eligible under the Long-Term Visit Pass, and how long after submitting a Dependant&#x27;s Pass application should one check the application status?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWu6tLjiZQm4rtfvf3g&quot;}</td><td><button class="toggle" onclick="toggleRow(29)">▸</button></td></tr><tr id="detail-29" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The Long-Term Visit Pass for ONE Pass holders covers common-law spouses, step-children, handicapped children, and parents of the pass holder. For a Dependant&#x27;s Pass application for a ONE Pass holder, the applicant should check the application status after 3 weeks, though it may take longer if additional information is required.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "For an Overseas Networks &amp; Expertise (ONE) Pass holder who wants to bring family members to Singapore, which family members are eligible under the Long-Term Visit Pass, and how long after submitting a Dependant's Pass application should one check the application status?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-1"><td class="mono">q-0031</td><td>hard-1</td><td class="score-cell">—</td><td class="clip">When applying for a Letter of Consent for a common-law spouse under the Overseas Networks &amp; Expertise Pass, what language requirement applies to supporting documents, and what financial details about the employing company must be provided in the application form? Additionally, if the common-law spouse later obtains an Employment Pass and that pass card is lost or stolen, what are the replacement fee, the timeline for applying, and who can submit the replacement application?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWuGdUTUq8xyhTEKNvB&quot;}</td><td><button class="toggle" onclick="toggleRow(30)">▸</button></td></tr><tr id="detail-30" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>For the Letter of Consent (Common-Law Spouse) application under the ONE Pass, non-English documents must be accompanied by an English translation, which can be done by a translation service provider. The application form requires the employing company to provide its paid-up capital (in S$) and the value of turnover for the past 3 years (starting with the most recent year), including for each year whether the turnover figure is from an audited account (for unaudited accounts or if the employing company is exempted from audit, &#x27;No&#x27; should be selected). If the common-law spouse later holds an Employment Pass and the pass card is lost or stolen, the employer must apply for a replacement within 1 week. The replacement application can be submitted by the employer or an appointed employment agent (EA). For a damaged card, the fee is $65.40. For a lost or stolen card, the fee is also specified (fees are inclusive of GST and non-refundable). Processing is immediate for most cases, with card collection taking 4 working days after approval.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "When applying for a Letter of Consent for a common-law spouse under the Overseas Networks &amp; Expertise Pass, what language requirement applies to supporting documents, and what financial details about the employing company must be provided in the application form? Additionally, if the common-law spouse later obtains an Employment Pass and that pass card is lost or stolen, what are the replacement fee, the timeline for applying, and who can submit the replacement application?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-1"><td class="mono">q-0032</td><td>hard-1</td><td class="score-cell">—</td><td class="clip">Under the COMPASS framework for Employment Pass eligibility, what fixed monthly salary would a 30-year-old EP candidate need to earn to score 10 points on the C1 salary criterion, and what additional bonus criterion (C6) can an organisation qualify for by participating in eligible programmes — including what is required to be considered for that bonus?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWuVAnEVR4zFiAUAjym&quot;}</td><td><button class="toggle" onclick="toggleRow(31)">▸</button></td></tr><tr id="detail-31" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>For the C1 salary benchmark criterion, a candidate aged 30 needs a fixed monthly salary of at least $8,283 to score 10 points (which corresponds to the 65th percentile of local PMETs). To score 20 points at the same age, the required salary rises to $14,316 (the 90th percentile of local PMETs). These C1 salary benchmarks are published by sector: the version released in August 2025 and an upcoming version to be released in August 2026 are both available as downloadable PDFs (&#x27;C1 salary benchmarks by sectors&#x27;). Separately, under criterion C6 (Strategic Economic Priorities bonus), an organisation needs to participate in at least one of the eligible programmes listed by MOM to be considered for the C6 SEP bonus. Neither the salary benchmarks alone nor the C6 programme participation requirement alone covers both aspects; both must be considered together as part of the COMPASS framework.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Under the COMPASS framework for Employment Pass eligibility, what fixed monthly salary would a 30-year-old EP candidate need to earn to score 10 points on the C1 salary criterion, and what additional bonus criterion (C6) can an organisation qualify for by participating in eligible programmes \u2014 including what is required to be considered for that bonus?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-2"><td class="mono">q-0033</td><td>hard-2</td><td class="score-cell">—</td><td class="clip">Looking at the logo shown on the page, what colors are used in the Ministry of Manpower&#x27;s logo, and according to the EP (Sponsorship) Renewal Form, how long does it take to process a renewal application submitted through that form?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWufG13QaLAkdFrJqyY&quot;}</td><td><button class="toggle" onclick="toggleRow(32)">▸</button></td></tr><tr id="detail-32" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The Ministry of Manpower logo uses orange and blue (dark blue and a lighter blue) colors. According to the EP (Sponsorship) Renewal Form (Page 1), it takes around 8 weeks to process the renewal application. Note that the main webpage states &#x27;within 6 weeks for most cases&#x27; for EP (Sponsorship) renewals processed via the myMOM Portal, but the form itself states approximately 8 weeks.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Looking at the logo shown on the page, what colors are used in the Ministry of Manpower's logo, and according to the EP (Sponsorship) Renewal Form, how long does it take to process a renewal application submitted through that form?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-2"><td class="mono">q-0034</td><td>hard-2</td><td class="score-cell">—</td><td class="clip">According to the travel document requirements for an Employment Pass application, when there are changes to passport details such as name or expiry date, what is the exact wording of the checkbox option shown in the eService application form that applicants must select before uploading the Amendments/Observation page?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWupSAGpoBgQoj3BayF&quot;}</td><td><button class="toggle" onclick="toggleRow(33)">▸</button></td></tr><tr id="detail-33" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The checkbox reads: &quot;I wish to upload Amendments/Observations page as there are changes in the biodata page details. (optional)&quot;</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "According to the travel document requirements for an Employment Pass application, when there are changes to passport details such as name or expiry date, what is the exact wording of the checkbox option shown in the eService application form that applicants must select before uploading the Amendments/Observation page?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-2"><td class="mono">q-0035</td><td>hard-2</td><td class="score-cell">—</td><td class="clip">According to the candidate&#x27;s form overview shown in the image, what are the three steps in the application process, what does each step involve, and how long does the form estimate it may take to complete?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWuykFLWYPZomPrLjFj&quot;}</td><td><button class="toggle" onclick="toggleRow(34)">▸</button></td></tr><tr id="detail-34" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The three steps in the application process are: Step 1 – Candidate&#x27;s form: Use this form to provide your personal details to your employer; errors may cause delay or even rejection. Step 2 – EP or S Pass application: Your employer will apply for an Employment Pass (EP) or S Pass on your behalf after written consent has been given with the information you have provided in this form. Step 3 – Application outcome: Your employer will notify you of the application outcome; if the application is approved by MOM, you will receive an In-Principle Approval (IPA) letter. The form may take 20 minutes to complete.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "According to the candidate's form overview shown in the image, what are the three steps in the application process, what does each step involve, and how long does the form estimate it may take to complete?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-2"><td class="mono">q-0036</td><td>hard-2</td><td class="score-cell">—</td><td class="clip">According to the C1 salary benchmarks document released in Aug 2025, what government body&#x27;s logo appears on the document, and what are the specific C1 salary benchmarks (for both 10 points and 20 points) for a 30-year-old candidate in the Accommodation sector?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWv8oD6yW6CTDhEi6d4&quot;}</td><td><button class="toggle" onclick="toggleRow(35)">▸</button></td></tr><tr id="detail-35" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The document bears the logo of the Ministry of Manpower (MOM). For a 30-year-old candidate in the Accommodation sector (released Aug 2025), the required fixed monthly salary for 10 points (65th percentile of local PMETs) is $5,063, and the required salary for 20 points (90th percentile of local PMETs) is $7,843. The salary benchmarks increase progressively with age from age 23 to age 45. For the Accommodation sector, the range for 10 points runs from $4,341 (age ≤23) to $6,611 (age ≥45), and for 20 points from $5,578 (age ≤23) to $12,695 (age ≥45). Candidates who do not meet the EP qualifying salary are not eligible regardless of COMPASS points, and EP candidates earning at least $22,500 in fixed monthly salary are exempted from COMPASS entirely.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "According to the C1 salary benchmarks document released in Aug 2025, what government body's logo appears on the document, and what are the specific C1 salary benchmarks (for both 10 points and 20 points) for a 30-year-old candidate in the Accommodation sector?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-2"><td class="mono">q-0037</td><td>hard-2</td><td class="score-cell">—</td><td class="clip">What is the domain name displayed in the center of the QR code shown on the page, and what is the purpose of the page this QR code appears on?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWvKXdUUEHB62hSeKHi&quot;}</td><td><button class="toggle" onclick="toggleRow(36)">▸</button></td></tr><tr id="detail-36" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The domain name displayed in the center of the QR code is GO.gov.sg. The QR code appears on the Ministry of Manpower (MOM) page about eligibility for the Employment Pass (EP) in Singapore, which explains the two-stage eligibility framework: Stage 1 requires candidates to earn at least the EP qualifying salary (benchmarked to the top 1/3 of local PMET salaries by age), and Stage 2 requires passing the points-based Complementarity Assessment Framework (COMPASS) by earning at least 40 points, unless exempted.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What is the domain name displayed in the center of the QR code shown on the page, and what is the purpose of the page this QR code appears on?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-2"><td class="mono">q-0038</td><td>hard-2</td><td class="score-cell">—</td><td class="clip">What government ministry&#x27;s logo appears on the COMPASS C5 Skills Bonus - Shortage Occupation List (SOL) page, and what are the colors used in its logo design?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWvU2rGFLgkHZd9X9BP&quot;}</td><td><button class="toggle" onclick="toggleRow(37)">▸</button></td></tr><tr id="detail-37" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The logo belongs to the Ministry of Manpower. The logo design features three curved swoosh-like figures in dark blue, orange, and blue, positioned to the left of the text &#x27;Ministry of Manpower&#x27; in dark blue.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What government ministry's logo appears on the COMPASS C5 Skills Bonus - Shortage Occupation List (SOL) page, and what are the colors used in its logo design?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-2"><td class="mono">q-0039</td><td>hard-2</td><td class="score-cell">—</td><td class="clip">According to the header of the document listing standard occupations available in EP eService, what is the address of the Work Pass Division shown on the document, and what visual branding element (logo) appears on the document&#x27;s first page?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWvdAGwZx7SpUAGtmMQ&quot;}</td><td><button class="toggle" onclick="toggleRow(38)">▸</button></td></tr><tr id="detail-38" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The Work Pass Division is located at 18 Havelock Road, Singapore 059764, with the website www.mom.gov.sg. The document bears the Ministry of Manpower logo, which consists of three stylized curved figures in orange and two shades of blue (representing people), alongside the text &#x27;Ministry of Manpower&#x27; in dark blue.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "According to the header of the document listing standard occupations available in EP eService, what is the address of the Work Pass Division shown on the document, and what visual branding element (logo) appears on the document's first page?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr><tr class="score-none" data-kind="hard-2"><td class="mono">q-0040</td><td>hard-2</td><td class="score-cell">—</td><td class="clip">According to the timeline diagram for Employment Pass applications, if an employer posts a job advertisement in early January and closes it after 30 days (in early February), what is the earliest date they can submit an EP or S Pass application relative to the job ad posting, and what is the latest date they can use that job advertisement for the application?</td><td class="clip">[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</td><td class="clip">[judge_failed] BadRequestError: litellm.BadRequestError: AnthropicException - {&quot;type&quot;:&quot;error&quot;,&quot;error&quot;:{&quot;type&quot;:&quot;invalid_request_error&quot;,&quot;message&quot;:&quot;Your credit balance is too low to access the Anthropic API. Please go to Plans &amp; Billing to upgrade or purchase credits.&quot;},&quot;request_id&quot;:&quot;req_011CegWvnpTHTCxu3CjeM82Z&quot;}</td><td><button class="toggle" onclick="toggleRow(39)">▸</button></td></tr><tr id="detail-39" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The earliest date to submit an EP or S Pass application is 15 days after posting the job ad (shown in the diagram as a point in mid-January). The latest date to submit an EP or S Pass application using that job advertisement is 3 months after the employer closes the job ad. In the diagram&#x27;s example, the employer closes the job ad after 30 days (early February), and the latest date to submit the application using that ad falls in early May — 3 months after closure. Additionally, per the markdown, job advertisements that have expired or been closed for more than 3 months cannot be used for EP applications, and the employer must re-advertise the vacancy.</pre></div><div class="detail-block"><b>Actual:</b><pre>[backend_error] http_500: {&quot;detail&quot;:&quot;BadRequestError: litellm.BadRequestError: AnthropicException - b&#x27;{\&quot;type\&quot;:\&quot;error\&quot;,\&quot;error\&quot;:{\&quot;type\&quot;:\&quot;invalid_request_error\&quot;,\&quot;message\&quot;:\&quot;Your credit balance is too low to access the</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "According to the timeline diagram for Employment Pass applications, if an employer posts a job advertisement in early January and closes it after 30 days (in early February), what is the earliest date they can submit an EP or S Pass application relative to the job ad posting, and what is the latest date they can use that job advertisement for the application?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  }
+]</pre></div></td></tr></tbody></table>
+
+<script>
+    function toggleRow(i) {
+      var d = document.getElementById('detail-' + i);
+      d.style.display = d.style.display === 'none' ? 'table-row' : 'none';
+    }
+    function applyFilter() {
+      var active = document.querySelectorAll('.chip.on');
+      var kinds = Array.from(active).map(function(c){ return c.dataset.kind; });
+      var all = kinds.length === 0 || kinds.indexOf('all') !== -1;
+      document.querySelectorAll('tr[data-kind]').forEach(function(row){
+        var show = all || kinds.indexOf(row.dataset.kind) !== -1;
+        row.style.display = show ? '' : 'none';
+        var next = row.nextElementSibling;
+        if (next && next.classList.contains('detail')) {
+          next.style.display = show && next.dataset.open === '1' ? 'table-row' : 'none';
+        }
+      });
+    }
+    document.addEventListener('click', function(e){
+      if (e.target && e.target.classList && e.target.classList.contains('chip')) {
+        if (e.target.dataset.kind === 'all') {
+          document.querySelectorAll('.chip.on').forEach(function(c){ c.classList.remove('on'); });
+          e.target.classList.add('on');
+        } else {
+          document.querySelector('.chip[data-kind="all"]').classList.remove('on');
+          e.target.classList.toggle('on');
+        }
+        applyFilter();
+      }
+    });
+    </script>
+</body></html>

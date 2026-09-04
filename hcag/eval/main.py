@@ -109,6 +109,10 @@ def run(
     ),
     log_file: str = typer.Option(None, "--log-file", help="Log file path."),
     log_level: str = typer.Option(None, "--log-level", help="DEBUG|INFO|WARN|ERROR."),
+    quiet: bool = typer.Option(
+        False, "--quiet",
+        help="Suppress the live per-row progress line on stderr.",
+    ),
     verbose: bool = typer.Option(
         False, "--verbose", "-v",
         help="Also stream debug logs to stderr (same JSON-lines shape as the log file).",
@@ -161,6 +165,7 @@ def run(
         report_path=report,
         kinds=parsed_kinds,
         skip_completed=skip_completed,
+        quiet=quiet,
     )
 
     try:

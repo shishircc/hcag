@@ -254,6 +254,21 @@ evalrun kb-eval.csv \
 
 The first run downloads promptfoo through `npx`, so give it a minute. Before dispatching a single row `evalrun` probes `/health`, loads its prompts, and preflights both models — a bad judge key otherwise surfaces only after the entire run has been paid for against the backend, and fails every row identically.
 
+100 rows takes a while, so it reports as it goes ([DESIGN.md §7.11.1](./DESIGN.md#7111-live-progress)):
+
+```
+42/100 rows · mean 2.14 · 3 unscored · 4m18s elapsed · ~6m07s left · last q042
+```
+
+Unscored rows are counted but never averaged in — a `[judge_failed]` row is an infrastructure problem, and folding it in as a `0` would look like a quality collapse. The point of the line is that a slow run and a wedged one stop looking identical: if the mean sits at 0 after ten rows, the backend is broken and you can stop now rather than in twenty minutes. `--quiet` turns it off; in a non-TTY (CI) it prints periodic updates instead of rewriting one line.
+
+Every row is also written to the log as it completes (`eval.row.done` with `question_id`, `kind`, `score`, `turns`, `elapsed_ms`), so the single-line display stays readable while the detail is preserved. Add `-v` to mirror those per-row records to the console too:
+
+```bash
+evalrun kb-eval.csv --backend-url http://localhost:8000 \
+    --out kb-eval-scored.csv --report kb-eval-report.html -v
+```
+
 ```bash
 open kb-eval-report.html    # per-kind panels, score histogram, expandable transcripts
 ```
