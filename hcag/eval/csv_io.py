@@ -73,13 +73,21 @@ def read_csv(path: Path) -> ReadResult:
     decides whether to filter them.
     """
     result = ReadResult()
-    with path.open("r", encoding="utf-8", newline="") as f:
+    # utf-8-sig, not utf-8: Excel and Google Sheets both prepend a BOM when
+    # they export "CSV UTF-8", and under plain utf-8 those three bytes glue
+    # themselves to the first header name — `question_id` parses as
+    # `\ufeffquestion_id`, the required-column check fails, and the file looks
+    # corrupt when it is fine. Decoding as utf-8-sig strips a BOM if present
+    # and is a no-op otherwise. `newline=""` is what lets a quoted field carry
+    # embedded newlines, which multi-line expected answers rely on.
+    with path.open("r", encoding="utf-8-sig", newline="") as f:
         reader = csv.DictReader(f)
         header = reader.fieldnames or []
         missing = [c for c in REQUIRED_COLUMNS if c not in header]
         if missing:
             raise ValueError(
-                f"input CSV is missing required columns: {missing}. Expected: {COLUMNS}"
+                f"input CSV is missing required columns: {missing}. Expected: {COLUMNS};"
+                f" found: {header}"
                 " (`source` is optional — pre-provenance eval sets are accepted)"
             )
         for i, raw in enumerate(reader, start=2):  # line 1 is the header
