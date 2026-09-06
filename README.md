@@ -35,7 +35,7 @@ question difficulty:
 | `medium` — reasoning within one paragraph | 88.9% | 77.8% | +14.3% |
 | `complex` — 3 concepts across one document | 83.3% | 70.8% | +17.6% |
 | `hard-1` — **two documents required** | 95.2% | 52.4% | **+81.8%** |
-| `hard-2` — **the answer is in an image** | 91.7% | 41.7% | **+120.0%** |
+| `hard-2` — **the answer is in an documents and images** | 91.7% | 41.7% | **+120.0%** |
 
 Flat RAG holds up where [§1.3](./DESIGN.md#13-when-to-use-hcag-vs-alternatives) says it should —
 single-passage lookup, right at the 70–80% ceiling it predicts. It falls off a cliff exactly where
