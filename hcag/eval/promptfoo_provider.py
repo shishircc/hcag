@@ -99,7 +99,9 @@ def call_api(prompt: str, options: dict, context: dict) -> dict:  # noqa: ARG001
         prompts=load_prompts(cfg.prompts_dir),
         question=row.question,
         expected_answer=row.expected_answer,
-        actual_answer=exchange.actual_answer,
+        # The whole exchange by default (§7.5): an agent that answers in parts
+        # is otherwise scored on its closing fragment alone.
+        actual_answer=exchange.answer_text(cfg.judge.scope),
         transcript=exchange.transcript_text(),
         retries=cfg.judge.retries,
     )

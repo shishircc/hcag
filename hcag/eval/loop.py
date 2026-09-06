@@ -44,6 +44,30 @@ class RowExchange:
     terminated_by: str = ""     # "answer" | "refusal" | "max_turns_exceeded" | "backend_error" | "backend_timeout" | "classifier_error"
     total_chat_ms: float = 0.0
 
+    def answer_text(self, scope: str = "conversation") -> str:
+        """What the judge scores (§7.5).
+
+        ``final`` is the single reply the classifier called an answer -- the
+        original behaviour. ``conversation`` is everything the chatbot said,
+        in order, which is what an agent that answers in parts across several
+        turns actually produced: judging its last 60 words against a complete
+        reference marks it down for pacing rather than for content.
+
+        A hard failure never reaches here as bot turns -- the sentinel lives in
+        ``actual_answer`` -- so it is returned as-is under either scope, and
+        keeps scoring 0 per the rubric.
+        """
+        if scope == "final" or self.terminated_by not in ("answer", "refusal"):
+            return self.actual_answer
+        replies = [t.text for t in self.turns if t.role == "bot" and t.text.strip()]
+        if not replies:
+            return self.actual_answer
+        if len(replies) == 1:
+            return replies[0]
+        return "\n\n".join(
+            f"[part {i} of {len(replies)}]\n{text}" for i, text in enumerate(replies, 1)
+        )
+
     def transcript_text(self) -> str:
         """Render the transcript as a plain-text block for the judge prompt."""
         lines = []

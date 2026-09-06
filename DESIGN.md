@@ -3641,19 +3641,35 @@ Additional termination conditions:
 
 ## 7.5 LLM-as-Judge Scoring
 
-Once `actual_answer` is populated, `evalrun` invokes the judge LLM once per row with:
+Once the exchange is complete, `evalrun` invokes the judge LLM once per row with:
 
 - `question`
 - `expected_answer`
-- `actual_answer`
-- The full multi-turn transcript when clarification occurred (§7.4.2), so the judge can down-weight answers the chatbot only produced after being led there.
+- **What the chatbot answered** — see *Scope* below
+- The full multi-turn transcript when clarification occurred (§7.4.2), so the judge can see who drove the exchange.
 - The scoring rubric (below), fixed and identical for every row. It is the `eval.score` prompt (§2.15.5) — a Markdown file like every other model-facing string, overridable per-KB through `prompts_dir` without touching Python.
+
+**Scope — the exchange, not the last reply.** `[judge] scope` selects what is scored:
+
+| `scope` | What the judge is given | When |
+|---|---|---|
+| `conversation` *(default)* | Every reply the chatbot made, in order, labelled `[part N of M]` when there is more than one | An agent that answers in parts |
+| `final` | Only the reply the classifier called an `answer` | Reproducing a benchmark taken before this option existed |
+
+The default changed because the agent's own answering doctrine changed. §2.7 has it delivering an answer in 50–80 word parts across several turns and handing the user the next move each time; under `final`, a complete four-part answer would be scored on its fourth part and marked down for omitting the first three. That measures pacing, not substance. The rubric is told the same thing in as many words: score the parts' combined content, and treat staged delivery as a deliberate style rather than an omission.
+
+Two properties this must not lose, both asserted by tests:
+
+- **A hard failure is still a hard failure.** `[backend_error]`, `[backend_timeout]`, `[clarifier_failed]` and `[max_turns_exceeded]` live in `actual_answer` rather than in a chatbot turn, so they are handed to the judge verbatim under either scope and keep scoring `0`. Reassembling a `max_turns_exceeded` row out of its partial replies would launder a failed run into a passing answer.
+- **Who drove the exchange still counts.** The rubric now distinguishes the two multi-turn shapes it used to score alike: the chatbot asking a clarifying question, or offering the next part and being taken up on it, is the chatbot working as designed and is not penalised; the *user* having to steer — repeating themselves, correcting a wrong turn, dragging out what should have been offered — still weighs against the score. Content the chatbot never produced is missing however many turns it had.
+
+**Known interaction — the loop can stop before the answer is complete (§7.4).** The conversation ends as soon as the classifier calls a reply an `answer`, and a first part is substantive enough to be classified that way. When it ends with an offer ("Do you want the fees as well?") the classifier usually reads it as `clarify`, the clarifier takes it up, and the remaining parts follow — but that is a fortunate reading of a prompt written for a different purpose, not a guarantee. Judging the whole exchange fixes how the parts are *scored*; it does not make the loop ask for parts the chatbot never offered. Closing that properly needs a `partial` outcome in `eval.classify` (§7.4.2), which is not built.
 
 Rubric — the judge must return exactly one of these integers:
 
 | Score | Meaning |
 |---|---|
-| `0` | **Wrong and misleading answer.** Factually incorrect, hallucinated, or would mislead the user. Also assigned to hard failures (backend errors, refusals on in-scope questions, `[max_turns_exceeded]`). |
+| `0` | **Wrong and misleading answer.** Factually incorrect, hallucinated, or would mislead the user. Also assigned to hard failures (backend errors, refusals on in-scope questions, `[max_turns_exceeded]`) — see *Scope* on why these bypass reassembly. |
 | `1` | **Partially correct, but missing key points.** Contains no outright errors, but omits information the expected answer identifies as essential. |
 | `2` | **Partially correct, and includes the key points.** Covers the essential information but adds noise, extraneous detail, or minor imprecision. |
 | `3` | **Accurate and comprehensive answer.** Substantively equivalent to `expected_answer`; a reasonable user would consider the question fully answered. |
@@ -3767,6 +3783,7 @@ preflight         = true
 
 [judge]
 retries           = 2                     # on malformed structured output
+scope             = "conversation"        # score the whole exchange | "final" = last reply only (§7.5)
 
 # Execution.
 [run]
