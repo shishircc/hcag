@@ -779,6 +779,16 @@ The agent is instructed to:
 - Never assume it can read the KB directly — every folder's `compiled.md` must be obtained via `check_and_load_kb`.
 - Not call `get_catalog`: the injected catalog is complete and does not change mid-session.
 
+**The agent answers as a support officer, not as a retrieval system.** Grounding decides what it may rely on; the persona decides what it sounds like, and the two are separate rules in `agent/system.md`. The officer states what is true as fact, in its own words, and never narrates its own machinery — no "based on the knowledge base", no "the documents state", no mention of catalogs, packets or ids, which are internal. A user should experience a colleague who knows the policy.
+
+Three behaviours follow from that framing, and they are prompt text (D11), not runtime code:
+
+- **Plan, then hand over in parts.** The agent plans silently — what is this person trying to do, what does resolving it need, what is the ONE next step — and then replies in **50–80 words**, giving the piece that moves them forward and stopping. An eight-step procedure is eight turns, not one reply with eight bullets, and each part closes by handing the user the next move. The limit is per reply, not an average.
+- **Clarify to reach the contextual answer.** When the answer genuinely differs on something the agent does not know — pass type, salary, which of two situations applies — it asks **one** question, the one that most narrows the outcome. It gives whatever already holds either way first: nobody should have to answer a question to receive information the agent could already have given.
+- **Escalate rather than guess.** When the guidance does not cover the situation, or the agent cannot reason to an answer it would stand behind, it says so plainly and offers a human colleague — in its own voice, never as a bare "contact us", and never as a system limitation. It escalates too when only a person can act: a decision on a specific file, an exception, an appeal, a complaint. A confident wrong answer is the worst outcome available; an honest hand-over is a good one.
+
+**This trades measured score for real-world usefulness, and §7.5's rubric has not moved with it.** The judge rewards an answer "substantively equivalent to the reference", and the reference answers are long and complete; it also weighs against a reply the user had to steer with clarifying questions. Chunked answers and clarification will therefore *lower* the eval score while being the behaviour a support desk wants. Before reading a drop in `mean_score` as a regression, check whether it is this. The rubric is the thing to change if the persona is here to stay.
+
 **Cross-branch lookup.** The full index also makes questions that straddle branches tractable in one hop. A question touching both refund settlement and ledger reconciliation surfaces `billing.refunds` and `finance.ledger` in the same catalog read, and both are requested in one `check_and_load_kb` call — under one-level catalogs the agent would have had to open and read two separate branches to discover that the second leaf existed.
 
 ### 2.7.1 Reload discipline — when *not* to call `check_and_load_kb`
@@ -3631,19 +3641,35 @@ Additional termination conditions:
 
 ## 7.5 LLM-as-Judge Scoring
 
-Once `actual_answer` is populated, `evalrun` invokes the judge LLM once per row with:
+Once the exchange is complete, `evalrun` invokes the judge LLM once per row with:
 
 - `question`
 - `expected_answer`
-- `actual_answer`
-- The full multi-turn transcript when clarification occurred (§7.4.2), so the judge can down-weight answers the chatbot only produced after being led there.
+- **What the chatbot answered** — see *Scope* below
+- The full multi-turn transcript when clarification occurred (§7.4.2), so the judge can see who drove the exchange.
 - The scoring rubric (below), fixed and identical for every row. It is the `eval.score` prompt (§2.15.5) — a Markdown file like every other model-facing string, overridable per-KB through `prompts_dir` without touching Python.
+
+**Scope — the exchange, not the last reply.** `[judge] scope` selects what is scored:
+
+| `scope` | What the judge is given | When |
+|---|---|---|
+| `conversation` *(default)* | Every reply the chatbot made, in order, labelled `[part N of M]` when there is more than one | An agent that answers in parts |
+| `final` | Only the reply the classifier called an `answer` | Reproducing a benchmark taken before this option existed |
+
+The default changed because the agent's own answering doctrine changed. §2.7 has it delivering an answer in 50–80 word parts across several turns and handing the user the next move each time; under `final`, a complete four-part answer would be scored on its fourth part and marked down for omitting the first three. That measures pacing, not substance. The rubric is told the same thing in as many words: score the parts' combined content, and treat staged delivery as a deliberate style rather than an omission.
+
+Two properties this must not lose, both asserted by tests:
+
+- **A hard failure is still a hard failure.** `[backend_error]`, `[backend_timeout]`, `[clarifier_failed]` and `[max_turns_exceeded]` live in `actual_answer` rather than in a chatbot turn, so they are handed to the judge verbatim under either scope and keep scoring `0`. Reassembling a `max_turns_exceeded` row out of its partial replies would launder a failed run into a passing answer.
+- **Who drove the exchange still counts.** The rubric now distinguishes the two multi-turn shapes it used to score alike: the chatbot asking a clarifying question, or offering the next part and being taken up on it, is the chatbot working as designed and is not penalised; the *user* having to steer — repeating themselves, correcting a wrong turn, dragging out what should have been offered — still weighs against the score. Content the chatbot never produced is missing however many turns it had.
+
+**Known interaction — the loop can stop before the answer is complete (§7.4).** The conversation ends as soon as the classifier calls a reply an `answer`, and a first part is substantive enough to be classified that way. When it ends with an offer ("Do you want the fees as well?") the classifier usually reads it as `clarify`, the clarifier takes it up, and the remaining parts follow — but that is a fortunate reading of a prompt written for a different purpose, not a guarantee. Judging the whole exchange fixes how the parts are *scored*; it does not make the loop ask for parts the chatbot never offered. Closing that properly needs a `partial` outcome in `eval.classify` (§7.4.2), which is not built.
 
 Rubric — the judge must return exactly one of these integers:
 
 | Score | Meaning |
 |---|---|
-| `0` | **Wrong and misleading answer.** Factually incorrect, hallucinated, or would mislead the user. Also assigned to hard failures (backend errors, refusals on in-scope questions, `[max_turns_exceeded]`). |
+| `0` | **Wrong and misleading answer.** Factually incorrect, hallucinated, or would mislead the user. Also assigned to hard failures (backend errors, refusals on in-scope questions, `[max_turns_exceeded]`) — see *Scope* on why these bypass reassembly. |
 | `1` | **Partially correct, but missing key points.** Contains no outright errors, but omits information the expected answer identifies as essential. |
 | `2` | **Partially correct, and includes the key points.** Covers the essential information but adds noise, extraneous detail, or minor imprecision. |
 | `3` | **Accurate and comprehensive answer.** Substantively equivalent to `expected_answer`; a reasonable user would consider the question fully answered. |
@@ -3757,6 +3783,7 @@ preflight         = true
 
 [judge]
 retries           = 2                     # on malformed structured output
+scope             = "conversation"        # score the whole exchange | "final" = last reply only (§7.5)
 
 # Execution.
 [run]

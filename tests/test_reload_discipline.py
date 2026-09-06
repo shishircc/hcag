@@ -254,8 +254,12 @@ def test_system_prompt_forbids_answering_from_the_catalog() -> None:
     assert "GROUNDING" in prompt
     assert "NEVER answer from the catalog" in prompt
     assert "not evidence" in prompt
-    # And says what to do instead of guessing.
-    assert "say you do not" in prompt
+    # And says what to do instead of guessing. The officer persona routes an
+    # unanswerable question to a human hand-over rather than to a bare "I don't
+    # have that", so the instruction to check is the escalation route.
+    assert "go to ESCALATION" in prompt
+    assert "ESCALATION." in prompt
+    assert "Never guess" in prompt
     assert "## Content" in prompt
 
 

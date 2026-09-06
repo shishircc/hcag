@@ -47,6 +47,15 @@ class ClassifierConfig(BaseModel):
 class JudgeConfig(BaseModel):
     """LLM judge (§7.5) — also plays the clarifier role (§7.4.2)."""
 
+    scope: Literal["conversation", "final"] = "conversation"
+    """What the judge scores: the whole exchange, or only the last reply.
+
+    ``conversation`` is the default because an agent may answer in parts across
+    several turns; scoring only its closing fragment measures pacing, not
+    substance. ``final`` restores the original single-reply behaviour, which is
+    what any benchmark recorded before this option existed was measured under.
+    """
+
     llm: LLMConfig = Field(
         default_factory=lambda: LLMConfig(
             provider="anthropic",
