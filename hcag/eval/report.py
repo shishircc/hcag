@@ -113,6 +113,7 @@ def _row_table(rows: list[EvalRow], baseline_by_id: dict[str, EvalRow], metas: d
         transcript_json = html.escape(json.dumps(turns, indent=2), quote=False)
         score_class = f"score-{r.score}" if isinstance(r.score, int) else "score-none"
         score_txt = str(r.score) if isinstance(r.score, int) else "—"
+        score_label = f" (scored {r.score})" if isinstance(r.score, int) else ""
         parts.append(
             f'<tr class="{score_class}" data-kind="{html.escape(r.kind)}">'
             f'<td class="mono">{html.escape(r.question_id)}</td>'
@@ -121,16 +122,34 @@ def _row_table(rows: list[EvalRow], baseline_by_id: dict[str, EvalRow], metas: d
         )
         if baseline_by_id:
             parts.append(f"<td>{_baseline_delta(r, baseline_by_id)}</td>")
+        # The judge's remark is the reason a row scored what it did, so the
+        # expanded view carries it in full — the column can only ever show the
+        # first line of it. The question comes too, so an expanded row reads on
+        # its own without the reader tracking back up to the clipped cell.
+        remark_html = (
+            f'<div class="detail-block"><b>Judge remark{score_label}:</b>'
+            f'<pre>{html.escape(r.remark)}</pre></div>'
+            if r.remark
+            else '<div class="detail-block muted"><b>Judge remark:</b> (none recorded)</div>'
+        )
+        # colspan must cover every column including the toggle, or the expanded
+        # block stops short of the table's width.
+        span = 8 if baseline_by_id else 7
         parts.append(
-            f'<td class="clip">{html.escape(r.question)}</td>'
-            f'<td class="clip">{html.escape(r.actual_answer)}</td>'
-            f'<td class="clip">{html.escape(r.remark)}</td>'
+            f'<td class="clip" title="{html.escape(r.question, quote=True)}">'
+            f'{html.escape(r.question)}</td>'
+            f'<td class="clip" title="{html.escape(r.actual_answer, quote=True)}">'
+            f'{html.escape(r.actual_answer)}</td>'
+            f'<td class="clip-remark" title="{html.escape(r.remark, quote=True)}">'
+            f'{html.escape(r.remark)}</td>'
             f'<td><button class="toggle" onclick="toggleRow({i})">▸</button></td>'
             f"</tr>"
             f'<tr id="detail-{i}" class="detail" style="display:none">'
-            f'<td colspan="{7 if baseline_by_id else 6}">'
+            f'<td colspan="{span}">'
+            f'<div class="detail-block"><b>Question:</b><pre>{html.escape(r.question)}</pre></div>'
             f'<div class="detail-block"><b>Expected:</b><pre>{html.escape(r.expected_answer)}</pre></div>'
             f'<div class="detail-block"><b>Actual:</b><pre>{html.escape(r.actual_answer)}</pre></div>'
+            f"{remark_html}"
             f'<div class="detail-block"><b>Transcript:</b><pre>{transcript_json}</pre></div>'
             f"</td></tr>"
         )
@@ -205,6 +224,11 @@ def _css() -> str:
     table.rows th, table.rows td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
     table.rows th { background: var(--bg); position: sticky; top: 0; }
     .clip { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    /* The remark is the judge's reasoning — one ellipsised line is unreadable,
+       so it wraps to three and the rest is in the expanded row (and title). */
+    .clip-remark { max-width: 440px; white-space: normal; overflow: hidden;
+                   display: -webkit-box; -webkit-line-clamp: 3; line-clamp: 3;
+                   -webkit-box-orient: vertical; }
     .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
     .score-cell { font-weight: 700; text-align: center; }
     tr.score-0 .score-cell { color: #c53030; }
