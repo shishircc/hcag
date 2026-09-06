@@ -56,4 +56,4 @@ Candidates applying under the academia and research track should also include:
 - **A CV, which lists significant publications** , patents and technology disclosures achieved in the past 5 years.
 - **A recommendation letter or endorsement letter** , or a document for a potential position by a local host institution. Examples of local host institutions include[Autonomous Universities](https://www.moe.gov.sg/post-secondary/overview/autonomous-universities) or[A*STAR](https://www.a-star.edu.sg/) .
 
-Find out how the fixed monthly salary is defined.
+Find out how the [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) is defined.

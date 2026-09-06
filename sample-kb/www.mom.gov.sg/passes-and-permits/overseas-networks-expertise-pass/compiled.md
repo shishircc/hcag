@@ -1,31 +1,33 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass -->
 ---
-catalog_token_estimate: 1946
+catalog_token_estimate: 2656
 children:
 - www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.apply-for-a-pass
+- www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.faq
 - www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.notify-mom
 - www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families
 content_token_estimate: 4408
-descendants: 6
+descendants: 8
 id: www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass
 image_urls: {}
 kind: mixed
-long_description: 'This folder covers the Overseas Networks & Expertise Pass (ONE
-  Pass), a personalised Singapore work pass for top talent in business, arts and culture,
-  sports, academia, and research. It defines eligibility criteria: a fixed monthly
-  salary of at least S$30,000 for 12 consecutive months (from an established company
-  with ≥US$500M market cap or ≥US$200M revenue), prospective employment at that salary
-  in Singapore, or outstanding achievements in sports, arts/culture, or academia/research.
-  Key features include COMPASS and Fair Consideration Framework exemptions, flexibility
-  to work for multiple companies concurrently, no need to reapply when changing jobs,
-  no foreign worker levy or quota, and spouse eligibility for a Letter of Consent
-  to work. The folder also covers required documents by applicant category, the appeal
-  process (within 3 months, ~4 weeks processing), pass cancellation procedures (including
-  tax clearance requirements and STVP option), replacement card rules and fees ($65.40
-  for damaged, higher for lost/stolen), and links to eServices and forms.'
-short_description: 'Overview of Singapore''s ONE Pass for top talent: eligibility
-  (S$30,000/month salary or outstanding achievements), key features, documents, appeals,
-  cancellation, replacement, and eServices.'
+long_description: 'This folder is the main hub for Singapore''s Overseas Networks
+  & Expertise Pass (ONE Pass), a personalised pass for top talent in business, arts
+  and culture, sports, academia, and research. It defines the eligibility criteria:
+  a fixed monthly salary of at least S$30,000 for 12 consecutive months (from an established
+  company with market capitalisation ≥US$500M or annual revenue ≥US$200M), or prospective
+  employment at that salary in Singapore, or outstanding achievements in sports, arts/culture,
+  or academia/research. It details key pass features including COMPASS and Fair Consideration
+  Framework exemptions, flexibility to work for multiple companies concurrently, no
+  need to reapply when changing jobs, no foreign worker levy or quota, and spouse
+  eligibility for a Letter of Consent. It covers required documents by applicant category
+  (Singapore-based employment, overseas employment, prospective employment, outstanding
+  achievements), the appeal process for rejected applications (3-month window, ~4
+  weeks processing), pass cancellation procedures (including tax clearance obligations
+  and STVP option), replacement card process and fees, the end-to-end pass lifecycle
+  map, and available eServices and forms.'
+short_description: 'Overview of Singapore''s ONE Pass: eligibility criteria, key features,
+  required documents, pass cancellation, replacement, appeals, and eServices.'
 source_files:
 - index.md
 - key-facts.md
@@ -45,43 +47,65 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/replace-a-pass-card
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/eservices-and-forms
 subtree_depth: 3
-title: Overseas Networks & Expertise Pass (ONE Pass) Overview
-token_size_estimate: 6354
+title: Overseas Networks & Expertise Pass (ONE Pass) — Overview
+token_size_estimate: 7064
 ---
 
-# Overseas Networks & Expertise Pass (ONE Pass) Overview
+# Overseas Networks & Expertise Pass (ONE Pass) — Overview
 
-Overview of Singapore's ONE Pass for top talent: eligibility (S$30,000/month salary or outstanding achievements), key features, documents, appeals, cancellation, replacement, and eServices.
+Overview of Singapore's ONE Pass: eligibility criteria, key features, required documents, pass cancellation, replacement, appeals, and eServices.
 
 ## Sub-topics
 
 #### Tree
 
-- `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.apply-for-a-pass` — Apply for an Overseas Networks & Expertise Pass (ONE Pass)
-- `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.notify-mom` — Notify MOM: Overseas Networks & Expertise Pass Updates
-- `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families` — Passes for Families of ONE Pass Holders
-  - `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.dependants-pass-for-overseas-networks-expertise-pass` — Dependant's Pass for Overseas Networks & Expertise Pass
-  - `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.long-term-visit-pass-for-overseas-networks-expertise-pass` — LTVP for Overseas Networks Expertise Pass Holders
-    - `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.long-term-visit-pass-for-overseas-networks-expertise-pass.working-in-singapore` — LOC for Common-Law Spouses of ONE Pass Holders
+- `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.apply-for-a-pass` — How to Apply for an Overseas Networks & Expertise Pass (ONE Pass)
+- `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.faq` — Overseas Networks & Expertise Pass (ONE Pass) FAQ
+  - `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.faq.one-pass` — Overseas Networks & Expertise Pass (ONE Pass) FAQs
+- `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.notify-mom` — ONE Pass: Notify MOM of Updates & Restricted Occupations
+- `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families` — Family passes for ONE Pass holders – eligibility & timing
+  - `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.dependants-pass-for-overseas-networks-expertise-pass` — Dependant's Pass & Work Rights for ONE Pass Dependants
+  - `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.long-term-visit-pass-for-overseas-networks-expertise-pass` — Long-Term Visit Pass for ONE Pass Holder Family Members
+    - `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.long-term-visit-pass-for-overseas-networks-expertise-pass.working-in-singapore` — Letter of Consent for LTVP Common-Law Spouses of ONE Pass Holders
 
 #### `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.apply-for-a-pass`
 - **path**: `apply-for-a-pass/`
 - **depth**: 1
 - **parent**: `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass`
 - **kind**: leaf
-- **title**: Apply for an Overseas Networks & Expertise Pass (ONE Pass)
-- **short**: Step-by-step application process for Singapore's ONE Pass, including fees ($105 application, $225 issuance), timelines (4 weeks), IPA letter, issuance, and required declaration form.
-- **long**: Covers the full application workflow for the Overseas Networks & Expertise Pass (ONE Pass): submitting the application (by candidate, employer, or appointed EA), preparing for arrival in Singapore, getting the pass issued (via EP eService or EPSC), registering fingerprints/photo, setting up a digital work pass, and receiving the card. Key details include a $105 application fee, $225 issuance fee, 4-week processing time, 6-month IPA validity, and the rule that only 1 work pass application per candidate may be active at a time. Also contains the official declaration form signed at issuance, covering health declarations, consent for information verification (including income tax records), undertakings to report professional activities annually, notify address changes within 14 days, and obtain prior approval for restricted occupations.
+- **title**: How to Apply for an Overseas Networks & Expertise Pass (ONE Pass)
+- **short**: Step-by-step application process for the ONE Pass: submission, arrival prep, pass issuance, fees, timelines, and the required declaration form.
+- **long**: Covers the full end-to-end procedure for applying for Singapore's Overseas Networks & Expertise Pass (ONE Pass). Details who may apply (candidates, employers, appointed employment agents), the application fee ($105) and issuance fee ($225), typical processing time (4 weeks), and the six sequential steps from submitting the online application through receiving the physical card. Includes guidance on checking application status, the IPA letter and its 6-month validity, pass issuance via EP eService or EPSC counter, and payment methods. Also contains the full text of the ONE Pass declaration form that applicants must sign at issuance, covering health declarations, consent for information verification (including income verification by the Comptroller of Income Tax), undertakings on reporting professional activities annually, notifying MOM of address changes within 14 days, and obtaining prior approval before working in restricted occupations.
 - **tokens**: 5474
+
+#### `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.faq`
+- **path**: `faq/`
+- **depth**: 1
+- **parent**: `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass`
+- **kind**: node
+- **title**: Overseas Networks & Expertise Pass (ONE Pass) FAQ
+- **short**: Practical Q&A on ONE Pass eligibility, application scenarios, salary requirements, concurrent work rules, spouse LOC, and obligations.
+- **long**: Covers frequently asked questions about Singapore's Overseas Networks & Expertise Pass (ONE Pass). Topics include application scenarios (from overseas, while on another pass, or before employment begins), the S$30,000 fixed monthly salary threshold and established-company criteria, concurrent employment and secondary directorships without LOC, spouse Letter of Consent rules, converting from an Employment Pass, annual notification obligations, professional registration requirements for certain occupations, and pass cancellation procedures.
+- **tokens**: 0
+
+#### `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.faq.one-pass`
+- **path**: `faq/one-pass/`
+- **depth**: 2
+- **parent**: `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.faq`
+- **kind**: leaf
+- **title**: Overseas Networks & Expertise Pass (ONE Pass) FAQs
+- **short**: Frequently asked questions covering application, eligibility details, annual notification, family passes, spouse LOC, and employment rules for ONE Pass holders.
+- **long**: This folder contains MOM FAQ content specific to the Overseas Networks & Expertise Pass (ONE Pass). It addresses practical questions about applying (from overseas, while holding another work pass, or before starting employment), salary and employer requirements (e.g., S$30,000 fixed monthly salary for 12 consecutive months, established-company criteria including the US$200M annual revenue threshold for non-publicly listed firms), concurrent work and secondary directorships without LOC, spouse Letter of Consent rules (one LOC at a time, no dual employer-and-business-owner status), converting from Employment Pass to ONE Pass and re-applying for dependants' passes, staying in Singapore while unemployed, mandatory annual notification obligations and who must submit them, professional registration requirements for certain occupations, and pass cancellation when leaving Singapore permanently.
+- **tokens**: 5571
 
 #### `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.notify-mom`
 - **path**: `notify-mom/`
 - **depth**: 1
 - **parent**: `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass`
 - **kind**: leaf
-- **title**: Notify MOM: Overseas Networks & Expertise Pass Updates
-- **short**: Annual notification requirements, personal info change procedures, and restricted occupation rules for Overseas Networks & Expertise Pass holders.
-- **long**: Covers obligations of Overseas Networks & Expertise Pass (ONE Pass) holders to notify MOM of updates. Includes the annual notification exercise (employment details, income, professional activities), rules for updating residential address or mobile number within 2 weeks, procedures for changing passport or other personal particulars (with processing times of 4 working days or 7 working days), and the requirement to obtain MOM approval before working in restricted occupations (media and religion-related roles). Provides the full list of 161 restricted occupations.
+- **title**: ONE Pass: Notify MOM of Updates & Restricted Occupations
+- **short**: Annual notification, updating personal details, and restricted occupation rules for Overseas Networks & Expertise (ONE) Pass holders in Singapore.
+- **long**: Covers the obligations of ONE Pass holders to notify MOM, including the annual notification exercise (employment details, income, professional activities), deadlines and procedures for updating residential address, mobile number, passport details, and other personal particulars (name, nationality, marital status, etc.). Defines restricted occupations for ONE Pass holders — media and religion-related roles requiring prior MOM approval — and provides the full enumerated list of 161 restricted occupation titles. Specifies processing timelines such as 2 weeks for address/mobile updates, 7 working days for other particulars, and 3 weeks for restricted occupation requests.
 - **tokens**: 2355
 
 #### `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families`
@@ -89,9 +113,9 @@ Overview of Singapore's ONE Pass for top talent: eligibility (S$30,000/month sal
 - **depth**: 1
 - **parent**: `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass`
 - **kind**: mixed
-- **title**: Passes for Families of ONE Pass Holders
-- **short**: Eligibility rules and pass types (Dependant's Pass vs LTVP) for family members of Overseas Networks & Expertise Pass holders in Singapore.
-- **long**: Defines which family members of ONE Pass holders qualify for which pass type: legally married spouses and unmarried children under 21 get a Dependant's Pass, while common-law spouses, stepchildren under 21, handicapped children 21+, and parents get a Long-Term Visit Pass. Spouses and common-law spouses on DP/LTVP may apply for a Letter of Consent (LOC) to work. Married or over-21 children are ineligible and must obtain their own work pass. Recommends applying for family passes after ONE Pass approval, noting ~4 weeks processing time and risk of losing fees if the ONE Pass is rejected.
+- **title**: Family passes for ONE Pass holders – eligibility & timing
+- **short**: Defines which family members of Overseas Networks & Expertise (ONE) Pass holders qualify for Dependant's Pass or Long-Term Visit Pass, and when to apply.
+- **long**: This folder specifies the eligible family members of ONE Pass holders and which pass type each receives. Legally married spouses and unmarried children under 21 (including legally adopted) qualify for a Dependant's Pass; common-law spouses, stepchildren under 21, handicapped unmarried children 21+, and parents qualify for a Long-Term Visit Pass. It notes that spouses and common-law spouses on these passes may apply for a Letter of Consent to work. It also advises on application timing: family pass applications take 4 weeks, should be submitted after the ONE Pass is approved, and fees may be lost if the ONE Pass is rejected.
 - **tokens**: 659
 
 #### `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.dependants-pass-for-overseas-networks-expertise-pass`
@@ -99,9 +123,9 @@ Overview of Singapore's ONE Pass for top talent: eligibility (S$30,000/month sal
 - **depth**: 2
 - **parent**: `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families`
 - **kind**: leaf
-- **title**: Dependant's Pass for Overseas Networks & Expertise Pass
-- **short**: Dependant's Pass (DP) for ONE Pass holders' families, and rules for DP holders working in Singapore via LOC or work pass.
-- **long**: Covers the Dependant's Pass available to spouses and unmarried children of Overseas Networks & Expertise Pass (ONE Pass) holders to join them in Singapore. Details how spouses can work or operate a business using a free Letter of Consent (LOC), while non-spouse dependants need a separate work pass. Specifies application requirements (DP must have ≥3 months validity), processing time (~4 weeks), LOC duration (up to DP expiry), and rules when DP holders obtain an EP/S Pass (must cancel DP) versus a Work Permit (retain both, exempt from medical exam, security bond, and pregnancy restrictions).
+- **title**: Dependant's Pass & Work Rights for ONE Pass Dependants
+- **short**: DP eligibility for ONE Pass holders' families and how DP holders (spouses/dependants) can work in Singapore via LOC or work pass.
+- **long**: Covers the Dependant's Pass (DP) issued to spouses and unmarried children of Overseas Networks & Expertise (ONE) Pass holders, and the rules for DP holders who wish to work or operate a business in Singapore. Spouses may work under a free Letter of Consent (LOC) with application steps, processing time, and validity details. Non-spouse dependants need a separate work pass. Defines what happens when a DP holder obtains an EP, S Pass, or Work Permit — including the requirement to cancel the DP before EP/S Pass issuance, and exemptions from certain Work Permit conditions (medical exams, security bond, pregnancy restrictions, medical insurance if already covered). Also notes that unpaid volunteer work for charitable purposes does not require a work pass.
 - **tokens**: 887
 
 #### `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.long-term-visit-pass-for-overseas-networks-expertise-pass`
@@ -109,9 +133,9 @@ Overview of Singapore's ONE Pass for top talent: eligibility (S$30,000/month sal
 - **depth**: 2
 - **parent**: `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families`
 - **kind**: mixed
-- **title**: LTVP for Overseas Networks Expertise Pass Holders
-- **short**: Long-Term Visit Pass allowing family members of ONE Pass holders (common-law spouse, step-children, handicapped children, parents) to stay in Singapore.
-- **long**: This folder introduces the Long-Term Visit Pass (LTVP) specifically for dependants of Overseas Networks & Expertise (ONE) Pass holders. It defines the eligible family members—common-law spouse, step-children, handicapped children, and parents—who may use this pass to join the ONE Pass holder in Singapore. The folder serves as an overview and entry point for learning about the pass and how to apply.
+- **title**: Long-Term Visit Pass for ONE Pass Holder Family Members
+- **short**: Overview of the Long-Term Visit Pass allowing common-law spouses, step-children, handicapped children, and parents of ONE Pass holders to stay in Singapore.
+- **long**: This folder introduces the Long-Term Visit Pass (LTVP) available to eligible family members of Overseas Networks & Expertise (ONE) Pass holders. It identifies who qualifies — common-law spouses, step-children, handicapped children, and parents — and indicates that information on the pass itself and how to apply is provided here. It serves as the entry point for understanding LTVP eligibility and application in the context of the ONE Pass family passes framework.
 - **tokens**: 142
 
 #### `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.long-term-visit-pass-for-overseas-networks-expertise-pass.working-in-singapore`
@@ -119,9 +143,9 @@ Overview of Singapore's ONE Pass for top talent: eligibility (S$30,000/month sal
 - **depth**: 3
 - **parent**: `www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.long-term-visit-pass-for-overseas-networks-expertise-pass`
 - **kind**: leaf
-- **title**: LOC for Common-Law Spouses of ONE Pass Holders
-- **short**: Letter of Consent application process and form details for common-law spouses of Overseas Networks & Expertise Pass holders on LTVP.
-- **long**: Covers how Long-Term Visit Pass (LTVP) holders who are common-law spouses of ONE Pass holders can work in Singapore via a Letter of Consent (LOC). Details the application steps (download form, submit online), the full LOC application form fields (employer details, applicant personal/employment info, salary, qualifications, vetting agencies, declarations), required supporting documents, and the ~8-week processing time. Non-common-law-spouse LTVP holders must instead obtain a standard work pass (EP, S Pass, or Work Permit).
+- **title**: Letter of Consent for LTVP Common-Law Spouses of ONE Pass Holders
+- **short**: How LTVP holders who are common-law spouses of ONE Pass holders apply for a Letter of Consent to work in Singapore, including the full application form.
+- **long**: Covers the process for Long-Term Visit Pass (LTVP) holders who are common-law spouses of Overseas Networks & Expertise (ONE) Pass holders to obtain a Letter of Consent (LOC) to work in Singapore. Provides the step-by-step application procedure (download form, submit online with supporting documents) and includes the complete LOC (Common-Law Spouse) application form detailing employer company information, applicant personal and employment details, salary declaration, vetting-agency support requirements for regulated occupations, declarations by applicant and employer, and the list of required supporting documents. Notes that LTVP holders who are not common-law spouses must instead obtain a standard work pass (Employment Pass, S Pass, or Work Permit) through a prospective employer.
 - **tokens**: 5632
 
 ## Content
@@ -224,7 +248,7 @@ We assess Overseas Networks & Expertise Pass candidates on a case-by-case basis.
 
 You will be applying based on:
 
-- Earned a fixed monthly salary of at least S$30,000, or its equivalent in foreign currency, for the 12 consecutive months leading up to the date of application.
+- Earned a [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) of at least S$30,000, or its equivalent in foreign currency, for the 12 consecutive months leading up to the date of application.
 - Worked for an established company overseas (if applicable) for 12 consecutive months leading up to the date of application.
     
 
@@ -237,7 +261,7 @@ Combined amounts from the entire global office can also be considered, and will 
 
  
  
-Will earn a fixed monthly salary of at least S$30,000 under an established company that is based in Singapore.
+Will earn a [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) of at least S$30,000 under an established company that is based in Singapore.
 
 For a company to be considered established, it must have at least one of the following: 
 
@@ -261,7 +285,7 @@ MOM and other agencies such as MCCY, MOE, NRF and A*STAR will holistically revie
 Learn more about the [documents required for outstanding achievements](https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/documents-required).
 
  
-If you drew salaries from more than one employer in the 12 consecutive months leading up to the date of application, your qualifying fixed monthly salary of at least S$30,000 should come from one employer only. 
+If you drew salaries from more than one employer in the 12 consecutive months leading up to the date of application, your qualifying [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) of at least S$30,000 should come from one employer only. 
 
 Other sources of income may be considered on a case-by-case basis.
 
@@ -328,7 +352,7 @@ Candidates applying under the academia and research track should also include:
 - **A CV, which lists significant publications** , patents and technology disclosures achieved in the past 5 years.
 - **A recommendation letter or endorsement letter** , or a document for a potential position by a local host institution. Examples of local host institutions include[Autonomous Universities](https://www.moe.gov.sg/post-secondary/overview/autonomous-universities) or[A*STAR](https://www.a-star.edu.sg/) .
 
-Find out how the fixed monthly salary is defined.
+Find out how the [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) is defined.
 
 <!-- source: appeal-against-a-rejected-application.md -->
 # Appeal against a rejected Overseas Networks & Expertise Pass application

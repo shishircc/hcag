@@ -7,16 +7,18 @@ descendants: 0
 id: www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.dependants-pass-for-overseas-networks-expertise-pass
 image_urls: {}
 kind: leaf
-long_description: Covers the Dependant's Pass available to spouses and unmarried children
-  of Overseas Networks & Expertise Pass (ONE Pass) holders to join them in Singapore.
-  Details how spouses can work or operate a business using a free Letter of Consent
-  (LOC), while non-spouse dependants need a separate work pass. Specifies application
-  requirements (DP must have ≥3 months validity), processing time (~4 weeks), LOC
-  duration (up to DP expiry), and rules when DP holders obtain an EP/S Pass (must
-  cancel DP) versus a Work Permit (retain both, exempt from medical exam, security
-  bond, and pregnancy restrictions).
-short_description: Dependant's Pass (DP) for ONE Pass holders' families, and rules
-  for DP holders working in Singapore via LOC or work pass.
+long_description: Covers the Dependant's Pass (DP) issued to spouses and unmarried
+  children of Overseas Networks & Expertise (ONE) Pass holders, and the rules for
+  DP holders who wish to work or operate a business in Singapore. Spouses may work
+  under a free Letter of Consent (LOC) with application steps, processing time, and
+  validity details. Non-spouse dependants need a separate work pass. Defines what
+  happens when a DP holder obtains an EP, S Pass, or Work Permit — including the requirement
+  to cancel the DP before EP/S Pass issuance, and exemptions from certain Work Permit
+  conditions (medical exams, security bond, pregnancy restrictions, medical insurance
+  if already covered). Also notes that unpaid volunteer work for charitable purposes
+  does not require a work pass.
+short_description: DP eligibility for ONE Pass holders' families and how DP holders
+  (spouses/dependants) can work in Singapore via LOC or work pass.
 source_files:
 - index.md
 - working-in-singapore.md
@@ -24,13 +26,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/dependants-pass-for-overseas-networks-expertise-pass
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/dependants-pass-for-overseas-networks-expertise-pass/working-in-singapore
 subtree_depth: 0
-title: Dependant's Pass for Overseas Networks & Expertise Pass
+title: Dependant's Pass & Work Rights for ONE Pass Dependants
 token_size_estimate: 887
 ---
 
-# Dependant's Pass for Overseas Networks & Expertise Pass
+# Dependant's Pass & Work Rights for ONE Pass Dependants
 
-Dependant's Pass (DP) for ONE Pass holders' families, and rules for DP holders working in Singapore via LOC or work pass.
+DP eligibility for ONE Pass holders' families and how DP holders (spouses/dependants) can work in Singapore via LOC or work pass.
 
 ## Content
 

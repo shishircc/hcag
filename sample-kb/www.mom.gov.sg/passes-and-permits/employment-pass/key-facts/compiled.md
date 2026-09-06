@@ -7,19 +7,19 @@ descendants: 0
 id: www.mom.gov.sg.passes-and-permits.employment-pass.key-facts
 image_urls: {}
 kind: leaf
-long_description: This folder provides a consolidated overview of the Singapore Employment
-  Pass (EP). It states qualifying salary starts from $5,600/month (top one-third of
-  local PMET salaries), rising with age to $10,700 for mid-40s, with higher thresholds
-  for financial services. It covers who can apply (employer or appointed agent; overseas
-  companies need a local sponsor), pass duration (up to 5 years for experienced tech
-  professionals with skills in shortage), renewability, family pass availability,
-  no levy/quota requirement, and a step-by-step pass map (before applying, before
-  arrival, upon arrival, ongoing obligations). It also includes the Employment of
-  Foreign Manpower (Work Passes) Regulations 2012 (S 569/2012), which define work
-  pass categories, application requirements, in-principle approval conditions, and
-  statutory conditions for EP holders and employers under the Sixth Schedule.
-short_description: 'Overview of Singapore Employment Pass: eligibility, qualifying
-  salary thresholds, application process, pass features, and governing regulations.'
+long_description: This folder provides a high-level factual summary of the Singapore
+  Employment Pass (EP). It states who the pass is for (foreign professionals, managers,
+  executives), who can apply (employer or appointed agent), the qualifying fixed monthly
+  salary range (from $5,600, increasing with age, higher for financial services),
+  pass duration, renewability, that no foreign worker levy or quota applies, and that
+  family passes may be available. It includes a step-by-step pass map outlining what
+  to do before applying, before arrival, upon arrival, and on an ongoing basis (notify
+  MOM of changes, renew, replace, or cancel). It also reproduces the Employment of
+  Foreign Manpower (Work Passes) Regulations 2012, which formally establish the categories
+  of work passes (including the EP) and set out application requirements, conditions,
+  and schedules governing employer and employee obligations for each pass type.
+short_description: 'Quick-reference overview of Singapore''s Employment Pass: who
+  it is for, qualifying salary, duration, application process map, and pass features.'
 source_files:
 - index.md
 - wpspassconditions.md
@@ -27,13 +27,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts
 - https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/wpspassconditions.pdf
 subtree_depth: 0
-title: Employment Pass (EP) Key Facts & Overview
+title: Employment Pass (EP) overview and key facts
 token_size_estimate: 36533
 ---
 
-# Employment Pass (EP) Key Facts & Overview
+# Employment Pass (EP) overview and key facts
 
-Overview of Singapore Employment Pass: eligibility, qualifying salary thresholds, application process, pass features, and governing regulations.
+Quick-reference overview of Singapore's Employment Pass: who it is for, qualifying salary, duration, application process map, and pass features.
 
 ## Content
 

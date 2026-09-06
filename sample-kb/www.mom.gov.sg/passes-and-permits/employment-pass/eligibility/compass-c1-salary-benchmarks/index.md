@@ -2,7 +2,7 @@
 
     To earn points under the
 
-[C1. Salary criteria](https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility#c1-salary), your candidate’sfixed monthly salaryneeds to meet or exceed the 65th percentile of local PMET salaries in your sector.
+[C1. Salary criteria](https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility#c1-salary), your candidate’s[fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary)needs to meet or exceed the 65th percentile of local PMET salaries in your sector.
 ## How the benchmarks are derived
 
 The benchmarks are derived from MOM’s Manpower Research and Statistics Department’s (MRSD) annual [Comprehensive Labour Force Survey](https://stats.mom.gov.sg/Pages/OurSurveys.aspx#LabourForceSurvey).
@@ -16,7 +16,7 @@ The benchmarks are updated once a year, to reflect the latest market conditions.
 |  | Aug 2025 | [C1 salary benchmarks by sectors](https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks.pdf) | 
 |  | Aug 2026 | [C1 salary benchmarks by sectors](https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks-upcoming.pdf) | 
 
-fixed monthly salary for candidates increases progressively with age (increases from age 23 to age 45). You can also
+[fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary)for candidates increases progressively with age (increases from age 23 to age 45). You can also
 
 [check your organisation's sector classification online](https://www.mom.gov.sg/faq/compass/how-do-i-check-and-update-my-organisation-sector-classification).
 

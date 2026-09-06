@@ -7,15 +7,17 @@ descendants: 0
 id: www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.notify-mom
 image_urls: {}
 kind: leaf
-long_description: Covers obligations of Overseas Networks & Expertise Pass (ONE Pass)
-  holders to notify MOM of updates. Includes the annual notification exercise (employment
-  details, income, professional activities), rules for updating residential address
-  or mobile number within 2 weeks, procedures for changing passport or other personal
-  particulars (with processing times of 4 working days or 7 working days), and the
-  requirement to obtain MOM approval before working in restricted occupations (media
-  and religion-related roles). Provides the full list of 161 restricted occupations.
-short_description: Annual notification requirements, personal info change procedures,
-  and restricted occupation rules for Overseas Networks & Expertise Pass holders.
+long_description: Covers the obligations of ONE Pass holders to notify MOM, including
+  the annual notification exercise (employment details, income, professional activities),
+  deadlines and procedures for updating residential address, mobile number, passport
+  details, and other personal particulars (name, nationality, marital status, etc.).
+  Defines restricted occupations for ONE Pass holders — media and religion-related
+  roles requiring prior MOM approval — and provides the full enumerated list of 161
+  restricted occupation titles. Specifies processing timelines such as 2 weeks for
+  address/mobile updates, 7 working days for other particulars, and 3 weeks for restricted
+  occupation requests.
+short_description: Annual notification, updating personal details, and restricted
+  occupation rules for Overseas Networks & Expertise (ONE) Pass holders in Singapore.
 source_files:
 - index.md
 - restricted-occupations-for-ove.md
@@ -23,13 +25,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/notify-mom
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/ove/restricted-occupations-for-ove.pdf
 subtree_depth: 0
-title: 'Notify MOM: Overseas Networks & Expertise Pass Updates'
+title: 'ONE Pass: Notify MOM of Updates & Restricted Occupations'
 token_size_estimate: 2355
 ---
 
-# Notify MOM: Overseas Networks & Expertise Pass Updates
+# ONE Pass: Notify MOM of Updates & Restricted Occupations
 
-Annual notification requirements, personal info change procedures, and restricted occupation rules for Overseas Networks & Expertise Pass holders.
+Annual notification, updating personal details, and restricted occupation rules for Overseas Networks & Expertise (ONE) Pass holders in Singapore.
 
 ## Content
 

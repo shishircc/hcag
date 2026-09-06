@@ -7,21 +7,19 @@ descendants: 0
 id: www.mom.gov.sg.passes-and-permits.employment-pass.upcoming-changes-to-employment-pass-eligibility.complementarity-assessment-framework-compass
 image_urls: {}
 kind: leaf
-long_description: This folder defines Singapore's Shortage Occupation List (SOL) used
-  for the COMPASS C5 Skills Bonus for Employment Pass applications. It explains what
-  the SOL is, how it is created by MOM and MTI based on strategic importance and labour
-  shortage, and that it is updated annually with a comprehensive review every 3 years.
-  The folder enumerates specific eligible occupations across sectors—including agritech
-  (alternative protein food application scientist, novel food biotechnologist), financial
-  services (investment advisor, relationship manager, wealth planner for ultra-high/high
-  net worth clients), carbon services (carbon programme manager, carbon trader, carbon
-  auditor), and healthcare (clinical psychologist, diagnostic radiographer, medical
-  social worker, occupational therapist)—detailing each role's job duties, required
-  qualifications or work experience, and supporting agency verification requirements.
-  It is relevant when determining whether an EP candidate's role qualifies for C5
-  bonus points or a 5-year duration EP.
-short_description: Lists all SOL occupations eligible for COMPASS C5 Skills Bonus
-  points or 5-year EP, with job duties, additional requirements, and application guidance.
+long_description: This folder contains the complete Singapore Shortage Occupation
+  List (SOL) used for the COMPASS C5 Skills Bonus and 5-year duration EP eligibility.
+  It defines what the SOL is, how occupations are selected (strategic importance,
+  labour shortage, local pipeline commitment), and that the list is updated annually
+  with a comprehensive review every three years. The bulk of the content enumerates
+  each shortage occupation organized by sector—including agritech, financial services
+  (ultra-high/high net worth advisory), carbon services, healthcare, and infocomm
+  technology—specifying eligible job titles, required job duties, additional qualification
+  or experience requirements, and the supporting government agency for each role.
+  It also details application procedures such as matching the job title to the MyCareersFuture
+  advertisement and uploading required documentation.
+short_description: 'Full Shortage Occupation List for COMPASS C5 Skills Bonus: eligible
+  job titles, job duties, additional requirements, and qualifying criteria by sector.'
 source_files:
 - compass-shortage-occupation-list.md
 source_urls:
@@ -33,7 +31,7 @@ token_size_estimate: 7536
 
 # COMPASS C5 Skills Bonus – Shortage Occupation List (SOL)
 
-Lists all SOL occupations eligible for COMPASS C5 Skills Bonus points or 5-year EP, with job duties, additional requirements, and application guidance.
+Full Shortage Occupation List for COMPASS C5 Skills Bonus: eligible job titles, job duties, additional requirements, and qualifying criteria by sector.
 
 ## Content
 

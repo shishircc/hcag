@@ -9,18 +9,18 @@ image_urls:
   list_of_standard_occupation_a-i-Image10422.jpeg: https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_a-i.pdf
   list_of_standard_occupation_j-r-Image6761.jpeg: https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_j-r.pdf
 kind: leaf
-long_description: This folder details every scenario requiring notification to Singapore's
-  Ministry of Manpower for Employment Pass holders and their employers. It covers
-  salary changes (lowering requires 1-month advance notice; raising can wait until
-  renewal unless applying for dependant privileges), company name/address/turnover/business
-  entity changes, pass holder transfers to related companies, occupation updates,
-  missing pass holders (police report and cancellation within 1 week), residential
-  address or mobile number changes (within 5 days), personal particulars updates,
-  post-approval changes to qualifications or work location, and providing references
-  for ex-pass holders. It also references a standard occupation list used in EP eService
-  for occupation selection.
-short_description: When and how EP holders/employers must notify MOM of changes to
-  salary, company details, occupation, address, personal info, and more.
+long_description: This folder details the specific notification obligations for Employment
+  Pass holders and their employers when changes occur. It covers procedures and timelines
+  for reporting salary changes (lowering requires 1-month advance notice; raising
+  can wait until renewal unless applying for dependant privileges), company name/financial
+  info/address/business entity changes, occupation updates, pass holder residential
+  address or mobile number changes (within 5 days), personal particulars updates (passport,
+  name, nationality, etc.), post-approval changes to qualifications or work location,
+  missing pass holder reporting (within 1 week), transfer of pass holders to related
+  companies, and providing references for ex-pass holders. It also references a standard
+  occupation list used when updating occupation in EP eService.
+short_description: When and how EP holders and employers must notify MOM of changes
+  to salary, company details, occupation, address, personal info, and more.
 source_files:
 - index.md
 - list_of_standard_occupation_a-i.md
@@ -32,13 +32,13 @@ source_urls:
 - https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_j-r.pdf
 - https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_s-z.pdf
 subtree_depth: 0
-title: 'Notify MOM of Updates: Employment Pass'
+title: Notify MOM of updates for Employment Pass holders
 token_size_estimate: 77519
 ---
 
-# Notify MOM of Updates: Employment Pass
+# Notify MOM of updates for Employment Pass holders
 
-When and how EP holders/employers must notify MOM of changes to salary, company details, occupation, address, personal info, and more.
+When and how EP holders and employers must notify MOM of changes to salary, company details, occupation, address, personal info, and more.
 
 ## Content
 

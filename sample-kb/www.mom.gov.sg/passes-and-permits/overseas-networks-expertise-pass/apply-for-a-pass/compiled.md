@@ -9,20 +9,20 @@ image_urls:
   declaration-form-for-ove-Image226.jpeg: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/ove/declaration-form-for-ove.pdf
   declaration-form-for-ove-Image228.png: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/ove/declaration-form-for-ove.pdf
 kind: leaf
-long_description: 'Covers the full application workflow for the Overseas Networks
-  & Expertise Pass (ONE Pass): submitting the application (by candidate, employer,
-  or appointed EA), preparing for arrival in Singapore, getting the pass issued (via
-  EP eService or EPSC), registering fingerprints/photo, setting up a digital work
-  pass, and receiving the card. Key details include a $105 application fee, $225 issuance
-  fee, 4-week processing time, 6-month IPA validity, and the rule that only 1 work
-  pass application per candidate may be active at a time. Also contains the official
-  declaration form signed at issuance, covering health declarations, consent for information
-  verification (including income tax records), undertakings to report professional
-  activities annually, notify address changes within 14 days, and obtain prior approval
-  for restricted occupations.'
-short_description: Step-by-step application process for Singapore's ONE Pass, including
-  fees ($105 application, $225 issuance), timelines (4 weeks), IPA letter, issuance,
-  and required declaration form.
+long_description: Covers the full end-to-end procedure for applying for Singapore's
+  Overseas Networks & Expertise Pass (ONE Pass). Details who may apply (candidates,
+  employers, appointed employment agents), the application fee ($105) and issuance
+  fee ($225), typical processing time (4 weeks), and the six sequential steps from
+  submitting the online application through receiving the physical card. Includes
+  guidance on checking application status, the IPA letter and its 6-month validity,
+  pass issuance via EP eService or EPSC counter, and payment methods. Also contains
+  the full text of the ONE Pass declaration form that applicants must sign at issuance,
+  covering health declarations, consent for information verification (including income
+  verification by the Comptroller of Income Tax), undertakings on reporting professional
+  activities annually, notifying MOM of address changes within 14 days, and obtaining
+  prior approval before working in restricted occupations.
+short_description: 'Step-by-step application process for the ONE Pass: submission,
+  arrival prep, pass issuance, fees, timelines, and the required declaration form.'
 source_files:
 - index.md
 - declaration-form-for-ove.md
@@ -30,13 +30,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/apply-for-a-pass
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/ove/declaration-form-for-ove.pdf
 subtree_depth: 0
-title: Apply for an Overseas Networks & Expertise Pass (ONE Pass)
+title: How to Apply for an Overseas Networks & Expertise Pass (ONE Pass)
 token_size_estimate: 5474
 ---
 
-# Apply for an Overseas Networks & Expertise Pass (ONE Pass)
+# How to Apply for an Overseas Networks & Expertise Pass (ONE Pass)
 
-Step-by-step application process for Singapore's ONE Pass, including fees ($105 application, $225 issuance), timelines (4 weeks), IPA letter, issuance, and required declaration form.
+Step-by-step application process for the ONE Pass: submission, arrival prep, pass issuance, fees, timelines, and the required declaration form.
 
 ## Content
 

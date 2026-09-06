@@ -7,18 +7,19 @@ descendants: 0
 id: www.mom.gov.sg.passes-and-permits.employment-pass.taking-up-secondary-directorship
 image_urls: {}
 kind: leaf
-long_description: 'This folder covers the requirements for eligible companies to appoint
-  Employment Pass (EP) holders from another company to their Board of Directors as
-  a secondary directorship. It defines that directorship duties under the Companies
-  Act constitute work requiring a Letter of Consent (LOC) from MOM. Key conditions
-  include: the secondary employer must be related by corporate shareholding (direct
-  or indirect) to the EP holder''s primary employer as reflected in ACRA records,
-  the directorship must relate to the holder''s primary employment, and the primary
-  employer must have no objections. It also addresses directorships in unrelated companies
-  (requiring sector agency support), LOC validity tied to EP expiry, and the application
-  process timeline of up to 5 weeks.'
-short_description: Rules and LOC application process for appointing Employment Pass
-  holders from related companies to a Board of Directors in Singapore.
+long_description: 'Covers the requirements and process for a company to appoint an
+  Employment Pass (EP) holder employed by another company to its Board of Directors
+  as a secondary directorship. Defines the eligibility criteria MOM uses to grant
+  a Letter of Consent (LOC): the secondary employer must be related by corporate shareholding
+  (direct or indirect) to the EP holder''s primary employer, and the directorship
+  must relate to the holder''s primary employment. Illustrates indirect shareholding
+  scenarios (holding companies, subsidiaries). Also addresses directorships in unrelated
+  companies, which require support from a relevant sector government agency. Details
+  employer obligations including obtaining the primary employer''s consent, applying
+  for the LOC, and registering with ACRA, along with application timeline, required
+  documents, and validity/renewal rules.'
+short_description: Process and eligibility for appointing an EP holder from a related
+  company to another company's Board of Directors via Letter of Consent (LOC).
 source_files:
 - index.md
 - factsheet-ep-holders-secondary-directorship.md
@@ -26,13 +27,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/employment-pass/taking-up-secondary-directorship
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/factsheet-ep-holders-secondary-directorship.pdf
 subtree_depth: 0
-title: Taking Up Secondary Directorship for EP Holders
+title: Secondary directorship for Employment Pass holders
 token_size_estimate: 912
 ---
 
-# Taking Up Secondary Directorship for EP Holders
+# Secondary directorship for Employment Pass holders
 
-Rules and LOC application process for appointing Employment Pass holders from related companies to a Board of Directors in Singapore.
+Process and eligibility for appointing an EP holder from a related company to another company's Board of Directors via Letter of Consent (LOC).
 
 ## Content
 

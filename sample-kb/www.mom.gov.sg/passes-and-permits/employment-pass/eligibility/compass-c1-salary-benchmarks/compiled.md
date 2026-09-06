@@ -8,20 +8,18 @@ id: www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c1-sal
 image_urls:
   c1-salary-benchmarks-Image4713.jpeg: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks.pdf
 kind: leaf
-long_description: 'This folder contains the COMPASS C1 salary criteria details: a
-  candidate''s fixed monthly salary must meet or exceed the 65th percentile of local
-  PMET salaries in the employer''s sector to earn 10 points, or the 90th percentile
-  for 20 points. Benchmarks are derived from MOM''s annual Comprehensive Labour Force
-  Survey, updated yearly, and increase progressively with candidate age (from ≤23
-  to ≥45). Full benchmark tables are provided for sectors including Accommodation,
-  Administrative & Support, Air & Sea Transport, Arts/Entertainment/Recreation, Banking,
-  Construction, Education, F&B, Fund Management, Health & Social Services, ICT, Insurance,
-  Land Transport & Logistics, Manufacturing, Media, Other Community Services, Professional
-  Services, and Public Administration. Key rules: candidates below the EP qualifying
-  salary are ineligible regardless of C1 points; those earning ≥$22,500 fixed monthly
-  salary are exempt from COMPASS entirely.'
-short_description: Sector-specific salary benchmarks (65th & 90th percentile) by age
-  for COMPASS C1 scoring, with rules on EP qualifying salary and exemptions.
+long_description: Contains the complete C1 salary benchmark tables released by MOM
+  (Aug 2025 and Aug 2026 editions), listing the required fixed monthly salary for
+  10 points (65th percentile) and 20 points (90th percentile) for every age band (≤23
+  through ≥45) across all COMPASS sectors—including Accommodation, Administrative
+  & Support, Air & Sea Transport, Arts/Entertainment/Recreation, Banking, Construction,
+  Education, F&B, Fund Management, Health & Social Services, ICT, Insurance, Land
+  Transport & Logistics, Manufacturing, Media, Other Community/Social/Personal Services,
+  Professional Services, Public Administration & Defence, and others. Also explains
+  that benchmarks are derived from MOM's Comprehensive Labour Force Survey and notes
+  that salary requirements increase progressively with candidate age from 23 to 45.
+short_description: Defines the exact fixed-monthly-salary thresholds (65th and 90th
+  percentile) by sector and age for scoring 10 or 20 COMPASS C1 points.
 source_files:
 - index.md
 - c1-salary-benchmarks.md
@@ -31,13 +29,13 @@ source_urls:
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks.pdf
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks-upcoming.pdf
 subtree_depth: 0
-title: COMPASS C1 Salary Benchmarks by Sector
+title: COMPASS C1 salary benchmarks by sector and age
 token_size_estimate: 23759
 ---
 
-# COMPASS C1 Salary Benchmarks by Sector
+# COMPASS C1 salary benchmarks by sector and age
 
-Sector-specific salary benchmarks (65th & 90th percentile) by age for COMPASS C1 scoring, with rules on EP qualifying salary and exemptions.
+Defines the exact fixed-monthly-salary thresholds (65th and 90th percentile) by sector and age for scoring 10 or 20 COMPASS C1 points.
 
 ## Content
 
@@ -46,7 +44,7 @@ Sector-specific salary benchmarks (65th & 90th percentile) by age for COMPASS C1
 
     To earn points under the
 
-[C1. Salary criteria](https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility#c1-salary), your candidate’sfixed monthly salaryneeds to meet or exceed the 65th percentile of local PMET salaries in your sector.
+[C1. Salary criteria](https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility#c1-salary), your candidate’s[fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary)needs to meet or exceed the 65th percentile of local PMET salaries in your sector.
 ## How the benchmarks are derived
 
 The benchmarks are derived from MOM’s Manpower Research and Statistics Department’s (MRSD) annual [Comprehensive Labour Force Survey](https://stats.mom.gov.sg/Pages/OurSurveys.aspx#LabourForceSurvey).
@@ -60,7 +58,7 @@ The benchmarks are updated once a year, to reflect the latest market conditions.
 |  | Aug 2025 | [C1 salary benchmarks by sectors](https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks.pdf) | 
 |  | Aug 2026 | [C1 salary benchmarks by sectors](https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks-upcoming.pdf) | 
 
-fixed monthly salaryfor candidates increases progressively with age (increases from age 23 to age 45). You can also
+[fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary)for candidates increases progressively with age (increases from age 23 to age 45). You can also
 
 [check your organisation's sector classification online](https://www.mom.gov.sg/faq/compass/how-do-i-check-and-update-my-organisation-sector-classification).
 

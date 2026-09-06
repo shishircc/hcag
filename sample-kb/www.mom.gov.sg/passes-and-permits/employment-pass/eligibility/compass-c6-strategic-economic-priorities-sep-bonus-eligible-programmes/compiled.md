@@ -7,15 +7,16 @@ descendants: 0
 id: www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes
 image_urls: {}
 kind: leaf
-long_description: 'This folder enumerates the 15 eligible programmes/categories that
-  qualify a firm for the COMPASS C6 Strategic Economic Priorities (SEP) bonus. Participation
-  in at least one programme is required. Programmes span six supporting agencies:
-  EDB (e.g., DEI, Pioneer Certificate, RISC, large manufacturers, GTP), EnterpriseSG
-  (Scale-Up SG, SGEP, qualifying high-growth startups), IMDA (Accreditation Digital,
-  Spark Programme), MPA (Maritime Sector Incentive awards, MCF-BD), STB (selected
-  BIF grantees, STA participants), and NTUC (progressive firms working with Labour
-  Movement via CTCs or Government-supported programmes). Contact emails for each agency
-  are provided.'
+long_description: 'Defines the complete set of eligible programmes that qualify an
+  organisation for the COMPASS C6 Strategic Economic Priorities (SEP) bonus. Covers
+  15 programmes across six supporting agencies: EDB (e.g. DEI, Pioneer Certificate,
+  RISC, large manufacturers, Global Trader Programme), EnterpriseSG (Scale-Up SG,
+  SGEP, qualifying high-growth startups), IMDA (Accreditation Digital, Spark Programme),
+  MPA (Maritime Sector Incentive awards, Maritime Cluster Fund), STB (selected BIF
+  grantees, Singapore Tourism Accelerator participants), and NTUC (progressive firms
+  working with the Labour Movement via Company Training Committees or Government-supported
+  programmes). Provides agency contact emails for queries. Relevant when determining
+  whether a firm''s programme participation satisfies the SEP bonus requirement.'
 short_description: Lists the specific programmes and supporting agencies whose participation
   qualifies an organisation for the COMPASS C6 Strategic Economic Priorities bonus.
 source_files:
@@ -25,11 +26,11 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes
 - https://www.mom.gov.sg/-/media/mom/documents/press-releases/2023/annex-c---eligible-programmes-for-sep-bonus.pdf
 subtree_depth: 0
-title: COMPASS C6 SEP Bonus – Eligible Programmes
+title: COMPASS C6 SEP Bonus – Eligible Programmes List
 token_size_estimate: 1063
 ---
 
-# COMPASS C6 SEP Bonus – Eligible Programmes
+# COMPASS C6 SEP Bonus – Eligible Programmes List
 
 Lists the specific programmes and supporting agencies whose participation qualifies an organisation for the COMPASS C6 Strategic Economic Priorities bonus.
 
