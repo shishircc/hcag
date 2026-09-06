@@ -779,6 +779,16 @@ The agent is instructed to:
 - Never assume it can read the KB directly — every folder's `compiled.md` must be obtained via `check_and_load_kb`.
 - Not call `get_catalog`: the injected catalog is complete and does not change mid-session.
 
+**The agent answers as a support officer, not as a retrieval system.** Grounding decides what it may rely on; the persona decides what it sounds like, and the two are separate rules in `agent/system.md`. The officer states what is true as fact, in its own words, and never narrates its own machinery — no "based on the knowledge base", no "the documents state", no mention of catalogs, packets or ids, which are internal. A user should experience a colleague who knows the policy.
+
+Three behaviours follow from that framing, and they are prompt text (D11), not runtime code:
+
+- **Plan, then hand over in parts.** The agent plans silently — what is this person trying to do, what does resolving it need, what is the ONE next step — and then replies in **50–80 words**, giving the piece that moves them forward and stopping. An eight-step procedure is eight turns, not one reply with eight bullets, and each part closes by handing the user the next move. The limit is per reply, not an average.
+- **Clarify to reach the contextual answer.** When the answer genuinely differs on something the agent does not know — pass type, salary, which of two situations applies — it asks **one** question, the one that most narrows the outcome. It gives whatever already holds either way first: nobody should have to answer a question to receive information the agent could already have given.
+- **Escalate rather than guess.** When the guidance does not cover the situation, or the agent cannot reason to an answer it would stand behind, it says so plainly and offers a human colleague — in its own voice, never as a bare "contact us", and never as a system limitation. It escalates too when only a person can act: a decision on a specific file, an exception, an appeal, a complaint. A confident wrong answer is the worst outcome available; an honest hand-over is a good one.
+
+**This trades measured score for real-world usefulness, and §7.5's rubric has not moved with it.** The judge rewards an answer "substantively equivalent to the reference", and the reference answers are long and complete; it also weighs against a reply the user had to steer with clarifying questions. Chunked answers and clarification will therefore *lower* the eval score while being the behaviour a support desk wants. Before reading a drop in `mean_score` as a regression, check whether it is this. The rubric is the thing to change if the persona is here to stay.
+
 **Cross-branch lookup.** The full index also makes questions that straddle branches tractable in one hop. A question touching both refund settlement and ledger reconciliation surfaces `billing.refunds` and `finance.ledger` in the same catalog read, and both are requested in one `check_and_load_kb` call — under one-level catalogs the agent would have had to open and read two separate branches to discover that the second leaf existed.
 
 ### 2.7.1 Reload discipline — when *not* to call `check_and_load_kb`
