@@ -224,7 +224,7 @@ We assess Overseas Networks & Expertise Pass candidates on a case-by-case basis.
 
 You will be applying based on:
 
-- Earned a [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) of at least S$30,000, or its equivalent in foreign currency, for the 12 consecutive months leading up to the date of application.
+- Earned a fixed monthly salary of at least S$30,000, or its equivalent in foreign currency, for the 12 consecutive months leading up to the date of application.
 - Worked for an established company overseas (if applicable) for 12 consecutive months leading up to the date of application.
     
 
@@ -237,7 +237,7 @@ Combined amounts from the entire global office can also be considered, and will 
 
  
  
-Will earn a [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) of at least S$30,000 under an established company that is based in Singapore.
+Will earn a fixed monthly salary of at least S$30,000 under an established company that is based in Singapore.
 
 For a company to be considered established, it must have at least one of the following: 
 
@@ -261,7 +261,7 @@ MOM and other agencies such as MCCY, MOE, NRF and A*STAR will holistically revie
 Learn more about the [documents required for outstanding achievements](https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/documents-required).
 
  
-If you drew salaries from more than one employer in the 12 consecutive months leading up to the date of application, your qualifying [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) of at least S$30,000 should come from one employer only. 
+If you drew salaries from more than one employer in the 12 consecutive months leading up to the date of application, your qualifying fixed monthly salary of at least S$30,000 should come from one employer only. 
 
 Other sources of income may be considered on a case-by-case basis.
 
@@ -328,7 +328,7 @@ Candidates applying under the academia and research track should also include:
 - **A CV, which lists significant publications** , patents and technology disclosures achieved in the past 5 years.
 - **A recommendation letter or endorsement letter** , or a document for a potential position by a local host institution. Examples of local host institutions include[Autonomous Universities](https://www.moe.gov.sg/post-secondary/overview/autonomous-universities) or[A*STAR](https://www.a-star.edu.sg/) .
 
-Find out how the [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) is defined.
+Find out how the fixed monthly salary is defined.
 
 <!-- source: appeal-against-a-rejected-application.md -->
 # Appeal against a rejected Overseas Networks & Expertise Pass application

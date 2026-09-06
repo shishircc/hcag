@@ -1,0 +1,985 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>HCAG evalrun — work-pass KB</title>
+<style>
+    :root { --line: #e3e6e9; --ink: #24282c; --muted: #6b737a; --bg: #f6f7f8; --primary: #3554a5; }
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, "Segoe UI", "Source Sans 3", Helvetica, sans-serif;
+           color: var(--ink); background: #fff; margin: 0; padding: 32px; line-height: 1.5; }
+    h1 { margin: 0 0 4px; font-size: 26px; }
+    h2 { margin: 32px 0 12px; font-size: 18px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+    h3 { margin: 24px 0 8px; font-size: 15px; }
+    .sub { color: var(--muted); font-size: 13px; }
+    .summary { display: flex; gap: 24px; flex-wrap: wrap; margin: 20px 0 4px; }
+    .summary .metric { min-width: 100px; }
+    .metric { padding: 10px 14px; background: var(--bg); border: 1px solid var(--line); border-radius: 8px; }
+    .metric-value { font-size: 22px; font-weight: 700; }
+    .metric-label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.06em; }
+    .panels { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 12px; }
+    .panel { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; background: #fff; }
+    .panel-title { font-weight: 700; margin-bottom: 6px; text-transform: capitalize; }
+    .panel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+    .panel .metric { padding: 6px 8px; text-align: center; }
+    .panel .metric-value { font-size: 16px; }
+    .hist-row { display: flex; gap: 6px; align-items: flex-end; height: 80px; padding: 4px 0; border-top: 1px dashed var(--line); }
+    .hist-col { display: flex; flex-direction: column; align-items: center; flex: 1; }
+    .hist-bar { width: 100%; border-radius: 3px 3px 0 0; }
+    .hist-label { font-size: 11px; color: var(--muted); margin-top: 2px; }
+    .hist-count { font-size: 11px; font-weight: 600; }
+    .baseline-table { border-collapse: collapse; width: 100%; font-size: 13px; margin-bottom: 12px; }
+    .baseline-table th, .baseline-table td { border: 1px solid var(--line); padding: 6px 8px; text-align: left; }
+    .baseline-table th { background: var(--bg); }
+    .filters { margin: 12px 0; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+    .chip { background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px;
+            font-size: 12px; cursor: pointer; }
+    .chip.on { background: var(--primary); color: #fff; border-color: transparent; }
+    table.rows { border-collapse: collapse; width: 100%; font-size: 13px; }
+    table.rows th, table.rows td { border-bottom: 1px solid var(--line); padding: 6px 8px; text-align: left; vertical-align: top; }
+    table.rows th { background: var(--bg); position: sticky; top: 0; }
+    .clip { max-width: 320px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .mono { font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+    .score-cell { font-weight: 700; text-align: center; }
+    tr.score-0 .score-cell { color: #c53030; }
+    tr.score-1 .score-cell { color: #dd8f3a; }
+    tr.score-2 .score-cell { color: #4a8f4a; }
+    tr.score-3 .score-cell { color: #2f7d32; }
+    tr.score-none .score-cell { color: var(--muted); }
+    .detail-block { margin: 8px 0; }
+    .detail-block pre { background: var(--bg); padding: 8px 12px; border-radius: 6px; overflow: auto;
+                        white-space: pre-wrap; word-break: break-word; font-size: 12px; }
+    .toggle { background: transparent; border: 0; cursor: pointer; font-size: 14px; color: var(--muted); }
+    .muted { color: var(--muted); }
+    .bar-wrap { display: inline-block; background: var(--bg); border-radius: 3px; overflow: hidden;
+                border: 1px solid var(--line); height: 8px; vertical-align: middle; }
+    .bar-fill { background: var(--primary); height: 100%; }
+    </style>
+</head>
+<body>
+<h1>HCAG evalrun — work-pass KB</h1>
+<div class="sub">Generated 2026-09-06 03:38:44 UTC · backend <code>http://localhost:8000</code>
+· classifier <code>claude-haiku-4-5-20251001</code>
+· judge <code>claude-opus-4-6</code>
+· concurrency 4
+· seed 42</div>
+
+<div class="summary">
+  <div class="metric"><div class="metric-value">16</div><div class="metric-label">rows</div></div>
+  <div class="metric"><div class="metric-value">16</div><div class="metric-label">scored</div></div>
+  <div class="metric"><div class="metric-value">2.5</div><div class="metric-label">mean score</div></div>
+  <div class="metric"><div class="metric-value">93%</div><div class="metric-label">pass rate (≥2)</div></div>
+  <div class="metric"><div class="metric-value">0</div><div class="metric-label">unscored</div></div>
+</div>
+
+
+
+<h2>Per-kind breakdown</h2>
+<div class="panels">
+    <div class="panel">
+      <div class="panel-title">simple</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">6</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">2.667</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">83%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">0</div><div class="metric-label">unscored</div></div>
+      </div>
+      <div class="hist-row"><div class="hist-col"><div class="hist-bar" style="height:2px;background:#c53030"></div><div class="hist-label">0</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:12px;background:#dd8f3a"></div><div class="hist-label">1</div><div class="hist-count">1</div></div><div class="hist-col"><div class="hist-bar" style="height:2px;background:#4a8f4a"></div><div class="hist-label">2</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:60px;background:#2f7d32"></div><div class="hist-label">3</div><div class="hist-count">5</div></div></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">medium</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">5</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">2.6</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">100%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">0</div><div class="metric-label">unscored</div></div>
+      </div>
+      <div class="hist-row"><div class="hist-col"><div class="hist-bar" style="height:2px;background:#c53030"></div><div class="hist-label">0</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:2px;background:#dd8f3a"></div><div class="hist-label">1</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:40px;background:#4a8f4a"></div><div class="hist-label">2</div><div class="hist-count">2</div></div><div class="hist-col"><div class="hist-bar" style="height:60px;background:#2f7d32"></div><div class="hist-label">3</div><div class="hist-count">3</div></div></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">complex</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">3</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">2.333</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">100%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">0</div><div class="metric-label">unscored</div></div>
+      </div>
+      <div class="hist-row"><div class="hist-col"><div class="hist-bar" style="height:2px;background:#c53030"></div><div class="hist-label">0</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:2px;background:#dd8f3a"></div><div class="hist-label">1</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:60px;background:#4a8f4a"></div><div class="hist-label">2</div><div class="hist-count">2</div></div><div class="hist-col"><div class="hist-bar" style="height:30px;background:#2f7d32"></div><div class="hist-label">3</div><div class="hist-count">1</div></div></div>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">hard-1</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">0</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">0.0</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">0%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">0</div><div class="metric-label">unscored</div></div>
+      </div>
+      <span class='muted'>no scored rows</span>
+    </div>
+    
+    <div class="panel">
+      <div class="panel-title">hard-2</div>
+      <div class="panel-grid">
+        <div class="metric"><div class="metric-value">0</div><div class="metric-label">rows</div></div>
+        <div class="metric"><div class="metric-value">0.0</div><div class="metric-label">mean score</div></div>
+        <div class="metric"><div class="metric-value">0%</div><div class="metric-label">pass rate (≥2)</div></div>
+        <div class="metric"><div class="metric-value">0</div><div class="metric-label">unscored</div></div>
+      </div>
+      <span class='muted'>no scored rows</span>
+    </div>
+    </div>
+
+<h2>Overall score distribution</h2>
+<div class="hist-row"><div class="hist-col"><div class="hist-bar" style="height:2px;background:#c53030"></div><div class="hist-label">0</div><div class="hist-count">0</div></div><div class="hist-col"><div class="hist-bar" style="height:7px;background:#dd8f3a"></div><div class="hist-label">1</div><div class="hist-count">1</div></div><div class="hist-col"><div class="hist-bar" style="height:40px;background:#4a8f4a"></div><div class="hist-label">2</div><div class="hist-count">6</div></div><div class="hist-col"><div class="hist-bar" style="height:60px;background:#2f7d32"></div><div class="hist-label">3</div><div class="hist-count">9</div></div></div>
+
+<h2>Rows</h2>
+<div class="filters"><span class="muted">Filter:</span><button class="chip on" data-kind="all">all</button><button class="chip" data-kind="simple">simple</button><button class="chip" data-kind="medium">medium</button><button class="chip" data-kind="complex">complex</button><button class="chip" data-kind="hard-1">hard-1</button><button class="chip" data-kind="hard-2">hard-2</button></div>
+<table class="rows"><thead><tr><th>ID</th><th>Kind</th><th>Score</th><th>Question</th><th>Actual answer</th><th>Remark</th><th></th></tr></thead><tbody><tr class="score-3" data-kind="simple"><td class="mono">q-001</td><td>simple</td><td class="score-cell">3</td><td class="clip">Does COMPASS also apply when an Employment Pass is being renewed?</td><td class="clip">Yes, COMPASS does apply when an Employment Pass is being renewed. 
+
+According to the renewal criteria, the candidate needs to:
+
+- Earn at least the EP qualifying salary
+- Work for the same employer in a managerial, executive, or specialised job
+- **Pass the points-based Complementarity Assessment Framework (COMPASS)**
+
+However, there is an important exemption: **Candidates earning at least S$22,500 fixed monthly salary are exempted from COMPASS** requirements.
+
+It&#x27;s also worth noting that COMPASS applies to EP renewals for passes **expiring from 1 September 2024** onwards. So if your pass expires before that date, COMPASS would not have applied to your renewal.
+
+Can I help you with anything else regarding Employment Pass renewals or COMPASS requirements?</td><td class="clip">The answer correctly states that COMPASS applies to EP renewals, mentions the September 2024 date for passes expiring, and notes the qualifying salary requirement. The additional details about the $22,500 exemption and other renewal criteria are accurate and helpful, not misleading.</td><td><button class="toggle" onclick="toggleRow(0)">▸</button></td></tr><tr id="detail-0" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Yes. COMPASS applies to EP renewals for passes expiring from 1 September 2024 onwards. When renewing an EP, the candidate must pass COMPASS in addition to meeting the EP qualifying salary, unless they are exempted from COMPASS.</pre></div><div class="detail-block"><b>Actual:</b><pre>Yes, COMPASS does apply when an Employment Pass is being renewed. 
+
+According to the renewal criteria, the candidate needs to:
+
+- Earn at least the EP qualifying salary
+- Work for the same employer in a managerial, executive, or specialised job
+- **Pass the points-based Complementarity Assessment Framework (COMPASS)**
+
+However, there is an important exemption: **Candidates earning at least S$22,500 fixed monthly salary are exempted from COMPASS** requirements.
+
+It&#x27;s also worth noting that COMPASS applies to EP renewals for passes **expiring from 1 September 2024** onwards. So if your pass expires before that date, COMPASS would not have applied to your renewal.
+
+Can I help you with anything else regarding Employment Pass renewals or COMPASS requirements?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Does COMPASS also apply when an Employment Pass is being renewed?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Yes, COMPASS does apply when an Employment Pass is being renewed. \n\nAccording to the renewal criteria, the candidate needs to:\n\n- Earn at least the EP qualifying salary\n- Work for the same employer in a managerial, executive, or specialised job\n- **Pass the points-based Complementarity Assessment Framework (COMPASS)**\n\nHowever, there is an important exemption: **Candidates earning at least S$22,500 fixed monthly salary are exempted from COMPASS** requirements.\n\nIt's also worth noting that COMPASS applies to EP renewals for passes **expiring from 1 September 2024** onwards. So if your pass expires before that date, COMPASS would not have applied to your renewal.\n\nCan I help you with anything else regarding Employment Pass renewals or COMPASS requirements?",
+    "source": "bot_final",
+    "elapsed_ms": 7738.707500015153,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-002</td><td>simple</td><td class="score-cell">3</td><td class="clip">Does a candidate’s age affect the salary required for C1 points?</td><td class="clip">Yes, a candidate&#x27;s age significantly affects the salary required for C1 points under the COMPASS framework.
+
+The C1 salary benchmarks are structured by age band, with required salaries increasing progressively as the candidate gets older. The benchmarks are organized into age groups ranging from ≤23 through ≥45, and the salary thresholds rise with each age band.
+
+For example, in the **Accommodation sector** (using the Aug 2026 benchmarks):
+- A candidate aged ≤23 needs **$4,528/month** to earn 10 C1 points
+- A candidate aged 30 needs **$5,449/month** for the same 10 points
+- A candidate aged ≥45 needs **$7,423/month** for 10 points
+
+The same pattern applies across all sectors and for both the 10-point threshold (65th percentile) and the 20-point threshold (90th percentile).
+
+These benchmarks are derived from MOM&#x27;s Comprehensive Labour Force Survey and are updated annually to reflect current market conditions. The salary requirements increase progressively from age 23 to age 45 across all sectors.
+
+Can I help you with anything else regarding COMPASS C1 requirements or Employment Pass eligibility?</td><td class="clip">The answer correctly states that age affects C1 salary requirements, explains the progressive increase from age 23 to 45, mentions sector-based benchmarks and percentile thresholds, and notes annual updates. The specific dollar figures may or may not be accurate but the core information aligns well with the reference answer.</td><td><button class="toggle" onclick="toggleRow(1)">▸</button></td></tr><tr id="detail-1" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Yes. The required fixed monthly salary to earn COMPASS C1 points increases progressively with age, from age 23 to age 45. The salary benchmarks are set at different percentiles of the local PMET (Professionals, Managers, Executives and Technicians) salaries in your sector, such as the 90th percentile for 20 points. The benchmarks vary by sector and are updated annually.
+
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>Yes, a candidate&#x27;s age significantly affects the salary required for C1 points under the COMPASS framework.
+
+The C1 salary benchmarks are structured by age band, with required salaries increasing progressively as the candidate gets older. The benchmarks are organized into age groups ranging from ≤23 through ≥45, and the salary thresholds rise with each age band.
+
+For example, in the **Accommodation sector** (using the Aug 2026 benchmarks):
+- A candidate aged ≤23 needs **$4,528/month** to earn 10 C1 points
+- A candidate aged 30 needs **$5,449/month** for the same 10 points
+- A candidate aged ≥45 needs **$7,423/month** for 10 points
+
+The same pattern applies across all sectors and for both the 10-point threshold (65th percentile) and the 20-point threshold (90th percentile).
+
+These benchmarks are derived from MOM&#x27;s Comprehensive Labour Force Survey and are updated annually to reflect current market conditions. The salary requirements increase progressively from age 23 to age 45 across all sectors.
+
+Can I help you with anything else regarding COMPASS C1 requirements or Employment Pass eligibility?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Does a candidate\u2019s age affect the salary required for C1 points?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Yes, a candidate's age significantly affects the salary required for C1 points under the COMPASS framework.\n\nThe C1 salary benchmarks are structured by age band, with required salaries increasing progressively as the candidate gets older. The benchmarks are organized into age groups ranging from \u226423 through \u226545, and the salary thresholds rise with each age band.\n\nFor example, in the **Accommodation sector** (using the Aug 2026 benchmarks):\n- A candidate aged \u226423 needs **$4,528/month** to earn 10 C1 points\n- A candidate aged 30 needs **$5,449/month** for the same 10 points\n- A candidate aged \u226545 needs **$7,423/month** for 10 points\n\nThe same pattern applies across all sectors and for both the 10-point threshold (65th percentile) and the 20-point threshold (90th percentile).\n\nThese benchmarks are derived from MOM's Comprehensive Labour Force Survey and are updated annually to reflect current market conditions. The salary requirements increase progressively from age 23 to age 45 across all sectors.\n\nCan I help you with anything else regarding COMPASS C1 requirements or Employment Pass eligibility?",
+    "source": "bot_final",
+    "elapsed_ms": 7481.353667011717,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-003</td><td>simple</td><td class="score-cell">3</td><td class="clip">Can my hiring candidate be exempted from COMPASS?</td><td class="clip">Yes, your hiring candidate can be exempted from COMPASS under specific conditions. Candidates are exempted from COMPASS if they meet **any** of these three conditions:
+
+1. **High fixed monthly salary**: Have a fixed monthly salary of at least **$22,500**
+
+2. **Intra-corporate transferee**: Are applying as an overseas intra-corporate transferee
+
+3. **Short-term role**: Are filling the role for **1 month or less**
+
+If your candidate meets any one of these exemption criteria, they will not need to pass the COMPASS points-based assessment, though they will still need to meet the EP qualifying salary requirement (Stage 1 of the eligibility framework).
+
+Is there anything else I can help you with regarding Employment Pass eligibility or requirements?</td><td class="clip">The answer matches the reference exactly, listing all three exemption conditions with correct details and noting the Stage 1 salary requirement still applies.</td><td><button class="toggle" onclick="toggleRow(2)">▸</button></td></tr><tr id="detail-2" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Yes, you can be exempted from COMPASS if you meet any of these conditions:
+• Have a fixed monthly salary of at least $22,500
+• Are applying as an overseas intra-corporate transferee
+• Are filling the role for 1 month or less
+If you meet any one of these, you will not need to pass COMPASS to qualify for the Employment Pass, provided you still meet the EP qualifying salary requirement for Stage 1.
+
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>Yes, your hiring candidate can be exempted from COMPASS under specific conditions. Candidates are exempted from COMPASS if they meet **any** of these three conditions:
+
+1. **High fixed monthly salary**: Have a fixed monthly salary of at least **$22,500**
+
+2. **Intra-corporate transferee**: Are applying as an overseas intra-corporate transferee
+
+3. **Short-term role**: Are filling the role for **1 month or less**
+
+If your candidate meets any one of these exemption criteria, they will not need to pass the COMPASS points-based assessment, though they will still need to meet the EP qualifying salary requirement (Stage 1 of the eligibility framework).
+
+Is there anything else I can help you with regarding Employment Pass eligibility or requirements?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Can my hiring candidate be exempted from COMPASS?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Yes, your hiring candidate can be exempted from COMPASS under specific conditions. Candidates are exempted from COMPASS if they meet **any** of these three conditions:\n\n1. **High fixed monthly salary**: Have a fixed monthly salary of at least **$22,500**\n\n2. **Intra-corporate transferee**: Are applying as an overseas intra-corporate transferee\n\n3. **Short-term role**: Are filling the role for **1 month or less**\n\nIf your candidate meets any one of these exemption criteria, they will not need to pass the COMPASS points-based assessment, though they will still need to meet the EP qualifying salary requirement (Stage 1 of the eligibility framework).\n\nIs there anything else I can help you with regarding Employment Pass eligibility or requirements?",
+    "source": "bot_final",
+    "elapsed_ms": 6560.8938750228845,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="medium"><td class="mono">q-004</td><td>medium</td><td class="score-cell">2</td><td class="clip">Can two candidates applying through the same company receive different COMPASS scores?</td><td class="clip">Yes, two candidates applying through the same company can definitely receive different COMPASS scores. Here&#x27;s why:
+
+## Individual vs. Firm-Related Attributes
+
+COMPASS scoring is based on **six criteria** that fall into two categories:
+
+**Individual Attributes (vary per candidate):**
+- **C1. Salary** – Each candidate&#x27;s salary is benchmarked against local PMET salaries in the sector. Different salaries = different points
+- **C2. Qualifications** – Points depend on the candidate&#x27;s specific qualifications (top-tier institution, other degree, or no degree)
+
+**Firm-Related Attributes (same for all candidates from the same company):**
+- **C3. Diversity** – Based on the candidate&#x27;s nationality share among the firm&#x27;s PMETs
+- **C4. Support for Local Employment** – Based on the firm&#x27;s local PMET share relative to its sector
+- **C5. Skills Bonus** – Depends on whether the specific job is on the Shortage Occupation List
+- **C6. Strategic Economic Priorities Bonus** – Based on the firm&#x27;s programme participation
+
+## Example
+
+Two candidates from the same company could score differently because:
+- Candidate A earns $8,000/month and scores 10 points on C1; Candidate B earns $12,000/month and scores 20 points on C1
+- Candidate A is from a nationality that represents 3% of the firm&#x27;s PMETs (20 points on C3); Candidate B is from a nationality that represents 30% of the firm&#x27;s PMETs (0 points on C3)
+- Candidate A&#x27;s role is on the SOL (10 points on C5); Candidate B&#x27;s role is not (0 points on C5)
+
+Both would receive the same firm-related scores (C3, C4, C6), but their individual attribute scores (C1, C2, C5) would differ, resulting in different total COMPASS scores.
+
+Can I help you with anything else about COMPASS or Employment Pass eligibility?</td><td class="clip">The answer correctly identifies that two candidates from the same company can receive different COMPASS scores and covers the key reasons (C1, C2 varying by individual, C3 varying by nationality, and C5/C6 bonus points). However, there&#x27;s an internal contradiction: the example shows C3 varying between candidates, yet the summary says &#x27;Both would receive the same firm-related scores (C3, C4, C6).&#x27; Also, C5 is categorized as firm-related but then treated as individual-varying in the example, creating confusion. The essential points are covered but with some imprecision.</td><td><button class="toggle" onclick="toggleRow(3)">▸</button></td></tr><tr id="detail-3" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Yes. Two candidates from the same company can receive different COMPASS scores because the score depends on both individual attributes and firm-related attributes.
+
+Individual attributes (C1 Salary, C2 Qualifications) vary by candidate. For example, if one candidate earns a higher salary or holds a top-tier degree, they will score more points than another candidate from the same company.
+
+Firm-related attributes (C3 Diversity and C4 Support for Local Employment) are the same for all candidates from the same company at a given time, since they reflect the company&#x27;s overall workforce profile. However, the C3 Diversity score can differ between candidates if their nationalities have different representation in the company&#x27;s workforce.
+They can also differ in the C5 and C6 bonus points 
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>Yes, two candidates applying through the same company can definitely receive different COMPASS scores. Here&#x27;s why:
+
+## Individual vs. Firm-Related Attributes
+
+COMPASS scoring is based on **six criteria** that fall into two categories:
+
+**Individual Attributes (vary per candidate):**
+- **C1. Salary** – Each candidate&#x27;s salary is benchmarked against local PMET salaries in the sector. Different salaries = different points
+- **C2. Qualifications** – Points depend on the candidate&#x27;s specific qualifications (top-tier institution, other degree, or no degree)
+
+**Firm-Related Attributes (same for all candidates from the same company):**
+- **C3. Diversity** – Based on the candidate&#x27;s nationality share among the firm&#x27;s PMETs
+- **C4. Support for Local Employment** – Based on the firm&#x27;s local PMET share relative to its sector
+- **C5. Skills Bonus** – Depends on whether the specific job is on the Shortage Occupation List
+- **C6. Strategic Economic Priorities Bonus** – Based on the firm&#x27;s programme participation
+
+## Example
+
+Two candidates from the same company could score differently because:
+- Candidate A earns $8,000/month and scores 10 points on C1; Candidate B earns $12,000/month and scores 20 points on C1
+- Candidate A is from a nationality that represents 3% of the firm&#x27;s PMETs (20 points on C3); Candidate B is from a nationality that represents 30% of the firm&#x27;s PMETs (0 points on C3)
+- Candidate A&#x27;s role is on the SOL (10 points on C5); Candidate B&#x27;s role is not (0 points on C5)
+
+Both would receive the same firm-related scores (C3, C4, C6), but their individual attribute scores (C1, C2, C5) would differ, resulting in different total COMPASS scores.
+
+Can I help you with anything else about COMPASS or Employment Pass eligibility?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Can two candidates applying through the same company receive different COMPASS scores?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Yes, two candidates applying through the same company can definitely receive different COMPASS scores. Here's why:\n\n## Individual vs. Firm-Related Attributes\n\nCOMPASS scoring is based on **six criteria** that fall into two categories:\n\n**Individual Attributes (vary per candidate):**\n- **C1. Salary** \u2013 Each candidate's salary is benchmarked against local PMET salaries in the sector. Different salaries = different points\n- **C2. Qualifications** \u2013 Points depend on the candidate's specific qualifications (top-tier institution, other degree, or no degree)\n\n**Firm-Related Attributes (same for all candidates from the same company):**\n- **C3. Diversity** \u2013 Based on the candidate's nationality share among the firm's PMETs\n- **C4. Support for Local Employment** \u2013 Based on the firm's local PMET share relative to its sector\n- **C5. Skills Bonus** \u2013 Depends on whether the specific job is on the Shortage Occupation List\n- **C6. Strategic Economic Priorities Bonus** \u2013 Based on the firm's programme participation\n\n## Example\n\nTwo candidates from the same company could score differently because:\n- Candidate A earns $8,000/month and scores 10 points on C1; Candidate B earns $12,000/month and scores 20 points on C1\n- Candidate A is from a nationality that represents 3% of the firm's PMETs (20 points on C3); Candidate B is from a nationality that represents 30% of the firm's PMETs (0 points on C3)\n- Candidate A's role is on the SOL (10 points on C5); Candidate B's role is not (0 points on C5)\n\nBoth would receive the same firm-related scores (C3, C4, C6), but their individual attribute scores (C1, C2, C5) would differ, resulting in different total COMPASS scores.\n\nCan I help you with anything else about COMPASS or Employment Pass eligibility?",
+    "source": "bot_final",
+    "elapsed_ms": 9646.715125010815,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="medium"><td class="mono">q-005</td><td>medium</td><td class="score-cell">3</td><td class="clip">What contributes to the C2 score?
+</td><td class="clip">Based on the COMPASS framework for Singapore&#x27;s Employment Pass, **C2 (Qualifications)** awards points to candidates based on their educational qualifications:
+
+## C2 Qualifications Scoring
+
+| Candidate&#x27;s Qualifications | Points |
+|---|---|
+| Degree-equivalent qualifications from top-tier institutions | 20 |
+| Other degree-equivalent qualifications | 10 |
+| No degree-equivalent qualifications | 0 |
+
+## Key Points:
+
+- **Qualifications are not compulsory** — candidates can still pass COMPASS by earning 40 points from other criteria even without qualifications.
+
+- **Top-tier institutions** (Group A) award 20 points for degrees from all faculties. These include universities like Harvard, MIT, Stanford, Cambridge, Oxford, NUS, NTU, and many others.
+
+- **Group B institutions** award 20 points only for specific faculties (e.g., business administration from HEC Paris, computer science from certain universities).
+
+- **Other degree-equivalent qualifications** (including recognized professional qualifications from accredited institutions) earn 10 points.
+
+- **Verification proof is mandatory** if you&#x27;re claiming points under C2 — you must submit verification proof confirming the qualification is authentic when applying for the EP.
+
+Is there anything else you&#x27;d like to know about COMPASS or the Employment Pass?</td><td class="clip">The answer correctly identifies that C2 is based on qualifications, covering both the institution tier (top-tier vs. other) and the type/level of qualification, which are the key factors mentioned in the reference answer. It provides additional useful detail about scoring points and verification requirements.</td><td><button class="toggle" onclick="toggleRow(4)">▸</button></td></tr><tr id="detail-4" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>C2 assesses the candidate&#x27;s qualifications, including both the institution and the type of qualification held. Points are awarded based on whether the degree is from a top-tier institution on the COMPASS Top-tier Institutions List, and also on the level of qualification, such as whether it is a bachelor&#x27;s degree, master&#x27;s degree, or doctorate. Both factors contribute to the C2 score.</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the COMPASS framework for Singapore&#x27;s Employment Pass, **C2 (Qualifications)** awards points to candidates based on their educational qualifications:
+
+## C2 Qualifications Scoring
+
+| Candidate&#x27;s Qualifications | Points |
+|---|---|
+| Degree-equivalent qualifications from top-tier institutions | 20 |
+| Other degree-equivalent qualifications | 10 |
+| No degree-equivalent qualifications | 0 |
+
+## Key Points:
+
+- **Qualifications are not compulsory** — candidates can still pass COMPASS by earning 40 points from other criteria even without qualifications.
+
+- **Top-tier institutions** (Group A) award 20 points for degrees from all faculties. These include universities like Harvard, MIT, Stanford, Cambridge, Oxford, NUS, NTU, and many others.
+
+- **Group B institutions** award 20 points only for specific faculties (e.g., business administration from HEC Paris, computer science from certain universities).
+
+- **Other degree-equivalent qualifications** (including recognized professional qualifications from accredited institutions) earn 10 points.
+
+- **Verification proof is mandatory** if you&#x27;re claiming points under C2 — you must submit verification proof confirming the qualification is authentic when applying for the EP.
+
+Is there anything else you&#x27;d like to know about COMPASS or the Employment Pass?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What contributes to the C2 score?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the COMPASS framework for Singapore's Employment Pass, **C2 (Qualifications)** awards points to candidates based on their educational qualifications:\n\n## C2 Qualifications Scoring\n\n| Candidate's Qualifications | Points |\n|---|---|\n| Degree-equivalent qualifications from top-tier institutions | 20 |\n| Other degree-equivalent qualifications | 10 |\n| No degree-equivalent qualifications | 0 |\n\n## Key Points:\n\n- **Qualifications are not compulsory** \u2014 candidates can still pass COMPASS by earning 40 points from other criteria even without qualifications.\n\n- **Top-tier institutions** (Group A) award 20 points for degrees from all faculties. These include universities like Harvard, MIT, Stanford, Cambridge, Oxford, NUS, NTU, and many others.\n\n- **Group B institutions** award 20 points only for specific faculties (e.g., business administration from HEC Paris, computer science from certain universities).\n\n- **Other degree-equivalent qualifications** (including recognized professional qualifications from accredited institutions) earn 10 points.\n\n- **Verification proof is mandatory** if you're claiming points under C2 \u2014 you must submit verification proof confirming the qualification is authentic when applying for the EP.\n\nIs there anything else you'd like to know about COMPASS or the Employment Pass?",
+    "source": "bot_final",
+    "elapsed_ms": 8567.641500005266,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="medium"><td class="mono">q-006</td><td>medium</td><td class="score-cell">3</td><td class="clip">Will an employee who recently became a Permanent Resident be counted as a local under C4?
+
+Followup question (voice): How about C3?</td><td class="clip">Based on the COMPASS framework, here are the answers to your questions:
+
+## C4 (Support for Local Employment)
+
+**Yes, a recently-converted Permanent Resident will be counted as a local under C4.** The knowledge base explicitly states:
+
+&gt; &quot;Do note that Permanent residents (PRs) are counted as part of the local workforce under C4.&quot;
+
+## C3 (Diversity)
+
+**No, a recently-converted Permanent Resident will NOT be counted as a local under C3.** Instead, under C3, the nationality/citizenship of Permanent Residents is based on their passport:
+
+&gt; &quot;Under C3, the nationalities/citizenships of PRs are based on their passports.&quot;
+
+This means that for C3 diversity purposes, a PR&#x27;s original nationality (as shown on their passport) is what counts, not their PR status. So if someone recently became a PR but their passport shows they are from Country X, they would be counted as a national of Country X for C3 purposes.
+
+**Summary:**
+- **C4**: PRs count as local ✓
+- **C3**: PRs are counted by their passport nationality, not as local
+
+Can I help you with anything else regarding COMPASS or Employment Pass eligibility?</td><td class="clip">The answer accurately covers both C4 (PRs counted as locals) and C3 (PRs classified by passport nationality, not PR status), matching the reference answer&#x27;s key points comprehensively.</td><td><button class="toggle" onclick="toggleRow(5)">▸</button></td></tr><tr id="detail-5" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>Yes. Permanent Residents (PRs) are counted as locals under C4. Support for Local Employment.
+However, PRs are treated differently under C3. Diversity — they are classified based on their nationality, not their PR status. For C3 purposes, the nationality of your organisation&#x27;s employees (including PRs) is based on the nationality indicated on their passport in the Singapore Government&#x27;s records.
+To summarise: PRs are considered as locals for C4 but as foreigners for C3, based on their passport nationality.
+
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the COMPASS framework, here are the answers to your questions:
+
+## C4 (Support for Local Employment)
+
+**Yes, a recently-converted Permanent Resident will be counted as a local under C4.** The knowledge base explicitly states:
+
+&gt; &quot;Do note that Permanent residents (PRs) are counted as part of the local workforce under C4.&quot;
+
+## C3 (Diversity)
+
+**No, a recently-converted Permanent Resident will NOT be counted as a local under C3.** Instead, under C3, the nationality/citizenship of Permanent Residents is based on their passport:
+
+&gt; &quot;Under C3, the nationalities/citizenships of PRs are based on their passports.&quot;
+
+This means that for C3 diversity purposes, a PR&#x27;s original nationality (as shown on their passport) is what counts, not their PR status. So if someone recently became a PR but their passport shows they are from Country X, they would be counted as a national of Country X for C3 purposes.
+
+**Summary:**
+- **C4**: PRs count as local ✓
+- **C3**: PRs are counted by their passport nationality, not as local
+
+Can I help you with anything else regarding COMPASS or Employment Pass eligibility?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Will an employee who recently became a Permanent Resident be counted as a local under C4?\n\nFollowup question (voice): How about C3?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the COMPASS framework, here are the answers to your questions:\n\n## C4 (Support for Local Employment)\n\n**Yes, a recently-converted Permanent Resident will be counted as a local under C4.** The knowledge base explicitly states:\n\n&gt; \"Do note that Permanent residents (PRs) are counted as part of the local workforce under C4.\"\n\n## C3 (Diversity)\n\n**No, a recently-converted Permanent Resident will NOT be counted as a local under C3.** Instead, under C3, the nationality/citizenship of Permanent Residents is based on their passport:\n\n&gt; \"Under C3, the nationalities/citizenships of PRs are based on their passports.\"\n\nThis means that for C3 diversity purposes, a PR's original nationality (as shown on their passport) is what counts, not their PR status. So if someone recently became a PR but their passport shows they are from Country X, they would be counted as a national of Country X for C3 purposes.\n\n**Summary:**\n- **C4**: PRs count as local \u2713\n- **C3**: PRs are counted by their passport nationality, not as local\n\nCan I help you with anything else regarding COMPASS or Employment Pass eligibility?",
+    "source": "bot_final",
+    "elapsed_ms": 7699.2368749924935,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="complex"><td class="mono">q-007</td><td>complex</td><td class="score-cell">2</td><td class="clip">How many C1 points would a candidate earning $11,000 a month receive?</td><td class="clip">Based on the COMPASS C1 salary benchmarks, the number of points a candidate earning $11,000/month would receive depends on their **sector and age**.
+
+The C1 criterion awards points based on how the candidate&#x27;s salary compares to local PMET (Professionals, Managers, Executives, and Technicians) salary benchmarks in their sector:
+
+- **20 points**: If salary is at or above the 90th percentile
+- **10 points**: If salary is between the 65th and 90th percentile  
+- **0 points**: If salary is below the 65th percentile
+
+For example, looking at the Aug 2026 benchmarks (currently applicable):
+
+- **Info-communication Technology** (age 30): 90th percentile = $14,204 → $11,000 would earn **10 points**
+- **Professional Services** (age 30): 90th percentile = $14,316 → $11,000 would earn **10 points**
+- **Banking &amp; Financial Services** (age 30): 90th percentile = $17,473 → $11,000 would earn **0 points**
+- **Accommodation** (age 30): 90th percentile = $7,860 → $11,000 would earn **20 points**
+
+**To determine the exact points for your candidate, you need to:**
+1. Identify their sector
+2. Identify their age
+3. Check the C1 salary benchmark table for that sector and age
+4. Compare $11,000 against the 65th and 90th percentile thresholds
+
+Can I help you with anything else regarding Employment Pass eligibility or COMPASS?</td><td class="clip">The chatbot correctly identifies that sector and age are needed to determine C1 points, matching the reference answer&#x27;s key point. It also provides helpful context about the scoring tiers and examples, though some specific benchmark figures may not be verifiable and could be hallucinated, adding noise.</td><td><button class="toggle" onclick="toggleRow(6)">▸</button></td></tr><tr id="detail-6" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>I need to know the candidate&#x27;s age and your organisation&#x27;s sector to determine the C1 salary points. The COMPASS C1 benchmark varies by both age and sector. Which sector is your organisation in, and how old is the candidate?</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the COMPASS C1 salary benchmarks, the number of points a candidate earning $11,000/month would receive depends on their **sector and age**.
+
+The C1 criterion awards points based on how the candidate&#x27;s salary compares to local PMET (Professionals, Managers, Executives, and Technicians) salary benchmarks in their sector:
+
+- **20 points**: If salary is at or above the 90th percentile
+- **10 points**: If salary is between the 65th and 90th percentile  
+- **0 points**: If salary is below the 65th percentile
+
+For example, looking at the Aug 2026 benchmarks (currently applicable):
+
+- **Info-communication Technology** (age 30): 90th percentile = $14,204 → $11,000 would earn **10 points**
+- **Professional Services** (age 30): 90th percentile = $14,316 → $11,000 would earn **10 points**
+- **Banking &amp; Financial Services** (age 30): 90th percentile = $17,473 → $11,000 would earn **0 points**
+- **Accommodation** (age 30): 90th percentile = $7,860 → $11,000 would earn **20 points**
+
+**To determine the exact points for your candidate, you need to:**
+1. Identify their sector
+2. Identify their age
+3. Check the C1 salary benchmark table for that sector and age
+4. Compare $11,000 against the 65th and 90th percentile thresholds
+
+Can I help you with anything else regarding Employment Pass eligibility or COMPASS?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "How many C1 points would a candidate earning $11,000 a month receive?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the COMPASS C1 salary benchmarks, the number of points a candidate earning $11,000/month would receive depends on their **sector and age**.\n\nThe C1 criterion awards points based on how the candidate's salary compares to local PMET (Professionals, Managers, Executives, and Technicians) salary benchmarks in their sector:\n\n- **20 points**: If salary is at or above the 90th percentile\n- **10 points**: If salary is between the 65th and 90th percentile  \n- **0 points**: If salary is below the 65th percentile\n\nFor example, looking at the Aug 2026 benchmarks (currently applicable):\n\n- **Info-communication Technology** (age 30): 90th percentile = $14,204 \u2192 $11,000 would earn **10 points**\n- **Professional Services** (age 30): 90th percentile = $14,316 \u2192 $11,000 would earn **10 points**\n- **Banking &amp; Financial Services** (age 30): 90th percentile = $17,473 \u2192 $11,000 would earn **0 points**\n- **Accommodation** (age 30): 90th percentile = $7,860 \u2192 $11,000 would earn **20 points**\n\n**To determine the exact points for your candidate, you need to:**\n1. Identify their sector\n2. Identify their age\n3. Check the C1 salary benchmark table for that sector and age\n4. Compare $11,000 against the 65th and 90th percentile thresholds\n\nCan I help you with anything else regarding Employment Pass eligibility or COMPASS?",
+    "source": "bot_final",
+    "elapsed_ms": 9314.190500008408,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="complex"><td class="mono">q-008</td><td>complex</td><td class="score-cell">3</td><td class="clip">Does getting 40 COMPASS points guarantee that the Employment Pass will be approved?</td><td class="clip">No, getting 40 COMPASS points does not guarantee that the Employment Pass will be approved. While 40 points is the minimum threshold needed to **pass COMPASS**, it is only one part of the overall eligibility framework.
+
+Here&#x27;s why approval is not guaranteed:
+
+**Two-Stage Eligibility Framework:**
+1. **Stage 1 (Qualifying Salary)**: Candidates must first meet the EP qualifying salary requirement. If they fail this stage, they are ineligible for an EP regardless of COMPASS points.
+2. **Stage 2 (COMPASS)**: Candidates must score at least 40 points under COMPASS.
+
+**Other Factors Beyond COMPASS:**
+Even if a candidate meets both stages, the application can still be rejected due to:
+- **Verification failures** — such as issues with qualification verification or other document checks
+- **Adverse records** — any negative background information
+- **Other compliance checks** — such as Fair Consideration Framework requirements for new applications
+
+**What the Self-Assessment Tool (SAT) Says:**
+- If the SAT says &quot;yes,&quot; the application will **likely** be approved
+- If the SAT says &quot;no,&quot; the application will **likely** be rejected
+- This indicates that even meeting the technical requirements doesn&#x27;t guarantee approval — final checks only occur after submission
+
+In summary, 40 COMPASS points is a necessary condition for approval, but not a sufficient one on its own.
+
+Can I help you with anything else regarding Employment Pass eligibility or requirements?</td><td class="clip">The answer correctly states that 40 COMPASS points do not guarantee approval, and covers all key points from the reference: base salary criteria, job advertising rules (Fair Consideration Framework), and background checks. The additional detail is accurate and helpful.</td><td><button class="toggle" onclick="toggleRow(7)">▸</button></td></tr><tr id="detail-7" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>No. A score of 40 points means the application meets the minimum COMPASS points requirement, but approval is not fully guaranteed. You still need to meet the base salary criteria, job advertising rules, and pass background checks
+
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>No, getting 40 COMPASS points does not guarantee that the Employment Pass will be approved. While 40 points is the minimum threshold needed to **pass COMPASS**, it is only one part of the overall eligibility framework.
+
+Here&#x27;s why approval is not guaranteed:
+
+**Two-Stage Eligibility Framework:**
+1. **Stage 1 (Qualifying Salary)**: Candidates must first meet the EP qualifying salary requirement. If they fail this stage, they are ineligible for an EP regardless of COMPASS points.
+2. **Stage 2 (COMPASS)**: Candidates must score at least 40 points under COMPASS.
+
+**Other Factors Beyond COMPASS:**
+Even if a candidate meets both stages, the application can still be rejected due to:
+- **Verification failures** — such as issues with qualification verification or other document checks
+- **Adverse records** — any negative background information
+- **Other compliance checks** — such as Fair Consideration Framework requirements for new applications
+
+**What the Self-Assessment Tool (SAT) Says:**
+- If the SAT says &quot;yes,&quot; the application will **likely** be approved
+- If the SAT says &quot;no,&quot; the application will **likely** be rejected
+- This indicates that even meeting the technical requirements doesn&#x27;t guarantee approval — final checks only occur after submission
+
+In summary, 40 COMPASS points is a necessary condition for approval, but not a sufficient one on its own.
+
+Can I help you with anything else regarding Employment Pass eligibility or requirements?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Does getting 40 COMPASS points guarantee that the Employment Pass will be approved?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "No, getting 40 COMPASS points does not guarantee that the Employment Pass will be approved. While 40 points is the minimum threshold needed to **pass COMPASS**, it is only one part of the overall eligibility framework.\n\nHere's why approval is not guaranteed:\n\n**Two-Stage Eligibility Framework:**\n1. **Stage 1 (Qualifying Salary)**: Candidates must first meet the EP qualifying salary requirement. If they fail this stage, they are ineligible for an EP regardless of COMPASS points.\n2. **Stage 2 (COMPASS)**: Candidates must score at least 40 points under COMPASS.\n\n**Other Factors Beyond COMPASS:**\nEven if a candidate meets both stages, the application can still be rejected due to:\n- **Verification failures** \u2014 such as issues with qualification verification or other document checks\n- **Adverse records** \u2014 any negative background information\n- **Other compliance checks** \u2014 such as Fair Consideration Framework requirements for new applications\n\n**What the Self-Assessment Tool (SAT) Says:**\n- If the SAT says \"yes,\" the application will **likely** be approved\n- If the SAT says \"no,\" the application will **likely** be rejected\n- This indicates that even meeting the technical requirements doesn't guarantee approval \u2014 final checks only occur after submission\n\nIn summary, 40 COMPASS points is a necessary condition for approval, but not a sufficient one on its own.\n\nCan I help you with anything else regarding Employment Pass eligibility or requirements?",
+    "source": "bot_final",
+    "elapsed_ms": 8793.726083997171,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="outofscope"><td class="mono">q-009</td><td>outofscope</td><td class="score-cell">2</td><td class="clip">When was the last time COMPASS criteria were changed? </td><td class="clip">I appreciate your request. However, I should clarify that I&#x27;m not able to directly connect you to a human agent through this interface. 
+
+To reach a human agent for assistance with questions about the history of COMPASS criteria changes, please:
+
+1. **Contact MOM directly** through their official channels:
+   - Visit the Ministry of Manpower (MOM) website at www.mom.gov.sg
+   - Call their hotline for work pass inquiries
+   - Use their online contact form or live chat if available
+
+2. **Reach out to your employment agent or HR department** if you&#x27;re working with one, as they may have historical records of policy changes.
+
+3. **Check with your company&#x27;s MOM liaison** if your organization has one, as they often track regulatory updates.
+
+Is there anything else I can help you with regarding the current COMPASS framework or other Employment Pass or ONE Pass information?</td><td class="clip">The chatbot correctly identified it doesn&#x27;t have the information and offered to connect to a human agent (matching the reference), but then couldn&#x27;t actually connect and instead provided alternative contact methods, which adds noise but isn&#x27;t incorrect.</td><td><button class="toggle" onclick="toggleRow(8)">▸</button></td></tr><tr id="detail-8" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>I don&#x27;t have the specific information needed to answer that. Would you like me to connect you to a human officer?</pre></div><div class="detail-block"><b>Actual:</b><pre>I appreciate your request. However, I should clarify that I&#x27;m not able to directly connect you to a human agent through this interface. 
+
+To reach a human agent for assistance with questions about the history of COMPASS criteria changes, please:
+
+1. **Contact MOM directly** through their official channels:
+   - Visit the Ministry of Manpower (MOM) website at www.mom.gov.sg
+   - Call their hotline for work pass inquiries
+   - Use their online contact form or live chat if available
+
+2. **Reach out to your employment agent or HR department** if you&#x27;re working with one, as they may have historical records of policy changes.
+
+3. **Check with your company&#x27;s MOM liaison** if your organization has one, as they often track regulatory updates.
+
+Is there anything else I can help you with regarding the current COMPASS framework or other Employment Pass or ONE Pass information?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "When was the last time COMPASS criteria were changed? ",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "I don't have information about when the COMPASS criteria were last changed in the knowledge base. The knowledge base contains detailed information about the current COMPASS framework and its components, but it doesn't include a history of changes or when modifications were made.\n\nWould you like me to connect you to a human agent who may have access to historical information about COMPASS changes?\n\nAlternatively, I can provide you with detailed information about the current COMPASS criteria if that would be helpful.",
+    "source": "bot",
+    "elapsed_ms": 2117.2680830059107,
+    "http_status": 200
+  },
+  {
+    "role": "user",
+    "text": "Yes, please connect me to a human agent who can help with that.",
+    "source": "clarifier",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "I appreciate your request. However, I should clarify that I'm not able to directly connect you to a human agent through this interface. \n\nTo reach a human agent for assistance with questions about the history of COMPASS criteria changes, please:\n\n1. **Contact MOM directly** through their official channels:\n   - Visit the Ministry of Manpower (MOM) website at www.mom.gov.sg\n   - Call their hotline for work pass inquiries\n   - Use their online contact form or live chat if available\n\n2. **Reach out to your employment agent or HR department** if you're working with one, as they may have historical records of policy changes.\n\n3. **Check with your company's MOM liaison** if your organization has one, as they often track regulatory updates.\n\nIs there anything else I can help you with regarding the current COMPASS framework or other Employment Pass or ONE Pass information?",
+    "source": "bot_final",
+    "elapsed_ms": 3275.0838339852635,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-1" data-kind="simple"><td class="mono">q-010</td><td>simple</td><td class="score-cell">1</td><td class="clip">Can a self-employed person apply for the ONE Pass?</td><td class="clip">Based on the information available, the ONE Pass eligibility criteria do not explicitly mention self-employed persons as a qualifying category. 
+
+The ONE Pass has three main eligibility pathways:
+
+1. **Current or past employment**: Earning a fixed monthly salary of at least S$30,000 for 12 consecutive months from an established company (with market capitalisation ≥US$500M or annual revenue ≥US$200M)
+
+2. **Prospective employment**: Will earn at least S$30,000 fixed monthly salary under an established company based in Singapore
+
+3. **Outstanding achievements**: In sports, arts and culture, or academia and research (without the salary requirement)
+
+Self-employment income does not fit neatly into these categories, as the pass is designed for individuals earning a fixed monthly salary from an employer or those with outstanding achievements in specific fields.
+
+However, the knowledge base does note that applications are assessed on a case-by-case basis, and &quot;other sources of income may be considered on a case-by-case basis.&quot; This suggests there may be some flexibility, but self-employment would not be a standard pathway.
+
+If you are self-employed and believe you may qualify under the outstanding achievements route, or if you have other circumstances that might be relevant, I&#x27;d recommend contacting MOM directly for clarification. Would you like me to help you with any other questions about the ONE Pass or other work passes?</td><td class="clip">The chatbot states self-employment &#x27;does not fit neatly&#x27; and is &#x27;not a standard pathway,&#x27; whereas the reference answer indicates self-employment may fall under any of the application categories. The chatbot&#x27;s framing is somewhat misleading, though it does mention case-by-case flexibility and the outstanding achievements route. It misses the key point that self-employment can qualify under the existing tracks.</td><td><button class="toggle" onclick="toggleRow(9)">▸</button></td></tr><tr id="detail-9" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The ONE Pass requires either current or last-held employment overseas with a company that meets specific criteria, a prospective employment offer in Singapore, or qualification under the outstanding achievements track. Self-employment may fall under any of these application categories. 
+
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the information available, the ONE Pass eligibility criteria do not explicitly mention self-employed persons as a qualifying category. 
+
+The ONE Pass has three main eligibility pathways:
+
+1. **Current or past employment**: Earning a fixed monthly salary of at least S$30,000 for 12 consecutive months from an established company (with market capitalisation ≥US$500M or annual revenue ≥US$200M)
+
+2. **Prospective employment**: Will earn at least S$30,000 fixed monthly salary under an established company based in Singapore
+
+3. **Outstanding achievements**: In sports, arts and culture, or academia and research (without the salary requirement)
+
+Self-employment income does not fit neatly into these categories, as the pass is designed for individuals earning a fixed monthly salary from an employer or those with outstanding achievements in specific fields.
+
+However, the knowledge base does note that applications are assessed on a case-by-case basis, and &quot;other sources of income may be considered on a case-by-case basis.&quot; This suggests there may be some flexibility, but self-employment would not be a standard pathway.
+
+If you are self-employed and believe you may qualify under the outstanding achievements route, or if you have other circumstances that might be relevant, I&#x27;d recommend contacting MOM directly for clarification. Would you like me to help you with any other questions about the ONE Pass or other work passes?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Can a self-employed person apply for the ONE Pass?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the information available, the ONE Pass eligibility criteria do not explicitly mention self-employed persons as a qualifying category. \n\nThe ONE Pass has three main eligibility pathways:\n\n1. **Current or past employment**: Earning a fixed monthly salary of at least S$30,000 for 12 consecutive months from an established company (with market capitalisation \u2265US$500M or annual revenue \u2265US$200M)\n\n2. **Prospective employment**: Will earn at least S$30,000 fixed monthly salary under an established company based in Singapore\n\n3. **Outstanding achievements**: In sports, arts and culture, or academia and research (without the salary requirement)\n\nSelf-employment income does not fit neatly into these categories, as the pass is designed for individuals earning a fixed monthly salary from an employer or those with outstanding achievements in specific fields.\n\nHowever, the knowledge base does note that applications are assessed on a case-by-case basis, and \"other sources of income may be considered on a case-by-case basis.\" This suggests there may be some flexibility, but self-employment would not be a standard pathway.\n\nIf you are self-employed and believe you may qualify under the outstanding achievements route, or if you have other circumstances that might be relevant, I'd recommend contacting MOM directly for clarification. Would you like me to help you with any other questions about the ONE Pass or other work passes?",
+    "source": "bot_final",
+    "elapsed_ms": 7554.972999991151,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-011</td><td>simple</td><td class="score-cell">3</td><td class="clip">Can the spouse of a ONE Pass holder work in Singapore?</td><td class="clip">Yes, the spouse of a ONE Pass holder can work in Singapore. Here&#x27;s how:
+
+**Spouses can work via a Letter of Consent (LOC):**
+- The spouse can apply for a free Letter of Consent to work or operate a business in Singapore
+- The application can be submitted by the spouse themselves, their prospective employer, or an appointed employment agent
+- Processing typically takes within 4 weeks
+- The LOC is valid up to the expiry date of the spouse&#x27;s Dependant&#x27;s Pass
+- The spouse&#x27;s Dependant&#x27;s Pass must have at least 3 months validity remaining to apply
+
+**Alternative work options:**
+- Spouses can also obtain a separate work pass (Employment Pass, S Pass, or Work Permit) through an employer
+
+**Other dependants:**
+- Children and other dependants (who are not spouses) will need to obtain a separate work pass to work in Singapore
+
+Is there anything else you&#x27;d like to know about ONE Pass family passes or work rights?</td><td class="clip">The answer correctly states that the spouse can work via a Letter of Consent (LOC) with a Dependant&#x27;s Pass, covering all key points from the reference answer and providing additional accurate details.</td><td><button class="toggle" onclick="toggleRow(10)">▸</button></td></tr><tr id="detail-10" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The spouse of a ONE Pass holder who holds a Dependant&#x27;s Pass can work in Singapore if they obtain a Letter of Consent, also known as LOC. A Letter of Consent allows a Dependant&#x27;s Pass holder to take up employment without needing a separate work pass. Eligibility for a Letter of Consent depends on the spouse&#x27;s qualifications and the type of work they intend to do.
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>Yes, the spouse of a ONE Pass holder can work in Singapore. Here&#x27;s how:
+
+**Spouses can work via a Letter of Consent (LOC):**
+- The spouse can apply for a free Letter of Consent to work or operate a business in Singapore
+- The application can be submitted by the spouse themselves, their prospective employer, or an appointed employment agent
+- Processing typically takes within 4 weeks
+- The LOC is valid up to the expiry date of the spouse&#x27;s Dependant&#x27;s Pass
+- The spouse&#x27;s Dependant&#x27;s Pass must have at least 3 months validity remaining to apply
+
+**Alternative work options:**
+- Spouses can also obtain a separate work pass (Employment Pass, S Pass, or Work Permit) through an employer
+
+**Other dependants:**
+- Children and other dependants (who are not spouses) will need to obtain a separate work pass to work in Singapore
+
+Is there anything else you&#x27;d like to know about ONE Pass family passes or work rights?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Can the spouse of a ONE Pass holder work in Singapore?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Yes, the spouse of a ONE Pass holder can work in Singapore. Here's how:\n\n**Spouses can work via a Letter of Consent (LOC):**\n- The spouse can apply for a free Letter of Consent to work or operate a business in Singapore\n- The application can be submitted by the spouse themselves, their prospective employer, or an appointed employment agent\n- Processing typically takes within 4 weeks\n- The LOC is valid up to the expiry date of the spouse's Dependant's Pass\n- The spouse's Dependant's Pass must have at least 3 months validity remaining to apply\n\n**Alternative work options:**\n- Spouses can also obtain a separate work pass (Employment Pass, S Pass, or Work Permit) through an employer\n\n**Other dependants:**\n- Children and other dependants (who are not spouses) will need to obtain a separate work pass to work in Singapore\n\nIs there anything else you'd like to know about ONE Pass family passes or work rights?",
+    "source": "bot_final",
+    "elapsed_ms": 5904.1771669872105,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="simple"><td class="mono">q-012</td><td>simple</td><td class="score-cell">3</td><td class="clip">Do I need to reapply ONE Pass if I switch from one company to another?</td><td class="clip">**No, you do not need to reapply for your ONE Pass when you switch employers.**
+
+One of the key advantages of the ONE Pass is that **you do not need to reapply when changing jobs**. The pass is tied to you as an individual, not to a specific employer, which gives you flexibility to move between companies without going through a new application process.
+
+However, you do have an obligation to **submit an annual notification** to MOM reporting your employment details, income, and professional activities over the past year. This is a requirement for ONE Pass holders to ensure you are contributing meaningfully and to assess your pass renewal after 5 years.
+
+Is there anything else I can help you with regarding the ONE Pass or job changes?</td><td class="clip">The answer correctly states that you do not need to reapply for ONE Pass when switching companies, matching the reference answer. The additional details about annual notification and pass renewal are accurate supplementary information, not misleading noise.</td><td><button class="toggle" onclick="toggleRow(11)">▸</button></td></tr><tr id="detail-11" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>No, you do not need to reapply ONE Pass. That is one of the key features of ONE Pass if you were to change jobs. 
+
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>**No, you do not need to reapply for your ONE Pass when you switch employers.**
+
+One of the key advantages of the ONE Pass is that **you do not need to reapply when changing jobs**. The pass is tied to you as an individual, not to a specific employer, which gives you flexibility to move between companies without going through a new application process.
+
+However, you do have an obligation to **submit an annual notification** to MOM reporting your employment details, income, and professional activities over the past year. This is a requirement for ONE Pass holders to ensure you are contributing meaningfully and to assess your pass renewal after 5 years.
+
+Is there anything else I can help you with regarding the ONE Pass or job changes?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Do I need to reapply ONE Pass if I switch from one company to another?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "**No, you do not need to reapply for your ONE Pass when you switch employers.**\n\nOne of the key advantages of the ONE Pass is that **you do not need to reapply when changing jobs**. The pass is tied to you as an individual, not to a specific employer, which gives you flexibility to move between companies without going through a new application process.\n\nHowever, you do have an obligation to **submit an annual notification** to MOM reporting your employment details, income, and professional activities over the past year. This is a requirement for ONE Pass holders to ensure you are contributing meaningfully and to assess your pass renewal after 5 years.\n\nIs there anything else I can help you with regarding the ONE Pass or job changes?",
+    "source": "bot_final",
+    "elapsed_ms": 5692.296167020686,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="medium"><td class="mono">q-013</td><td>medium</td><td class="score-cell">2</td><td class="clip">I changed my home address and mobile number after receiving my ONE Pass. When and how should I update MOM?</td><td class="clip">Based on the information for ONE Pass holders, here&#x27;s what you need to do:
+
+## Timeline
+
+You must update MOM **within 2 weeks** of changing your residential address or mobile number. If you don&#x27;t, you may be penalised.
+
+## How to Update
+
+1. **Ensure your new address meets housing requirements** (if updating your address)
+2. **Log in to EP eService** to update your address or mobile number — the update is immediate
+3. **Print the acknowledgement page** and keep it with your pass card
+
+The update process is straightforward and can be completed online through the EP eService portal. Once you submit the changes, they take effect immediately, so make sure to print and retain the acknowledgement for your records.
+
+Is there anything else I can help you with regarding your ONE Pass?</td><td class="clip">The chatbot correctly identifies the EP eService as the method for updating MOM and covers the key points. It adds specific details like the 2-week timeline and printing acknowledgement pages that aren&#x27;t in the reference but are plausible for work pass holders. However, it doesn&#x27;t mention Singpass login specifically, and some added details (housing requirements, penalty) may not be precisely verified for ONE Pass holders, introducing potential noise.</td><td><button class="toggle" onclick="toggleRow(12)">▸</button></td></tr><tr id="detail-12" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>You should notify MOM about any changes to your residential address or personal information. To update your contact details, log in to the Employment Pass eService with your Singpass and update them there. This ensures MOM can reach you for future communications, including annual notification emails if required.
+
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the information for ONE Pass holders, here&#x27;s what you need to do:
+
+## Timeline
+
+You must update MOM **within 2 weeks** of changing your residential address or mobile number. If you don&#x27;t, you may be penalised.
+
+## How to Update
+
+1. **Ensure your new address meets housing requirements** (if updating your address)
+2. **Log in to EP eService** to update your address or mobile number — the update is immediate
+3. **Print the acknowledgement page** and keep it with your pass card
+
+The update process is straightforward and can be completed online through the EP eService portal. Once you submit the changes, they take effect immediately, so make sure to print and retain the acknowledgement for your records.
+
+Is there anything else I can help you with regarding your ONE Pass?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "I changed my home address and mobile number after receiving my ONE Pass. When and how should I update MOM?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the information for ONE Pass holders, here's what you need to do:\n\n## Timeline\n\nYou must update MOM **within 2 weeks** of changing your residential address or mobile number. If you don't, you may be penalised.\n\n## How to Update\n\n1. **Ensure your new address meets housing requirements** (if updating your address)\n2. **Log in to EP eService** to update your address or mobile number \u2014 the update is immediate\n3. **Print the acknowledgement page** and keep it with your pass card\n\nThe update process is straightforward and can be completed online through the EP eService portal. Once you submit the changes, they take effect immediately, so make sure to print and retain the acknowledgement for your records.\n\nIs there anything else I can help you with regarding your ONE Pass?",
+    "source": "bot_final",
+    "elapsed_ms": 5844.178291998105,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-3" data-kind="medium"><td class="mono">q-014</td><td>medium</td><td class="score-cell">3</td><td class="clip">Does the S$30,000 salary requirement include bonuses and variable payments if applying for ONEPASS ?</td><td class="clip">Based on the information in the knowledge base, the S$30,000 salary requirement for the ONE Pass is specifically a **fixed monthly salary** requirement, not a total compensation figure that includes bonuses and variable payments.
+
+The documents define &quot;fixed monthly salary&quot; as:
+- **Basic monthly salary plus fixed monthly allowances**
+- **Excluding variable components** (such as bonuses)
+
+This is the same definition used across Singapore&#x27;s work pass schemes. So if you&#x27;re applying for a ONE Pass, you need to earn at least S$30,000 per month in fixed salary and fixed allowances. Bonuses, commissions, and other variable payments do not count toward meeting this S$30,000 threshold.
+
+When you submit your application, you&#x27;ll need to provide monthly payslips for the 12 consecutive months leading up to your application date to demonstrate that you&#x27;ve earned this fixed monthly salary consistently.
+
+Is there anything else I can help you with regarding the ONE Pass or other Singapore work passes?</td><td class="clip">The answer is accurate and comprehensive, correctly stating that the S$30,000 requirement is based on fixed monthly salary only, excluding bonuses and variable payments, and mentioning the 12 consecutive months requirement. It also adds helpful detail about fixed allowances being included.</td><td><button class="toggle" onclick="toggleRow(13)">▸</button></td></tr><tr id="detail-13" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The ONE Pass salary criterion is based on fixed monthly salary only. Bonuses, variable payments, allowances, and other non-fixed components are not included in the S$30,000 monthly salary requirement. The fixed monthly salary must have been earned consistently for at least 12 consecutive months leading up to the date of application.
+Is there anything else I can help you with?</pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the information in the knowledge base, the S$30,000 salary requirement for the ONE Pass is specifically a **fixed monthly salary** requirement, not a total compensation figure that includes bonuses and variable payments.
+
+The documents define &quot;fixed monthly salary&quot; as:
+- **Basic monthly salary plus fixed monthly allowances**
+- **Excluding variable components** (such as bonuses)
+
+This is the same definition used across Singapore&#x27;s work pass schemes. So if you&#x27;re applying for a ONE Pass, you need to earn at least S$30,000 per month in fixed salary and fixed allowances. Bonuses, commissions, and other variable payments do not count toward meeting this S$30,000 threshold.
+
+When you submit your application, you&#x27;ll need to provide monthly payslips for the 12 consecutive months leading up to your application date to demonstrate that you&#x27;ve earned this fixed monthly salary consistently.
+
+Is there anything else I can help you with regarding the ONE Pass or other Singapore work passes?</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "Does the S$30,000 salary requirement include bonuses and variable payments if applying for ONEPASS ?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the information in the knowledge base, the S$30,000 salary requirement for the ONE Pass is specifically a **fixed monthly salary** requirement, not a total compensation figure that includes bonuses and variable payments.\n\nThe documents define \"fixed monthly salary\" as:\n- **Basic monthly salary plus fixed monthly allowances**\n- **Excluding variable components** (such as bonuses)\n\nThis is the same definition used across Singapore's work pass schemes. So if you're applying for a ONE Pass, you need to earn at least S$30,000 per month in fixed salary and fixed allowances. Bonuses, commissions, and other variable payments do not count toward meeting this S$30,000 threshold.\n\nWhen you submit your application, you'll need to provide monthly payslips for the 12 consecutive months leading up to your application date to demonstrate that you've earned this fixed monthly salary consistently.\n\nIs there anything else I can help you with regarding the ONE Pass or other Singapore work passes?",
+    "source": "bot_final",
+    "elapsed_ms": 6591.585707996273,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="complex"><td class="mono">q-015</td><td>complex</td><td class="score-cell">2</td><td class="clip">In past 1 year , I have worked in Singapore with a salary of S$30,000 per month for 8 months and 4 months worked outside Singapore , can I apply for the ONE Pass?
+
+What kind of outstanding achievements qualify for ONEPASS?</td><td class="clip">Based on the information I&#x27;ve loaded, I can answer both of your questions:
+
+## Can you apply for the ONE Pass with your work history?
+
+**No, you do not meet the salary requirement for the ONE Pass based on your current situation.**
+
+The ONE Pass requires that you have earned a **fixed monthly salary of at least S$30,000 for 12 consecutive months** leading up to the date of application. In your case:
+- You worked in Singapore for 8 months at S$30,000/month
+- You worked outside Singapore for 4 months
+
+Since you have not completed 12 consecutive months of earning S$30,000/month, you do not meet the salary-based eligibility criterion.
+
+However, there is an alternative path: **you may still qualify if you have outstanding achievements** (see below).
+
+## What outstanding achievements qualify for the ONE Pass?
+
+You may apply without meeting the salary criteria if you have outstanding achievements in **at least one of these areas**:
+
+1. **Sports**
+2. **Arts and culture**
+3. **Academia and research**
+
+MOM and other agencies (such as MCCY, MOE, NRF, and A*STAR) will holistically review applications based on the work and key achievements accomplished by each applicant.
+
+If you are applying under the outstanding achievements track, you will need to submit:
+- Payslips from the latest month
+- Documents supporting other income sources (if applicable)
+- A **Curriculum Vitae (CV)** highlighting key achievements
+
+For academia and research specifically, you should also include:
+- A CV listing significant publications, patents, and technology disclosures from the past 5 years
+- A recommendation or endorsement letter from a local host institution (such as an Autonomous University or A*STAR)
+
+**Can I help you with anything else regarding the ONE Pass or other work passes?**</td><td class="clip">The chatbot correctly identifies the three areas of outstanding achievements (Sports, Arts and culture, Academia and research) and mentions the holistic review by MOM and other agencies. However, it incorrectly states the user does not meet the salary requirement — the reference answer implies the user could potentially qualify under the outstanding achievements track without needing to meet the salary criterion, and the chatbot&#x27;s claim about needing &#x27;12 consecutive months&#x27; may not accurately reflect the policy for overseas earners. The additional document submission details add useful context but also introduce potential noise.</td><td><button class="toggle" onclick="toggleRow(14)">▸</button></td></tr><tr id="detail-14" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>You may apply for the ONE Pass based on outstanding achievements if you have accomplishments in at least one of these areas:
+
+• Sports
+• Arts and culture
+• Academia and research
+
+MOM and other agencies such as MCCY, MOE, NRF, and A*Star will holistically review applications based on the work and key achievements accomplished by each applicant. This means whether a particular achievement qualifies is assessed on a case-by-case basis.
+
+If you apply under the outstanding achievements track, you do not need to meet the S$30,000 fixed monthly salary criterion. 
+
+Is there anything else I can help you with? </pre></div><div class="detail-block"><b>Actual:</b><pre>Based on the information I&#x27;ve loaded, I can answer both of your questions:
+
+## Can you apply for the ONE Pass with your work history?
+
+**No, you do not meet the salary requirement for the ONE Pass based on your current situation.**
+
+The ONE Pass requires that you have earned a **fixed monthly salary of at least S$30,000 for 12 consecutive months** leading up to the date of application. In your case:
+- You worked in Singapore for 8 months at S$30,000/month
+- You worked outside Singapore for 4 months
+
+Since you have not completed 12 consecutive months of earning S$30,000/month, you do not meet the salary-based eligibility criterion.
+
+However, there is an alternative path: **you may still qualify if you have outstanding achievements** (see below).
+
+## What outstanding achievements qualify for the ONE Pass?
+
+You may apply without meeting the salary criteria if you have outstanding achievements in **at least one of these areas**:
+
+1. **Sports**
+2. **Arts and culture**
+3. **Academia and research**
+
+MOM and other agencies (such as MCCY, MOE, NRF, and A*STAR) will holistically review applications based on the work and key achievements accomplished by each applicant.
+
+If you are applying under the outstanding achievements track, you will need to submit:
+- Payslips from the latest month
+- Documents supporting other income sources (if applicable)
+- A **Curriculum Vitae (CV)** highlighting key achievements
+
+For academia and research specifically, you should also include:
+- A CV listing significant publications, patents, and technology disclosures from the past 5 years
+- A recommendation or endorsement letter from a local host institution (such as an Autonomous University or A*STAR)
+
+**Can I help you with anything else regarding the ONE Pass or other work passes?**</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "In past 1 year , I have worked in Singapore with a salary of S$30,000 per month for 8 months and 4 months worked outside Singapore , can I apply for the ONE Pass?\n\nWhat kind of outstanding achievements qualify for ONEPASS?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the information I've loaded, I can answer both of your questions:\n\n## Can you apply for the ONE Pass with your work history?\n\n**No, you do not meet the salary requirement for the ONE Pass based on your current situation.**\n\nThe ONE Pass requires that you have earned a **fixed monthly salary of at least S$30,000 for 12 consecutive months** leading up to the date of application. In your case:\n- You worked in Singapore for 8 months at S$30,000/month\n- You worked outside Singapore for 4 months\n\nSince you have not completed 12 consecutive months of earning S$30,000/month, you do not meet the salary-based eligibility criterion.\n\nHowever, there is an alternative path: **you may still qualify if you have outstanding achievements** (see below).\n\n## What outstanding achievements qualify for the ONE Pass?\n\nYou may apply without meeting the salary criteria if you have outstanding achievements in **at least one of these areas**:\n\n1. **Sports**\n2. **Arts and culture**\n3. **Academia and research**\n\nMOM and other agencies (such as MCCY, MOE, NRF, and A*STAR) will holistically review applications based on the work and key achievements accomplished by each applicant.\n\nIf you are applying under the outstanding achievements track, you will need to submit:\n- Payslips from the latest month\n- Documents supporting other income sources (if applicable)\n- A **Curriculum Vitae (CV)** highlighting key achievements\n\nFor academia and research specifically, you should also include:\n- A CV listing significant publications, patents, and technology disclosures from the past 5 years\n- A recommendation or endorsement letter from a local host institution (such as an Autonomous University or A*STAR)\n\n**Can I help you with anything else regarding the ONE Pass or other work passes?**",
+    "source": "bot_final",
+    "elapsed_ms": 9340.296541020507,
+    "http_status": 200
+  }
+]</pre></div></td></tr><tr class="score-2" data-kind="outofscope"><td class="mono">q-016</td><td>outofscope</td><td class="score-cell">2</td><td class="clip">What documents should I submit to show my salary from both my Singapore and overseas employment?</td><td class="clip">Thank you for your request. I&#x27;m connecting you to a human agent now who will be able to assist you with your question about salary documentation for both Singapore and overseas employment.
+
+Please hold while we transfer you to the next available agent.</td><td class="clip">The chatbot correctly identified that this question should be handled by a human officer and offered to connect the user, which aligns with the reference answer. However, it required an extra turn of clarification before transferring, and it provided speculative details about possible salary documents (payslips, tax returns, etc.) that weren&#x27;t in its knowledge base, adding some noise.</td><td><button class="toggle" onclick="toggleRow(15)">▸</button></td></tr><tr id="detail-15" class="detail" style="display:none"><td colspan="6"><div class="detail-block"><b>Expected:</b><pre>The steps for submitting documents and what to upload are handled by a human officer rather than through this channel. I can help with the eligibility criteria and how they are assessed. Would you like me to connect you to a human officer?</pre></div><div class="detail-block"><b>Actual:</b><pre>Thank you for your request. I&#x27;m connecting you to a human agent now who will be able to assist you with your question about salary documentation for both Singapore and overseas employment.
+
+Please hold while we transfer you to the next available agent.</pre></div><div class="detail-block"><b>Transcript:</b><pre>[
+  {
+    "role": "user",
+    "text": "What documents should I submit to show my salary from both my Singapore and overseas employment?",
+    "source": "user",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Based on the documents required for an Employment Pass application, the knowledge base I have access to covers **qualification verification documents** (educational credentials), but it does not specifically detail what salary documentation you need to submit for either Singapore or overseas employment.\n\nThe core documents listed for an EP application are:\n- Personal particulars page of your passport\n- Company's latest business profile registered with ACRA\n- Verification proof for your qualifications (if applicable)\n- Additional documents for regulated occupations (healthcare, legal, sports, food establishments)\n\nHowever, your question about **salary documentation from both Singapore and overseas employment** is not covered in the materials I have. This is an important detail for demonstrating that you meet the EP qualifying salary requirements.\n\nI do not have information about this, would you like me to connect you to a human agent?\n\nA human agent can provide specific guidance on what salary documents (such as payslips, employment contracts, tax returns, or income verification letters) you should submit for your particular employment situation.",
+    "source": "bot",
+    "elapsed_ms": 8070.840000000317,
+    "http_status": 200
+  },
+  {
+    "role": "user",
+    "text": "Yes, please connect me to a human agent. Thank you!",
+    "source": "clarifier",
+    "elapsed_ms": 0,
+    "http_status": 0
+  },
+  {
+    "role": "bot",
+    "text": "Thank you for your request. I'm connecting you to a human agent now who will be able to assist you with your question about salary documentation for both Singapore and overseas employment.\n\nPlease hold while we transfer you to the next available agent.",
+    "source": "bot_final",
+    "elapsed_ms": 2101.347791001899,
+    "http_status": 200
+  }
+]</pre></div></td></tr></tbody></table>
+
+<script>
+    function toggleRow(i) {
+      var d = document.getElementById('detail-' + i);
+      d.style.display = d.style.display === 'none' ? 'table-row' : 'none';
+    }
+    function applyFilter() {
+      var active = document.querySelectorAll('.chip.on');
+      var kinds = Array.from(active).map(function(c){ return c.dataset.kind; });
+      var all = kinds.length === 0 || kinds.indexOf('all') !== -1;
+      document.querySelectorAll('tr[data-kind]').forEach(function(row){
+        var show = all || kinds.indexOf(row.dataset.kind) !== -1;
+        row.style.display = show ? '' : 'none';
+        var next = row.nextElementSibling;
+        if (next && next.classList.contains('detail')) {
+          next.style.display = show && next.dataset.open === '1' ? 'table-row' : 'none';
+        }
+      });
+    }
+    document.addEventListener('click', function(e){
+      if (e.target && e.target.classList && e.target.classList.contains('chip')) {
+        if (e.target.dataset.kind === 'all') {
+          document.querySelectorAll('.chip.on').forEach(function(c){ c.classList.remove('on'); });
+          e.target.classList.add('on');
+        } else {
+          document.querySelector('.chip[data-kind="all"]').classList.remove('on');
+          e.target.classList.toggle('on');
+        }
+        applyFilter();
+      }
+    });
+    </script>
+</body></html>

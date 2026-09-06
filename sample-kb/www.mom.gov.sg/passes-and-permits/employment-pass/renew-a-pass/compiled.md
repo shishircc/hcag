@@ -63,7 +63,7 @@ The candidate needs to:
 - Work for the same employer in a managerial, executive, or specialised job.
 - Pass the points-based [Complementarity Assessment Framework (COMPASS)](https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility#compass) .
 
-- Candidates earning at least $22,500 [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) are[exempted from COMPASS](https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility#exemptions-from-compass) .
+- Candidates earning at least $22,500 fixed monthly salary are[exempted from COMPASS](https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility#exemptions-from-compass) .
 - Renewals are not guaranteed.
 - Once a candidate’s [qualification has been verified](https://www.mom.gov.sg/passes-and-permits/employment-pass/documents-required#changes-to-verification-requirement) , there is no need to get it verified again at renewal, or when there is a change of employer. If a candidate’s qualifications need to be verified, you will be prompted when filling in the EP application form.
 

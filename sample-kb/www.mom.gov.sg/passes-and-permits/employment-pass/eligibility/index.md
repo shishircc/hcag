@@ -261,7 +261,7 @@ These criteria ensure that organisations eligible for the SEP bonus points make 
 
 Candidates are exempted from COMPASS if they meet **any** of these conditions:
 
-- Have a [fixed monthly salary](https://www.mom.gov.sg/faq/employment-pass/what-is-a-fixed-monthly-salary) of at least $22,500 (similar to the prevailing[Fair Consideration Framework (FCF)](https://www.mom.gov.sg/passes-and-permits/employment-pass/consider-all-candidates-fairly) job advertising exemption from 1 September 2023)
+- Have a fixed monthly salary of at least $22,500 (similar to the prevailing[Fair Consideration Framework (FCF)](https://www.mom.gov.sg/passes-and-permits/employment-pass/consider-all-candidates-fairly) job advertising exemption from 1 September 2023)
 - Are applying as an [overseas intra-corporate transferee](https://www.mom.gov.sg/faq/fair-consideration-framework/can-a-job-be-exempted-from-the-advertising-requirement-if-it-will-be-filled-by-an-intra-corporate-transferee-ict)
 - Are filling the role for 1 month or less
 
