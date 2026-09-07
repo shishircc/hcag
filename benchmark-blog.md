@@ -299,29 +299,7 @@ The five levels map to the harness's kinds: `simple`, `medium`, `complex`, `hard
 
 The comparison run used the improved index. The RAG agent code at run time predated the alias fix.
 
-### C. The second test set — the diagnosability claim in numbers
-
-A separate 16-question set run against the organised agent only, examining rows scoring below 2.
-
-| Run | Prompt | Mean (0–3) | Pass | Below 2 |
-|---|---|---:|---:|---:|
-| An earlier run | pre-fix | 2.688 | 93.8% | 1 |
-| Baseline for the fix | pre-fix | 2.625 | 87.5% | 2 |
-| After the fix | tuned | **2.750** | **100%** | **0** |
-| Same prompt, re-run | tuned | **2.750** | **100%** | **0** |
-| Independent run, outside the tuning sequence | tuned | **2.750** | **100%** | **0** |
-| A further change, **reverted** | experiment | 2.688 | 93.8% | 1 |
-
-Both failures had the correct documents loaded; the errors were in reasoning. One answered "no" to
-an eligibility question while listing, in the same reply, the route that qualified the person — fixed
-by making eligibility a procedure (list every route, test each, "no" only if all fail). The other
-answered a request that should have been handed to a human officer — fixed with an explicit remit
-boundary. The two pre-fix runs disagree by 0.06, the run-to-run noise at this size; the fix moved the
-mean by twice that and removed the sub-2 rows entirely. The reverted change targeted the remaining
-2s with a rule against borrowing conditions between pass types and caused a hallucinated portal
-name instead.
-
-### D. Reproduce
+### C. Reproduce
 
 ```bash
 # Build the taxonomy from a folder tree of documents
@@ -339,7 +317,7 @@ evalrun validation3.csv --backend-url http://localhost:8000 \
         --out rag-scored.csv --report rag-report.html
 ```
 
-### E. Data
+### D. Data
 
 | Artefact | |
 |---|---|
