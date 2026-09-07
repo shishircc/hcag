@@ -1,56 +1,60 @@
-# Knowledge Taxonomy, Part 2 — What the Benchmark Changes in an Enterprise AI Plan
+# Knowledge Taxonomy, Part 2 — The Agent Was Never Shown the Page
 
-> *Part 1 —
-> [Your AI Agent Needs a Knowledge Taxonomy — a Small Investment That Pays Rich Dividends](https://www.linkedin.com/pulse/your-ai-agent-needs-knowledge-taxonomy-small-pays-rich-choudhary-qix9c)
-> — argued that most knowledge-grounded agents plateau around 70–80% because of how they find
-> knowledge, not which model they run, and that organising the knowledge base into a hierarchy fixes
-> it. This part puts numbers on that argument and asks the practical question: if it holds, what
-> changes in how you build, buy, budget and govern AI agents?*
+> *This is the second of two pieces. The first,
+> [Your AI Agent Needs a Knowledge Taxonomy — a Small Investment That Pays Rich Dividends](https://www.linkedin.com/pulse/your-ai-agent-needs-knowledge-taxonomy-small-pays-rich-choudhary-qix9c),
+> argued that most knowledge-grounded agents stall around 70–80% accuracy because of how they find
+> their knowledge, not because of which model they run, and that organising the knowledge into a
+> hierarchy is the fix. That was an argument. This is the measurement, and what it changes in an
+> enterprise AI plan.*
 
-**If you skipped Part 1**, three sentences carry you. *Flat RAG* — what most teams run — cuts
-documents into passages, indexes them by similarity, and hands the model the eight passages that
-look most like the question. A *knowledge taxonomy* is the structure your organisation already
-uses — manuals by model and revision, policies by domain, runbooks by system — made explicit and
-machine-readable as domain → topic → subtopic. *HCAG* is the agent pattern that uses it: reason
-about which branch a question belongs to, load the whole relevant document (images included), and
-keep it open for the rest of the task.
+Somewhere in your organisation this quarter, an AI agent will give a wrong answer, and someone will
+propose a larger model. It is the obvious response. The agent got it wrong; a smarter agent will get
+it right. Sometimes that is even true.
+
+We ran the test that meeting never runs. We built two agents over the same knowledge base, gave them
+the same model, asked them the same questions and had the same judge score every answer. The only
+difference between them was how each one found the knowledge it answered from. One searched a flat
+index of passages, the way most agents are built today. The other navigated an organised hierarchy
+and read whole documents. **The organised agent was 40% more accurate, and the model had not
+changed.** On the questions that automation actually consists of, the ones needing more than one
+document or an answer that lives in a diagram, the gain was not 40% but 82% and 120%.
+
+That is the headline, but it is not the most useful thing we learned. Three findings matter more for
+anyone planning an AI programme, and the rest of this piece is about them. The standard approach
+does not fail loudly; it fails by politely refusing, in a way that looks like the knowledge was
+missing when it was not. The gain from organising the knowledge grows with the difficulty of the
+work, which means it is largest exactly where automation is most valuable and smallest on the FAQ
+traffic most pilots start with. And the whole effect comes from something most enterprises already
+own: their knowledge is already organised by product, by domain and by procedure, and nobody has
+handed that structure to the agent.
+
+If you have not read Part 1, three sentences will carry you. *Flat RAG*, which most teams run, cuts
+documents into passages of a few hundred words, indexes them by similarity, and hands the model the
+eight passages that look most like the question. A *knowledge taxonomy* is the structure your
+organisation already uses, manuals filed by model and revision, policies by domain, runbooks by
+system, made explicit as domain, topic and subtopic. *HCAG* is the agent pattern that uses it: the
+agent reasons about which branch a question belongs to, loads the whole relevant document with its
+images, and keeps it open for the rest of the task.
 
 ---
 
-## If you read nothing else
+## The test we ran
 
-- **Same model, same questions, same scorer — the only change was how the knowledge was organised.
-  Accuracy rose 40%.** None of that gain came from the model, because the model did not change.
-- **The gain tracks the difficulty of the reasoning**: 14% on simple lookups, 82% when an answer
-  needs two documents, 120% when it is in an image. The work you most want to automate is the work
-  where organising pays most.
-- **The standard approach fails silently.** It refused 10 of 37 in-scope questions — "I don't have
-  enough information" — with the answer sitting in its knowledge base. That reads as a content gap.
-  Nobody files a bug against it.
-- **This changes five things in an enterprise plan**: the model-upgrade budget, the status of the
-  knowledge base, the retrieval architecture you specify, how you evaluate, and what you put on the
-  risk register. §3 takes each in turn. The investment is one-time organisation, not per-call cost.
+The knowledge base was a real one: 127 documents of Singapore government work-pass rules, the kind
+of policy corpus that a support or compliance agent would sit on. We generated 37 questions from the
+documents themselves, at five levels of difficulty, because "how accurate is it?" turns out to be
+the wrong question. The right one is *where* accuracy stops, and to see that you need questions that
+get progressively harder in a specific way. The easiest could be looked up in a single passage. The
+next needed reasoning within one paragraph, then combining three points from one document. The two
+hardest levels are where the test earns its keep: questions whose evidence sits in two different
+documents, and questions whose answer is in an image — a form, a diagram, a screenshot — rather than
+in the text at all.
 
----
-
-## 1. The evidence
-
-Two agents, **same 37 questions**, same 127-document knowledge base (Singapore government work-pass
-rules), **same AI model writing every answer, same independent AI judge** scoring each from 0 (wrong
-or refused) to 3 (complete). Questions were generated from the knowledge base itself at five levels,
-because the useful question is not "how accurate?" but "*where* does the ceiling sit?"
-
-| Level | What answering takes |
-|---|---|
-| Simple lookup | Look it up |
-| One paragraph | Reason within a single passage |
-| One document | Combine three points from one document |
-| **Two documents** | Combine evidence from two different documents |
-| **In an image** | The answer is in a form, diagram or screenshot, not the text |
+Both agents used the same model to write every answer, and the same independent AI judge scored each
+one from zero, meaning wrong or refused, to three, meaning complete. Everything else was held
+constant. Here is what came back, as a share of the maximum score:
 
 ```
-Share of maximum score, by question type — same model on both sides
-
                      HCAG                           Flat RAG
 Simple lookup        ████████████████████ 100%      ██████████████████░░  88%
 One paragraph        ██████████████████░░  89%      ████████████████░░░░  78%
@@ -68,13 +72,72 @@ In an image          ██████████████████░�
 | **In an image** | **91.7%** | **41.7%** | **+120%** |
 | **Overall** | **91.9%** | 65.8% | **+40%** |
 
-Flat RAG holds 71–88% for as long as an answer lives inside one passage — the ceiling Part 1
-described. Then it falls: 52% when two documents are needed, 42% when the answer is in a picture,
-worse than a coin flip. HCAG, on the identical model, never fell below 83% on any level.
+Read the flat-RAG column from the top. It holds between 71% and 88% for as long as an answer lives
+inside one passage, which is precisely the 70–80% ceiling that Part 1 described and that
+practitioners quote. Then it falls off a cliff: 52% when two documents are needed, 42% when the
+answer is in a picture, which on the visual questions is worse than a coin flip. The organised agent,
+running the identical model, never fell below 83% on any level.
 
-**And the same comparison on a second, easier set.** We later ran 16 further questions through
-both agents — same model, same judge. That set has **no two-document and no visual questions**; it
-sits entirely in the top three rows above. Read the two tables together:
+---
+
+## The failure you will not see in a log
+
+The size of the gap is less important than its shape, and the shape of the failure matters more
+than either. The organised agent passed all 37 questions; nine of its answers were marked down, and
+every one of those nine was judged "correct but said more than was asked," which is the cost of
+loading a whole document and a cheap failure to have. The flat-RAG agent passed 24 of 37. Of the 13
+it failed, ten were not wrong answers at all. They were refusals. The agent said, fluently and
+politely, that it did not have enough information to answer, and the information was in its
+knowledge base the entire time.
+
+Consider what that means once the agent is in production. A wrong answer is embarrassing, but it is
+visible; someone will catch it and file a bug. A courteous "I don't have that information" for
+something the knowledge base does contain looks like a content gap. Nobody investigates a content
+gap. It quietly becomes "the bot can't do that," a class of questions routes back to humans forever,
+and the accuracy figure on the dashboard stays exactly where it was. In our run the standard agent
+did this ten times in thirty-seven, concentrated in the two hard categories, and the only way to see
+it was to count refusals against what the knowledge base actually held.
+
+---
+
+## Why a bigger model would not have helped
+
+Look at where those refusals came from and the case for a model upgrade dissolves. A question that
+needs evidence from two documents requires both to surface in the same handful of passages from a
+single similarity search, and when one document dominates the ranking the other simply never
+arrives. The model is then asked to answer from half the evidence, and a well-behaved model
+correctly declines to invent the other half. One question from the run asked what an employer's
+repatriation obligations are and how they contrast with cancelling a different pass. The organised
+agent loaded both documents and scored full marks. The flat-RAG agent, on the same model, received
+one half and scored zero. It was not failing to reason. It was never shown the page.
+
+The image questions make the same point more starkly. A flat index cannot hold a picture; it holds a
+written description of the picture, produced by an AI in advance. Whatever the describer did not
+think to write down is unfindable afterwards, at any search quality and with any model behind it.
+Asked for the exact wording of a checkbox on a form, the standard agent scored zero because that
+phrase had never made it into any description. The organised agent attaches the image itself when
+it loads the document, and the same model reads the form.
+
+It is worth saying that the flat-RAG baseline was not set up to lose. Before running the comparison
+we audited our own RAG system and found three genuine defects, one of which improved its retrieval
+by a measured 17%. The comparison ran against the improved version, and it still lost by 40%,
+because no retrieval fix can deliver a document that was never selected or an image that was never
+attached. The gap is in the organisation of the knowledge, not in the model and not in the tuning.
+
+---
+
+## The gain grows with the difficulty, and vanishes on FAQs
+
+The second finding is visible in the Gain column of the table, and it is the one a roadmap should be
+built on. Read that column from the top. The gain never falls as the reasoning gets harder, and it
+jumps more than fourfold at the exact point where a question stops fitting inside one passage. The
+organised approach helps least where a fragment is enough and most where only a whole document, or
+two, will do.
+
+If that is really what is happening, then a set of questions with no two-document and no visual
+questions ought to show a much smaller gap. We had such a set: 16 further questions we later ran
+through both agents, with the same model and the same judge, drawn entirely from the easy half of
+the spectrum.
 
 | Second set — question type | HCAG | Flat RAG | HCAG uplift |
 |---|---:|---:|---:|
@@ -83,176 +146,151 @@ sits entirely in the top three rows above. Read the two tables together:
 | Should decline and hand over (2) | 83.3% | 66.7% | +25% |
 | **Overall (16)** | **93.8%** | 87.5% | **+7%** |
 
-Same two architectures; a workload drawn from the easy half of the spectrum; the advantage shrinks
-from 40% to 7%. HCAG passed all 16 with no row below 2; flat RAG failed two — both on questions it
-answered with "I don't have enough information".
-
-**How they failed matters more than how often.**
-
-| | HCAG | Flat RAG |
-|---|---:|---:|
-| Questions passed (key points covered or better) | **37 of 37** | 24 of 37 |
-| Wrong or refused | **0** | 13 |
-| **Refused outright** — "I don't have enough information" | **0** | **10** |
-
-HCAG's nine imperfect answers were all "correct but said more than was asked". Flat RAG's failures
-were refusals on questions the knowledge base could answer. That is not a model that cannot reason;
-it is a model that was **never handed the page** — because one similarity search does not reliably
-surface the second document, and cannot surface an image it only holds a written description of.
-No larger model reads a document it was not given.
-
-**The baseline was not set up to lose.** Before comparing, we audited our own flat-RAG system and
-fixed three real defects in it — one improved its retrieval by a measured 17%. The comparison ran
-against the improved version. It still lost by 40%, because no retrieval fix delivers a document
-that was never selected. Details in the appendix.
+The advantage shrinks from 40% to 7%. The organised agent still passed all sixteen with no
+failures, and flat RAG still failed two, both by refusing, but on this workload the two approaches
+are close. That is the most precise answer we can give to a question Part 1 could only gesture at:
+if your traffic is FAQ lookups, keep what you have, because the organising effort will not repay
+itself, and now there is a number that says so. It is also the reason so many pilots reach the wrong
+conclusion. They start with simple questions, see a small gap, and never test the work the agent was
+bought for.
 
 ---
 
-## 2. Where it pays, and where it doesn't
+## What this changes in an enterprise AI plan
 
-Look at your automation roadmap and sort each item by the question type it mostly asks.
+Put those findings together and they change five things about how a knowledge-grounded agent should
+be planned, and none of them is a model decision.
 
-**Where the gain is 40–120%.** Answers that routinely span more than one document, or sometimes
-live in a diagram, form or screenshot: maintenance manuals by model and revision, fraud typologies
-reasoned over together with escalation matrices, runbooks that must be executed whole, support cases
-that run across eligibility, documents, fees and timelines. On this work the model is not where the
-accuracy is, and a bigger model would still not be shown the second document.
+The first is the sequence in which you spend. The default response to an inaccurate agent is a
+larger model, and a model upgrade is a per-call cost for the life of the agent. This benchmark moved
+accuracy 40% without touching the model, by changing what the model was given. The implication is a
+rule: before a model upgrade is approved for accuracy, run the same-model test, with the same
+questions, the same model and the same judge, and the knowledge organised one way versus the other.
+It takes days, it separates the two causes, and if the accuracy is in the knowledge you spend the
+one-time cost instead of the recurring one.
 
-**Where the gain is 7–14%.** Single-passage lookups and FAQ traffic. Flat RAG scored 87.5% on
-simple questions; on the easy-only second set the whole gap was 7%. If that is your traffic, keep
-what you have — the organising effort will not repay itself, and now you have the number that says so.
+The second is the status of the knowledge base itself. In a flat-RAG programme the documents are an
+input and the index is the asset. In a taxonomy-backed programme the structure is the asset. It
+needs an owner, and the natural owner is the domain that already maintains those manuals or
+policies. It needs a change process, because a mis-filed document is now a mis-routed answer. And it
+needs versioning, because "this asset, this revision" is a branch in the tree. Most operational
+knowledge already has this structure informally; the work is making it explicit and giving it a
+name on an org chart, which is a knowledge-management decision rather than an engineering one.
 
----
+The third is what you specify when you build or buy. The requirement stops being "index our
+documents" and becomes three capabilities. The agent must select what to read by reasoning over a
+catalogue of what each part of the knowledge base covers, not by similarity alone. It must load
+whole documents together with their images rather than passages. And it must be able to say
+afterwards which documents an answer used. Those three can be put to any platform or vendor as
+direct questions, and a system that can only return the most similar passages will reproduce the
+cliff in the chart above whatever model sits behind it.
 
-## 3. What this changes in an enterprise AI plan
+The fourth is evaluation. The most reusable artefact in this benchmark is not the result but the
+question set: built from the knowledge base itself, tiered by difficulty, scored by a consistent
+judge, with a one-sentence justification published for every row. That is a standing capability,
+not a one-off exercise. It is what lets a team distinguish a retrieval failure from a model failure,
+a regression from noise, and a vendor claim from a demonstration. It comes with three rules. Hold
+the model constant when comparing architectures. Tune the baseline in good faith and say what you
+fixed. And publish the results that went the wrong way: one of our three attempted fixes on the
+second set made things worse, and we say so.
 
-**1. The model-upgrade budget.** The default response to an inaccurate agent is a larger model. This
-benchmark held the model fixed and moved accuracy 40% by changing what the model was *given*. The
-implication is a sequencing rule: before approving a model upgrade for accuracy, run the same-model
-test — same questions, same model, same judge, knowledge organised one way versus the other. It
-takes days and it separates the two causes. A model upgrade is a per-call cost for the life of the
-agent; organising the knowledge is a one-time cost. Spend the one-time cost first if the test says
-the accuracy is there.
+The fifth is the risk register, which gains two entries. The first is silent refusal, described
+above, whose only detection is counting refusals against what the knowledge base contains. The
+second is untraceable action. An agent that answers a question from the wrong passage produces an
+unhelpful paragraph, but an agent that acts on the wrong passage takes the wrong action, and "the
+eight most similar passages" is not an audit trail. For any agent that acts, in operations, in
+maintenance, in financial-crime workflows, the ability to name the document behind a decision is a
+control rather than a feature, and the organised approach provides it by construction.
 
-**2. The status of the knowledge base.** In a flat-RAG programme the knowledge base is an input —
-documents go into an index and the index is the asset. In a taxonomy-backed programme the
-*structure* is the asset: it needs an owner, usually the domain that already maintains those
-manuals or policies; it needs a change process, because a mis-filed document is now a mis-routed
-answer; and it needs to be versioned, because "this asset, this revision" is a branch. Most
-operational knowledge already has this structure informally. The work is making it explicit and
-assigning it an owner — a knowledge-management decision, not an engineering one.
-
-**3. The retrieval architecture you specify.** Whether you build or buy, the requirement changes from
-"index our documents" to three capabilities: the agent selects by *reasoning over a catalog* of what
-each part of the knowledge base covers, not by similarity alone; it loads *whole documents with their
-images*, not passages; and it can say afterwards *which documents an answer used*. Ask any platform
-or vendor for those three directly. A system that can only return the top passages by similarity
-will reproduce the cliff above regardless of the model behind it.
-
-**4. How you evaluate.** The single most useful artefact in this benchmark is not the result but the
-question set: built from the knowledge base itself, at five levels of difficulty, scored by a
-consistent judge, with per-question justifications published. That is a standing capability, not a
-one-off. It is what lets you tell a retrieval failure from a model failure, a real regression from
-noise, and a vendor claim from a demo. Three rules for it: hold the model constant when comparing
-architectures; tune the baseline in good faith and say what you fixed; publish the negative
-results — one of our three attempted fixes on the second set made things worse, and we say so.
-
-**5. The risk register.** Two entries. *Silent refusal*: an agent that declines in-scope questions
-looks like a content gap and quietly becomes "the bot can't do that" — the standard approach did
-this ten times in thirty-seven, and the only way to see it is to count refusals against what the
-knowledge base actually contains. *Untraceable action*: an agent that acts on a wrong passage takes
-a wrong action, and "the eight most similar passages" is not an audit trail. For any agent that acts
-— in operations, in maintenance, in financial-crime workflows — the ability to name the document
-behind a decision is a control, not a feature.
-
-**The line to carry upward:** *organising our knowledge moved agent accuracy 40% with the model
-unchanged, and the gain grows with the difficulty of the work we most want to automate. It is a
-one-time investment in an asset we mostly already have, and it comes with an audit trail the
-alternative cannot give.*
+If one line has to travel upward, it is this: organising our knowledge moved agent accuracy 40%
+with the model unchanged, the gain grows with the difficulty of the work we most want to automate,
+and it is a one-time investment in an asset we mostly already have, with an audit trail the
+alternative cannot give.
 
 ---
 
-## 4. A ninety-day plan with a decision gate
+## The next ninety days
 
-**Weeks 1–2 — size the opportunity (cost: an afternoon).** Take fifty real questions your target
-automation would handle. Sort them: single passage, two documents, in an image. The last two columns
-are the share of your accuracy problem a model upgrade cannot reach. Separately, count the questions
-your current agent refuses and check how many the knowledge base could have answered.
+None of this requires a programme to start with. In the first two weeks, take fifty real questions
+your target automation would handle and sort them into three piles: answerable from a single
+passage, needing two documents, and answered by an image. The last two piles are the share of your
+accuracy problem that a model upgrade cannot reach. In the same fortnight, count the questions your
+current agent refuses and check how many the knowledge base could actually have answered; that
+number is the size of the silent gap, and most teams have never measured it.
 
-**Weeks 3–8 — the same-model pilot (cost: days of effort, one domain).** Pick a bounded domain whose
-knowledge is already organised. Make the structure explicit, assign it an owner, and run the same
-questions through both approaches with the same model and the same judge. Everything needed to
-reproduce our run is in the appendix.
+From week three, run the same-model pilot on one bounded domain whose knowledge is already
+organised, which describes most maintenance libraries, policy repositories and runbook collections.
+Make the structure explicit, give it an owner, and run the same questions through both approaches
+with the same model and the same judge. Everything needed to reproduce our run is in the appendix.
 
-**The gate.** Proceed if the organised approach clears three tests on your own questions: a material
-gain on the two-document and visual rows; zero refusals on questions the knowledge base covers; and
-for every answer, a named document behind it. If it clears none, you have ruled out the cheaper fix
-for the price of an afternoon and a short pilot, and the model conversation proceeds on evidence.
-
-**Weeks 9–13 — scale, and measure what this benchmark did not.** Extend to the next domain, and
-instrument latency and cost per task. Part 1 argued both improve; this piece did not measure either
-(see §5). Do not budget on them until your pilot has.
-
----
-
-## 5. What this benchmark did not prove
-
-Two of Part 1's claims — that the organised approach is *faster* and *cheaper per task* because it
-retrieves once and reuses — were **not measured here**. This benchmark scored accuracy only. Those
-claims rest on the design argument, not on data in this piece, and we would rather say so than let
-the accuracy numbers imply support they do not give. For planning, that means: treat speed and cost
-as hypotheses for the pilot to test, not as savings to book.
-
-We also did **not** benchmark a larger model. The claim is not that organisation beats a bigger
-model head-to-head; it is that with the model held constant, organisation alone produced these gains
-— so it is the lever to test *before* paying for a model upgrade, not after.
+Then apply a gate. Proceed if the organised approach clears three tests on your own questions: a
+material gain on the two-document and visual rows, no refusals on questions the knowledge base
+covers, and a named document behind every answer. If it clears none of them, you have ruled out the
+cheaper fix for the price of an afternoon and a short pilot, and the model conversation can proceed
+on evidence rather than instinct. If it clears them, extend to the next domain and instrument the
+two things this benchmark did not, which brings us to what we have not shown.
 
 ---
 
-## 6. Scorecard against Part 1
+## What we have not shown
 
-For readers of Part 1, each claim it made and what the data says.
+Part 1 made two further claims: that the organised approach is faster per task, and cheaper, because
+it retrieves once and reuses what it loaded. This benchmark measured neither. It scored accuracy
+only, and those two claims rest on the design argument rather than on data in this piece. We would
+rather say so than let the accuracy numbers imply a support they do not give. For planning purposes,
+treat speed and cost as hypotheses for the pilot to test, not as savings to book.
+
+We also did not benchmark a larger model. The claim here is not that organisation beats a bigger
+model in a head-to-head. It is that with the model held constant, organisation alone produced these
+gains, which makes it the lever to test before paying for a model upgrade rather than after.
+
+---
+
+## For readers of Part 1
+
+Part 1 made six claims. Here is how each one fared.
 
 | Part 1 claimed | Measured? | Result |
 |---|---|---|
 | Flat RAG plateaus around 70–80% | Yes | 71–88% inside one passage; 52% and 42% beyond it |
 | The missing ingredient is structure, not the model | Yes, by construction | Same model both sides; +40% |
-| Strong reasoning because the agent sees whole documents | Yes | Gain rises with difficulty, more than fourfold at the one-passage boundary; the easy-only set shows it collapsing to 7% |
-| High accuracy — similar-but-wrong retrievals cannot happen | Yes | 0 wrong, 0 refused, 37 of 37 passed |
-| Faster per task | **No** | Not measured — pilot hypothesis |
-| Cheaper per task | **No** | Not measured — pilot hypothesis |
+| Strong reasoning because the agent sees whole documents | Yes | Gain rises with difficulty, more than fourfold at the one-passage boundary, and collapses to 7% on an easy-only set |
+| High accuracy because similar-but-wrong retrievals cannot happen | Yes | 0 wrong, 0 refused, 37 of 37 passed |
+| Faster per task | **No** | Not measured; a pilot hypothesis |
+| Cheaper per task | **No** | Not measured; a pilot hypothesis |
 
-One further property showed up in the second set: when the organised agent *was* wrong — twice —
-both errors were traced to a named document and a specific reasoning step, and fixed by changing the
-agent's instructions rather than rebuilding anything. A later revision took that set to 93.8% with
-no failures. That is the "behaviour you can reason about" Part 1 promised, and it is the property
-that makes a knowledge-grounded agent maintainable rather than merely accurate once.
-
----
-
-## 7. How far to trust this
-
-- **37 questions**, six to eight per level. The overall gap and the two large gaps are far wider than
-  the noise at that size. The 14–18% leads on the three easier levels are **not** statistically
-  separable from noise — read them as directional.
-- **The second set is 16 questions**, nine of them simple lookups. The +4% on those nine is one
-  answer's worth of difference and is not separable from noise; the set's overall +7% rests mainly on
-  the five one-paragraph questions and the two the agent should decline. Read the per-type rows as
-  directional.
-- **The scorer is an AI judge**, reliable in aggregate, not per row. Every row's justification is
-  published — see Appendix D for the per-question files.
-- **One knowledge base, one domain** — government policy. Expect the visual gap to be larger in
-  engineering and network domains, and the simple-lookup gap smaller in FAQ-heavy ones.
-- **Reference answers came from the same knowledge base**; this measures faithful retrieval of known
-  content, not open-domain correctness.
+One property showed up that Part 1 promised without quite naming. When the organised agent was
+wrong on the second set, which happened twice, both errors were traced to a specific document and a
+specific step in the agent's reasoning, and both were fixed by changing the agent's instructions
+rather than rebuilding anything. A later revision of those instructions took the set to 93.8% with
+no failures at all. That is what "behaviour you can reason about" looks like in practice, and it is
+the property that makes a knowledge-grounded agent maintainable rather than merely accurate on the
+day it was measured.
 
 ---
 
-*Part 1 explained why a taxonomy should work. This part shows that on accuracy it did — by 40%
-overall, and by 82–120% on exactly the work that automation consists of — and sets out what that
-changes: sequence the knowledge before the model, treat the taxonomy as an owned asset, specify
-retrieval by capability, evaluate as a standing practice, and put silent refusal on the risk
-register. Speed and cost are the next things to measure.*
+## How far to trust this
+
+The comparison rests on 37 questions, six to eight at each level. The overall gap and the two large
+gaps at the hard end are far wider than the noise at that size; the 14–18% leads on the three easier
+levels are not statistically separable from noise, and should be read as directional. The second set
+is 16 questions, nine of them simple lookups, and the +4% on those nine is one answer's worth of
+difference, so its overall +7% rests mainly on the five one-paragraph questions and the two the
+agent should decline. The scorer is an AI judge, reliable in aggregate rather than per row, and every
+row's justification is published in the files linked from the appendix so that any single score can
+be audited. Everything was measured on one knowledge base in one domain, government policy, which is
+structured prose with tables and forms; we would expect the visual gap to be larger in engineering
+and network domains and the simple-lookup gap smaller in FAQ-heavy ones. And the reference answers
+were written from the same knowledge base, so this measures faithful retrieval of known content, not
+open-domain correctness.
+
+---
+
+Part 1 explained why a taxonomy should work. This part shows that on accuracy it did, by 40% overall
+and by 82–120% on exactly the work that automation consists of, and it sets out what that changes:
+sequence the knowledge before the model, treat the taxonomy as an owned asset, specify retrieval by
+capability, evaluate as a standing practice, and put silent refusal on the risk register. Speed and
+cost are the next things to measure.
 
 ---
 
@@ -274,17 +312,16 @@ The five levels map to the harness's kinds: `simple`, `medium`, `complex`, `hard
 
 ### B. What we fixed in the RAG baseline before comparing
 
-- **A dead retrieval leg.** A missing embedding credential made `_retrieve` return empty *before*
-  full-text search ran, so the "hybrid" retriever had a single point of failure. The vector leg is
-  now skipped and BM25 carries the turn; the degradation is logged and surfaced in the stream.
-- **Chunks that did not know their document.** Only chunk 0 carried the document title, and a bare
-  `#` in the crawled markup was wiping the title from the heading stack. Every chunk's indexed text
-  now opens with its heading path. Measured over ten document-naming queries, on-topic hits in the
-  FTS top-8 rose from 35 to 41 (**+17%**).
-- **A vocabulary gap.** The corpus says "ONE Pass"; users type "onepass", which appears nowhere, so
-  BM25 returned zero. Added query-time alias expansion plus a vocabulary note to the generator.
-
-The comparison run used the improved index. The RAG agent code at run time predated the alias fix.
+The first defect was a dead retrieval leg: a missing embedding credential made `_retrieve` return
+empty before full-text search ran, so the "hybrid" retriever had a single point of failure. The
+vector leg is now skipped and BM25 carries the turn, and the degradation is logged and surfaced in
+the stream. The second was chunks that did not know their own document: only the first chunk carried
+the document title, and a bare `#` in the crawled markup was wiping the title from the heading stack.
+Every chunk's indexed text now opens with its heading path, and over ten document-naming queries the
+on-topic hits in the full-text top-8 rose from 35 to 41, a 17% improvement. The third was a
+vocabulary gap: the corpus says "ONE Pass" while users type "onepass", which appears nowhere, so BM25
+returned nothing. We added query-time alias expansion and a vocabulary note for the generator. The
+comparison run used the improved index; the RAG agent code at run time predated the alias fix.
 
 ### C. Reproduce
 
@@ -307,7 +344,7 @@ evalrun validation3.csv --backend-url http://localhost:8000 \
 ### D. Data
 
 Final score, as share of maximum. Each figure links to its scored CSV, which carries every question,
-both agents' answers, the score and the judge's one-sentence justification per row.
+both agents' answers, the score and the judge's one-sentence justification for each row.
 
 | | Beta set (16 questions) | Benchmark (37 questions) |
 |---|---:|---:|
