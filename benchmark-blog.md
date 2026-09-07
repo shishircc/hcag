@@ -1,38 +1,41 @@
-# RAG Is Fine for FAQs. Your Automation Isn't an FAQ.
+# We Made an AI Agent 40% More Accurate Without Touching the Model
 
-> We put two AI agents in front of the same 37 questions, over the same knowledge base, with the
-> same AI model and the same scorer. One found its knowledge the way most teams build agents today.
-> The other started by organising the knowledge first. On simple lookups they were close. On the
-> questions that automation actually consists of, the standard approach failed more often than it
-> succeeded — and it failed by *politely refusing*, not by being visibly wrong.
+> When an AI agent gets things wrong, the instinct is to reach for a bigger model. We did the
+> opposite: we held the model constant — same model, same questions, same scorer — and changed only
+> **how the agent's knowledge was organised**. Accuracy went up **40%** against the method most teams
+> use today — and the harder the reasoning a question demanded, the bigger the gain: **14%** on simple
+> lookups, **82%** where two documents had to be combined, **120%** where the answer was in an image.
 
 ---
 
-A user asked the agent a question. The agent replied, fluently and courteously, that it did not have
-enough information to answer. The information was in its knowledge base. It had been there the whole
-time. Nobody filed a bug, because nothing looked broken — a polite "I don't have that" reads as a
-content gap, not a defect. In our test, the standard agent did this **ten times out of thirty-seven**.
-
-That is the failure mode this piece is about, because it is the one that ends up in production.
+Every AI leader has had the conversation. The agent is inaccurate; the proposal on the table is a
+larger model, a newer model, a more expensive model. Sometimes that is right. But in our benchmark
+the model was never the problem. The agent was not failing to *reason* about the evidence. **It was
+never handed the evidence** — because of how the knowledge was stored and found. No model, at any
+size, can read a document it was not given or a diagram that was never attached.
 
 ## The one thing to remember
 
-**The way your agent *finds* knowledge matters more than the model it runs on — and the default way
-breaks precisely where automation earns its keep: answers that span more than one document, or that
-live in a diagram, a form, a chart. It doesn't break loudly. It refuses, and the gap disappears into
-"the bot can't do that."**
+**You can improve an AI agent's accuracy dramatically by improving how its knowledge is organised —
+not by buying a larger model. With the model held constant, organising the knowledge base into a
+hierarchy and letting the agent navigate it raised accuracy 40% over the popular flat-index method
+(RAG). And the gain grows with the complexity of the reasoning: +14% on simple lookups, +18% within
+one document, +82% across two documents, +120% when the answer is in an image. The harder the
+knowledge work, the more organisation is worth.**
 
-## The one thing to do this week
+## The one thing to do before your next model upgrade
 
-Ask your team: **"Of the questions our agent currently refuses, how many are actually answerable
-from our knowledge base?"**
+Run the same test we ran: **same questions, same model, same scorer — the knowledge organised one
+way versus the other.** It takes days, not a quarter, and it tells you whether your accuracy problem
+is in the model or in the knowledge. In our case it was entirely in the knowledge.
 
-It costs nothing to ask. If nobody knows the number, that is your first finding. If the number is
-material, the rest of this piece tells you what is causing it and what to do about it.
+If even that is too much for this week, do the free version: take fifty real questions your agent
+has handled and sort them into *single passage*, *needs two documents*, *answer is in an image*. The
+share in the last two columns is the share of your workload where a bigger model will not help.
 
 ---
 
-## 1. What the data says
+## 1. What the data says — same model, two ways to find knowledge
 
 Two agents. **Same 37 questions**, same 127-document knowledge base (Singapore government work-pass
 rules), **same AI model writing every answer, same independent AI judge** scoring every answer from 0
@@ -47,7 +50,7 @@ The questions were built at five levels, because the useful question is not "how
 but "*where* does it stop being accurate?"
 
 ```
-Share of maximum score, by question type
+Share of maximum score, by question type — same model on both sides
 
                      Organised (HCAG)               Standard (RAG)
 Simple lookup        ████████████████████ 100%      ██████████████████░░  88%
@@ -57,20 +60,26 @@ Two documents        ███████████████████�
 In an image          ██████████████████░░  92%      ████████░░░░░░░░░░░░  42%   ◄ cliff
 ```
 
-| Question type | Organised | Standard | Gap |
+| Question type | Organised | Standard | Gain from organisation alone |
 |---|---:|---:|---:|
 | Simple lookup | 100.0% | 87.5% | +14% |
 | Reason within one paragraph | 88.9% | 77.8% | +14% |
 | Combine three points from one document | 83.3% | 70.8% | +18% |
 | **Combine two different documents** | **95.2%** | **52.4%** | **+82%** |
 | **Answer is in an image, not the text** | **91.7%** | **41.7%** | **+120%** |
-| **Overall** | **91.9%** | **65.8%** | **+40%** |
+| **Overall** | **91.9%** | 65.8% | **+40%** |
+
+Read the right-hand column top to bottom: the gain never falls as the reasoning gets harder, and it
+jumps more than fourfold at the point where a question stops fitting inside one passage. That is the
+second finding, and for an automation roadmap it is the more useful one — **the work you most want to
+automate is the work where organisation pays most.**
 
 Three levels of a modest lead, then a cliff. Standard RAG holds 71–88% as long as the answer lives
-inside one passage — which is exactly the 70–80% ceiling practitioners already quote for it. Then
-it drops to 52% and 42%: on questions whose answer is in a picture, **worse than a coin flip**.
+inside one passage — exactly the 70–80% ceiling practitioners already quote for it. Then it drops to
+52% and 42%: on questions whose answer is in a picture, **worse than a coin flip**. The organised
+agent, running the *identical* model, never fell below 83% on any category.
 
-And the *kind* of failure is the part to remember:
+And the kind of failure matters:
 
 | | Organised | Standard |
 |---|---:|---:|
@@ -78,48 +87,51 @@ And the *kind* of failure is the part to remember:
 | Wrong or refused | **0** | 13 |
 | **Refused outright** — "I don't have enough information" | **0** | **10** |
 
-The organised agent was never wrong and never refused; its imperfect answers all "said more than
-was asked". The standard agent refused ten in-scope questions, concentrated in exactly the two hard
-categories. Those ten do not look like failures in a log. They look like the knowledge base doesn't
-cover the topic.
+The organised agent was never wrong and never refused. The standard agent — same model — refused
+ten in-scope questions whose answers were in its knowledge base. That is not a model that cannot
+reason. It is a model that was not shown the page.
 
 ---
 
-## 2. Why — two things a flat index cannot do
+## 2. Why a bigger model would not have helped
 
-Neither is a tuning problem. Neither is fixed by a better model.
+Both failures below are failures of *what the model was given*, not of what it did with it. Neither
+is fixed by more parameters.
 
-**It cannot easily cross a document boundary.** A question needing evidence from two documents
-requires both to surface in the same small set of passages from a single search. When one document
-dominates, the other never arrives. One question from the run, verbatim: *"What are the employer's
-repatriation obligations, and how does this contrast with ONE Pass cancellation?"* The organised
-agent loaded both documents and scored 3. The standard agent retrieved one half, correctly declined
-to invent the other, and scored **0**.
+**It was not given the second document.** A question needing evidence from two documents requires
+both to surface in the same small set of passages from a single similarity search. When one document
+dominates the ranking, the other never arrives — and a model cannot reason about a page it never
+saw. One question from the run, verbatim: *"What are the employer's repatriation obligations, and
+how does this contrast with ONE Pass cancellation?"* The organised agent loaded both documents and
+scored 3. The standard agent, same model, received one half, correctly declined to invent the other,
+and scored **0**.
 
-**It cannot see a picture.** A flat index can only hold a *written description* of each image,
-produced by an AI in advance. Whatever the describer didn't think to write down is unfindable
-afterwards, at any search quality. Asked for the exact wording of a checkbox on a form, the standard
-agent scored 0 — the phrase was in no description. The organised agent reads the form.
+**It was not given the picture.** A flat index can only hold a *written description* of each image,
+produced by an AI in advance. Whatever the describer didn't write down is unfindable afterwards, at
+any search quality and with any model. Asked for the exact wording of a checkbox on a form, the
+standard agent scored 0 — the phrase was in no description. The organised agent attaches the image
+itself; the same model reads the form.
 
 **We tried to make the standard approach win first.** Before comparing, we audited our own RAG
 baseline and fixed three genuine defects in it — one of which improved its retrieval by a measured
 17%. The comparison ran against the *improved* system. It still lost by 40% overall and by 82–120%
-on the hard categories, because no retrieval fix touches a document boundary or an image. **The gap
-is architectural.** (Details in the appendix.)
+on the hard categories, because no retrieval fix delivers a document that was not selected or an
+image that was never attached. **The gap is in the organisation of the knowledge, not in the model
+and not in the tuning.** (Details in the appendix.)
 
 ---
 
 ## 3. What this changes on your roadmap
 
-A chatbot that retrieves the wrong passage writes an unhelpful paragraph. **An agent that retrieves
+A chatbot that is handed the wrong passage writes an unhelpful paragraph. **An agent that is handed
 the wrong passage takes the wrong action.** Look at what is on the automation roadmap and notice
-which side of the cliff each item lands on.
+which side of the cliff each item lands on — and therefore where a model upgrade would and would not
+move the needle.
 
 **Predictive and corrective maintenance.** The answer is in the manual for *this* model and *this*
 revision — and very often in the diagram: a labelled component, a wiring topology, a threshold on a
-chart. That is the "in an image" row, where standard RAG scored 42%. An organised knowledge base
-makes "this asset, this revision" a branch; the other revisions are structurally out of reach, not
-merely ranked lower.
+chart. That is the "in an image" row, where the standard approach scored 42%. An organised knowledge
+base makes "this asset, this revision" a branch; the other revisions are structurally out of reach.
 
 **Fraud and financial-crime investigation.** Typology, threshold, escalation matrix — several
 documents reasoned over at once. That is the "two documents" row, 52%. And this workload must leave
@@ -134,59 +146,64 @@ that.
 **Self-healing networks and IT operations.** A remediation agent executing a runbook needs the whole
 runbook — steps, preconditions, rollback. A runbook cut into passages is actively dangerous: step 4
 retrieved without the precondition in step 2 is a plausible-looking instruction to break production.
-Whole-document retrieval is the safety property here, not a quality refinement.
+Whole-document retrieval is the safety property here.
 
-**The line to carry upward:** *our automation candidates are cross-document and visual work; the
-architecture we default to scores 42–52% on exactly that, and fails silently. The fix is an
-organising investment, not a model upgrade.*
+**The line to carry upward:** *our automation candidates are cross-document and visual work. The
+method we default to scores 42–52% on exactly that with the model we have — and a bigger model
+would still not be shown the second document or the diagram. The lever is how the knowledge is
+organised, that is a one-time investment rather than a per-call cost, and the harder the reasoning
+we ask of the agent, the more it returns.*
 
 ---
 
 ## 4. What to do
 
-**This week — measure the problem (cost: nothing).** Count the refusals your agent produces and
-check how many were answerable. That number is the size of the silent gap.
+**This week — sort the workload (cost: an afternoon).** Take a sample of the questions your target
+automation would handle. Sort them: single passage, cross-document, visual. That split tells you how
+much of your accuracy problem a model upgrade can even reach.
 
-**This month — size the opportunity (cost: an afternoon).** Take a sample of the questions your
-target automation would actually handle and sort them: single passage, cross-document, or visual. The
-share in the last two columns is the share of your workload sitting on the wrong side of the cliff.
+**This month — run the same-model test (cost: days).** Organise one bounded domain's knowledge as a
+hierarchy — pick one where the knowledge is *already organised* by people; maintenance libraries,
+policy repositories and runbook collections almost always are. Run the same questions through both
+approaches with the same model and the same judge, exactly as here. Let the numbers decide.
 
-**This quarter — pilot on one domain (cost: days to weeks).** Pick a bounded domain whose knowledge
-is *already organised* — maintenance libraries, policy repositories and runbook collections almost
-always are. Build the hierarchy from that structure. Run the same questions through both approaches
-with the same judge, exactly as here, and let the numbers decide.
+**Then — decide with data.** If organising the knowledge moves accuracy the way it did here, you have
+found a gain that does not add to your per-call model bill. If it does not, you have ruled it out
+cheaply and the model conversation proceeds on evidence.
 
 **What to demand from whoever builds it — a team or a vendor:**
 
-- **The comparison must be fair.** Same model, same questions, same scorer, and the baseline tuned in
-  good faith. Ask what they fixed in the baseline before comparing. If the answer is "nothing", the
-  comparison is a demo.
-- **Failures must be diagnosable.** When our organised agent got two questions wrong on a second
-  test set, both were traceable to a *named document* and a *specific reasoning step* — and were
-  fixed by changing the agent's instructions, not by rebuilding anything. The fix moved the pass rate
-  from 87.5% to **100%**, and it reproduced on three separate runs, one of them made by someone not
-  involved in the tuning.
+- **The comparison must hold the model constant.** Same model, same questions, same scorer, and the
+  baseline tuned in good faith. Ask what they fixed in the baseline before comparing. If the answer
+  is "nothing", it is a demo.
+- **Failures must be diagnosable.** When our organised agent got two questions wrong on a second test
+  set, both were traceable to a *named document* and a *specific reasoning step* — and were fixed by
+  changing the agent's instructions, not by rebuilding anything or changing the model. Pass rate
+  went from 87.5% to **100%**, reproduced on three separate runs, one made by someone not involved in
+  the tuning.
 - **Negative results must be published.** One of our three attempted fixes made things *worse* — it
   caused the agent to invent a portal name — and we reverted it. It is in the data alongside the rest.
   A benchmark reported only when it agrees with the vendor is marketing.
 
 ---
 
-## 5. What it costs, and when to keep what you have
+## 5. What it costs, and when a model upgrade is still the right call
 
-**The investment is organising the knowledge** — days to weeks depending on scope — and it is
-one-time. It is also frequently already done, because people organise operational knowledge the same
-way: by product, by domain, by procedure. If your knowledge is a heap of unstructured documents with
-no natural hierarchy, that heap is the project — and it would have been the project under any
-serious knowledge programme.
+**Organising the knowledge is a one-time investment** — days to weeks depending on scope — and it is
+frequently already half-done, because people organise operational knowledge the same way: by product,
+by domain, by procedure. A model upgrade is a configuration change, and then a higher cost on every
+call for as long as the agent runs. Which is cheaper depends on your volume; the point is that they
+are different kinds of cost, and only one of them was needed here.
 
-**Keep standard RAG when** the knowledge base is small, the questions are genuinely FAQ-shaped, and
-you need something shipped this quarter. Our own data supports this: on simple lookups RAG scored
-87.5%, and a 14% gap will not repay a taxonomy if that is all your traffic looks like.
+**Keep standard RAG, and consider the model, when** the knowledge base is small, the questions are
+genuinely FAQ-shaped, and you need something shipped this quarter. Our own data supports this: on
+simple lookups the standard approach scored 87.5%, and a 14% gap will not repay a taxonomy if that
+is all your traffic looks like.
 
-**Move when** answers routinely need more than one document; when answers are sometimes in a diagram,
-form or screenshot; when the same knowledge is consulted across many steps of a task; or when you
-will have to explain afterwards which document drove a decision.
+**Organise the knowledge when** answers routinely need more than one document; when answers are
+sometimes in a diagram, form or screenshot; when the same knowledge is consulted across many steps
+of a task; or when you will have to explain afterwards which document drove a decision. On that
+work, our data says the model is not where the accuracy is.
 
 ---
 
@@ -194,6 +211,9 @@ will have to explain afterwards which document drove a decision.
 
 Discount correctly rather than believe wholesale.
 
+- **We did not benchmark a larger model.** The claim is not that organisation beats a bigger model
+  head-to-head; it is that with the model *held constant*, organisation alone produced these gains —
+  so it is the lever to test before paying for a model upgrade, not after.
 - **37 questions**, six to eight per level. The overall gap (+40%) and the two large gaps (+82%,
   +120%) are far wider than the noise at that size. The 14–18% leads on the three easier levels are
   **not** statistically separable from noise — read them as directional.
@@ -245,7 +265,7 @@ belongs to, the way an experienced colleague knows which manual to reach for. It
 relevant document, images included, and keeps it open for the rest of the task instead of searching
 again at each step. Everything outside the chosen branch is simply not in play. That is why the
 "similar but wrong" passage cannot appear, why a two-document question is one load rather than a
-lucky search, and why a diagram arrives as a diagram.
+lucky search, and why a diagram arrives as a diagram — for whatever model is doing the reading.
 
 ---
 
