@@ -72,6 +72,21 @@ In an image          ██████████████████░�
 | **In an image** | **91.7%** | **41.7%** | **+120%** |
 | **Overall** | **91.9%** | 65.8% | **+40%** |
 
+**And the same comparison on a second, easier set.** We later ran 16 further questions through
+both agents — same model, same judge. That set has **no two-document and no visual questions**; it
+sits entirely in the top three rows of the table above. Read the two tables together:
+
+| Second set — question type | HCAG | Flat RAG | HCAG uplift |
+|---|---:|---:|---:|
+| Simple lookup (9) | 96.3% | 92.6% | +4% |
+| One paragraph (5) | 93.3% | 86.7% | +8% |
+| Should decline and hand over (2) | 83.3% | 66.7% | +25% |
+| **Overall (16)** | **93.8%** | 87.5% | **+7%** |
+
+Same two architectures; a workload drawn from the easy half of the spectrum; the advantage shrinks
+from 40% to 7%. HCAG passed all 16 with no row below 2; flat RAG failed two — both on questions it
+answered with "I don't have enough information".
+
 **Measured: yes, and the ceiling is real.** Flat RAG holds 71–88% for as long as an answer lives
 inside one passage — exactly the range Part 1 quoted. Then it falls off a cliff: 52% when two
 documents are needed, 42% when the answer is in a picture. On the visual questions it is worse than
@@ -111,13 +126,12 @@ the exact point where a question stops fitting inside one passage. The gains are
 fragment is enough and largest where only a whole document — or two — will do. That is Part 1's
 "complete documents, not stitched-together excerpts" claim, with numbers on it.
 
-**A second, independent test set confirms it from the other direction.** We later ran 16 further
-questions through both agents. That set happens to contain **no two-document and no visual
-questions** — only single-passage and single-document work. If the gain really tracks reasoning
-difficulty, the gap on that set should be small. It is: **HCAG 93.8%, flat RAG 87.5%, a gain of 7%**
-rather than 40%. Same architectures, same model, a workload drawn from the easy half of the
-spectrum, and the advantage nearly disappears. That is also the most precise answer we have to *when
-is this not worth doing* — which Part 1 could only gesture at.
+**The second set confirms it from the other direction.** If the gain really tracks reasoning
+difficulty, then a set with no two-document and no visual questions should show a small gap. The
+second table under Claim 1 is that set: **93.8% against 87.5%, a gain of 7%** rather than 40%. Same
+architectures, same model, a workload drawn from the easy half of the spectrum, and the advantage
+nearly disappears. That is also the most precise answer we have to *when is this not worth doing* —
+which Part 1 could only gesture at.
 
 ---
 
@@ -128,8 +142,8 @@ answers were all judged "correct but included more than was asked" — the cost 
 document, and a far cheaper failure than a wrong one. Flat RAG's failures were the opposite shape:
 13 answers missing key points or wrong, 10 of them refusals. When the organised agent *was* wrong on
 the second test set — twice — both errors were traced to a named document and a specific reasoning
-step, fixed by changing the agent's instructions rather than the index, and the fix reproduced on
-three separate runs. A further revision of the instructions then took the same set to 93.8% with
+step, fixed by changing the agent's instructions rather than the index, and the fix held on
+re-runs during tuning. A further revision of the instructions then took the same set to 93.8% with
 still no failures. That traceability is the "behaviour you can reason about" that Part 1 promised.
 
 ---
@@ -180,8 +194,8 @@ our run is in the appendix.
 **Demand three things from whoever builds it.** The comparison holds the model constant and the
 baseline is tuned in good faith — ask what they fixed in it first. Failures are traceable to a
 document and a reasoning step, not "the search ranked the wrong passage". And negative results are
-published: one of our three attempted fixes on the second set made things *worse*, and it is in the
-data with the rest.
+published: one of our three attempted fixes on the second set made things *worse*; we recorded it
+and reverted it.
 
 ---
 
@@ -190,11 +204,10 @@ data with the rest.
 - **37 questions**, six to eight per level. The overall gap and the two large gaps are far wider than
   the noise at that size. The 14–18% leads on the three easier levels are **not** statistically
   separable from noise — read them as directional.
-- **The second set is 16 questions.** On its three single-document questions flat RAG scored 100%
-  against HCAG's 88.9% — one answer scoring 2 instead of 3, and it held on the latest run of both
-  agents. At n = 3 that is a row, not a trend, but it is the one category RAG won and it is not being
-  hidden. It is also consistent with the thesis:
-  the easier the question, the less organisation buys.
+- **The second set is 16 questions**, nine of them simple lookups. The +4% on those nine is one
+  answer's worth of difference and is not separable from noise; the set's overall +7% rests mainly on
+  the five one-paragraph questions and the two the agent should decline. Consistent with the thesis
+  — the easier the question, the less organisation buys — but read the per-type rows as directional.
 - **We did not benchmark a larger model.** The claim is not that organisation beats a bigger model
   head-to-head; it is that with the model held constant, organisation alone produced these gains.
 - **The scorer is an AI judge**, reliable in aggregate, not per row. Every row's justification is
@@ -266,5 +279,5 @@ Final score, as share of maximum. Each figure links to its scored CSV.
 
 | | Beta set (16 questions) | Benchmark (37 questions) |
 |---|---:|---:|
-| **RAG** | [87.5%](./sample-benchmark-report/rag-kb-eval-scored-beta.csv) | [65.8%](./sample-benchmark-report/rag-kb-eval-scored.csv) |
-| **HCAG** | [93.8%](./sample-benchmark-report/hcag-kb-eval-scored-beta.csv) | [91.9%](./sample-benchmark-report/hcag-kb-eval-scored.csv) |
+| **RAG** | [87.5%](./beta-set/beta-rag-kb-eval-scored.csv) | [65.8%](./benchmark-set/benchmark-rag-kb-eval-scored.csv) |
+| **HCAG** | [93.8%](./beta-set/beta-hcag-kb-eval-scored.csv) | [91.9%](./benchmark-set/benchmark-hcag-kb-eval-scored.csv) |
