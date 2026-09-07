@@ -165,12 +165,14 @@ touching retrieval.**
 We ran a second, separate 16-question set ([`validationbeta.csv`](./sample-benchmark-report/validationbeta.csv))
 against HCAG and looked only at rows scoring below 2:
 
-| Run | Mean | Pass rate | Rows below 2 | Artifact |
-|---|---:|---:|---:|---|
-| Baseline | 2.625 (87.5%) | 87.5% | **2** | [scored](./sample-benchmark-report/beta-01-baseline-scored.csv) · [report](./sample-benchmark-report/beta-01-baseline-report.html) |
-| After prompt fix | **2.750 (91.7%)** | **100%** | **0** | [scored](./sample-benchmark-report/beta-02-tuned-scored.csv) · [report](./sample-benchmark-report/beta-02-tuned-report.html) |
-| Same prompt, re-run | **2.750 (91.7%)** | **100%** | **0** | [scored](./sample-benchmark-report/beta-03-tuned-rerun-scored.csv) · [report](./sample-benchmark-report/beta-03-tuned-rerun-report.html) |
-| A change we reverted | 2.688 (89.6%) | 93.8% | 1 | [scored](./sample-benchmark-report/beta-04-reverted-experiment-scored.csv) · [report](./sample-benchmark-report/beta-04-reverted-experiment-report.html) |
+| Run | Prompt | Mean | Pass rate | Rows below 2 | Artifact |
+|---|---|---:|---:|---:|---|
+| An earlier run, before this work | pre-fix | 2.688 (89.6%) | 93.8% | 1 | [scored](./sample-benchmark-report/beta-00-prior-run-scored.csv) · [report](./sample-benchmark-report/beta-00-prior-run-report.html) |
+| Baseline for the fix | pre-fix | 2.625 (87.5%) | 87.5% | **2** | [scored](./sample-benchmark-report/beta-01-baseline-scored.csv) · [report](./sample-benchmark-report/beta-01-baseline-report.html) |
+| After the prompt fix | **tuned** | **2.750 (91.7%)** | **100%** | **0** | [scored](./sample-benchmark-report/beta-02-tuned-scored.csv) · [report](./sample-benchmark-report/beta-02-tuned-report.html) |
+| Same prompt, re-run | **tuned** | **2.750 (91.7%)** | **100%** | **0** | [scored](./sample-benchmark-report/beta-03-tuned-rerun-scored.csv) · [report](./sample-benchmark-report/beta-03-tuned-rerun-report.html) |
+| Run outside the tuning sequence | **tuned** | **2.750 (91.7%)** | **100%** | **0** | [scored](./sample-benchmark-report/beta-05-independent-rerun-scored.csv) · [report](./sample-benchmark-report/beta-05-independent-rerun-report.html) |
+| A change we reverted | experiment | 2.688 (89.6%) | 93.8% | 1 | [scored](./sample-benchmark-report/beta-04-reverted-experiment-scored.csv) · [report](./sample-benchmark-report/beta-04-reverted-experiment-report.html) |
 
 Both failures were **reasoning defects, not retrieval defects** — the right documents were loaded
 every time:
@@ -183,9 +185,12 @@ every time:
 - *"What documents should I submit…"* → the agent answered from the document list when the desired
   behaviour was to hand over to a human officer. Fixed with an explicit remit boundary.
 
-Two things worth stating plainly. **The improvement reproduced** on an independent re-run of the
-identical prompt — 2.750 twice, zero rows below 2. And **one of our three changes made things
-worse**: a rule meant to stop the agent borrowing conditions between pass types caused it to
+Two things worth stating plainly. **The improvement reproduced three times** — 2.750 with zero rows
+below 2 on every run of the tuned prompt, including one made outside the tuning sequence by someone
+who was not chasing the number. For scale: the two *pre-fix* runs disagree with each other by 0.06,
+which is the run-to-run noise on 16 questions; the fix moves the score by twice that and clears the
+sub-2 rows completely, which is the part that does not look like noise. And **one of our three
+changes made things worse**: a rule meant to stop the agent borrowing conditions between pass types caused it to
 hallucinate a portal name instead, dropping a row from 2 to 1. We reverted it. That negative result
 is in the table above, and in the repo, because a benchmark you only publish when it agrees with
 you is marketing.

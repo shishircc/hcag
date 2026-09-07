@@ -43,16 +43,22 @@ architectures, these show the improvement loop the taxonomy makes possible: read
 below 2, fix the reasoning defect in the system prompt, re-run. Narrative in
 [`../benchmark-blog.md`](../benchmark-blog.md) §6.
 
-| File | Run | Mean | Pass | Below 2 |
-|---|---|---:|---:|---:|
-| [`validationbeta.csv`](./validationbeta.csv) | the question set | — | — | — |
-| [`beta-01-baseline-scored.csv`](./beta-01-baseline-scored.csv) · [report](./beta-01-baseline-report.html) | baseline | 2.625 | 87.5% | **2** |
-| [`beta-02-tuned-scored.csv`](./beta-02-tuned-scored.csv) · [report](./beta-02-tuned-report.html) | after the prompt fix | **2.750** | **100%** | **0** |
-| [`beta-03-tuned-rerun-scored.csv`](./beta-03-tuned-rerun-scored.csv) · [report](./beta-03-tuned-rerun-report.html) | same prompt, independent re-run | **2.750** | **100%** | **0** |
-| [`beta-04-reverted-experiment-scored.csv`](./beta-04-reverted-experiment-scored.csv) · [report](./beta-04-reverted-experiment-report.html) | a further change, **reverted** | 2.688 | 93.8% | 1 |
-| [`hcag-kb-eval-scored-beta.csv`](./hcag-kb-eval-scored-beta.csv) · [report](./hcag-kb-eval-report-beta.html) | an earlier run of the same set | 2.688 | 93.8% | 1 |
+| File | Run | Prompt | Mean | Pass | Below 2 |
+|---|---|---|---:|---:|---:|
+| [`validationbeta.csv`](./validationbeta.csv) | the question set | — | — | — | — |
+| [`beta-00-prior-run-scored.csv`](./beta-00-prior-run-scored.csv) · [report](./beta-00-prior-run-report.html) | an earlier run, before this work | pre-fix | 2.688 | 93.8% | 1 |
+| [`beta-01-baseline-scored.csv`](./beta-01-baseline-scored.csv) · [report](./beta-01-baseline-report.html) | baseline for the fix | pre-fix | 2.625 | 87.5% | **2** |
+| [`beta-02-tuned-scored.csv`](./beta-02-tuned-scored.csv) · [report](./beta-02-tuned-report.html) | after the prompt fix | **tuned** | **2.750** | **100%** | **0** |
+| [`beta-03-tuned-rerun-scored.csv`](./beta-03-tuned-rerun-scored.csv) · [report](./beta-03-tuned-rerun-report.html) | same prompt, re-run | **tuned** | **2.750** | **100%** | **0** |
+| [`beta-04-reverted-experiment-scored.csv`](./beta-04-reverted-experiment-scored.csv) · [report](./beta-04-reverted-experiment-report.html) | a further change, **reverted** | experiment | 2.688 | 93.8% | 1 |
+| [`beta-05-independent-rerun-scored.csv`](./beta-05-independent-rerun-scored.csv) · [report](./beta-05-independent-rerun-report.html) | run outside the tuning sequence | **tuned** | **2.750** | **100%** | **0** |
 
-Row 4 is kept deliberately. It targeted the remaining 2s with a rule against borrowing conditions
+**The tuned prompt scored 2.750 with zero rows below 2 on three separate runs**, one of them made
+outside the tuning sequence — rows 4, 5 and 7. The two pre-fix runs (rows 2 and 3) disagree with
+each other by 0.06, which is the run-to-run noise on a 16-question set; the fix moves the score by
+twice that and removes the sub-2 rows entirely, which is the part that does not look like noise.
+
+Row 6 is kept deliberately. It targeted the remaining 2s with a rule against borrowing conditions
 between pass types, and made the row it aimed at *worse* — the agent substituted a hallucinated
 portal name. It was reverted; the shipped prompt is the one that scored 2.750 twice.
 
