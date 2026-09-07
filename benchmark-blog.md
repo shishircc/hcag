@@ -319,13 +319,9 @@ evalrun validation3.csv --backend-url http://localhost:8000 \
 
 ### D. Data
 
-| Artefact | |
-|---|---|
-| Head-to-head, HCAG | [scored CSV](./sample-benchmark-report/hcag-kb-eval-scored.csv) · [report](./sample-benchmark-report/hcag-kb-eval-report.html) |
-| Head-to-head, RAG | [scored CSV](./sample-benchmark-report/rag-kb-eval-scored.csv) · [report](./sample-benchmark-report/rag-kb-eval-report.html) |
-| Second set, pre-fix runs | [earlier run](./sample-benchmark-report/beta-00-prior-run-scored.csv) · [baseline](./sample-benchmark-report/beta-01-baseline-scored.csv) |
-| Second set, fixed — three runs | [run 1](./sample-benchmark-report/beta-02-tuned-scored.csv) · [run 2](./sample-benchmark-report/beta-03-tuned-rerun-scored.csv) · [independent run](./sample-benchmark-report/beta-05-independent-rerun-scored.csv) |
-| Second set, the reverted change | [scored CSV](./sample-benchmark-report/beta-04-reverted-experiment-scored.csv) · [report](./sample-benchmark-report/beta-04-reverted-experiment-report.html) |
-| Question sets | [validation3.csv](./sample-benchmark-report/validation3.csv) · [validationbeta.csv](./sample-benchmark-report/validationbeta.csv) |
-| Method, per-question analysis, caveats | [`sample-benchmark-report/README.md`](./sample-benchmark-report/README.md) |
-| Design rationale | [`DESIGN.md`](./DESIGN.md) — §1.2 the three problems, §1.3 when to use which, §9.4 the comparison |
+Final score, as share of maximum. Each figure links to its scored CSV.
+
+| | Beta set (16 questions) | Benchmark (37 questions) |
+|---|---:|---:|
+| **RAG** | not run | [65.8%](./sample-benchmark-report/rag-kb-eval-scored.csv) |
+| **HCAG** | [91.7%](./sample-benchmark-report/beta-05-independent-rerun-scored.csv) | [91.9%](./sample-benchmark-report/hcag-kb-eval-scored.csv) |
