@@ -1,4 +1,4 @@
-# Knowledge Taxonomy - We Made an AI Agent 40% More Accurate Without Touching the Model
+# Knowledge Taxonomy - Make an AI Agent 40% More Accurate Without Touching the Model
 
 > When an AI agent gets things wrong, the instinct is to reach for a bigger model. We did the
 > opposite: we held the model constant — same model, same questions, same scorer — and changed only
