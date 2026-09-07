@@ -15,10 +15,10 @@ q-004,medium,Can two candidates applying through the same company receive differ
 Individual attributes (C1 Salary, C2 Qualifications) vary by candidate. For example, if one candidate earns a higher salary or holds a top-tier degree, they will score more points than another candidate from the same company.
 
 Firm-related attributes (C3 Diversity and C4 Support for Local Employment) are the same for all candidates from the same company at a given time, since they reflect the company's overall workforce profile. However, the C3 Diversity score can differ between candidates if their nationalities have different representation in the company's workforce.
- 
+They can also differ in the C5 and C6 bonus points 
 Is there anything else I can help you with?",,,,
 q-005,medium,"What contributes to the C2 score?
-","C2 assesses the candidate's qualifications, including both the institution and the type of qualification held. Points are awarded based on whether the degree is from a top-tier institution on the COMPASS Top-tier Institutions List, and also on the level of qualification, such as whether it is a bachelor's degree, master's degree, or doctorate. Both factors contribute to the C2 score.",,,,
+","C2 assesses the candidate's qualifications, including both the institution and the type of qualification held. Points are awarded based on whether the degree is from a top-tier institution on the COMPASS Top-tier Institutions List, and also on the level of qualification, such as whether it is a  degree equivalent or not. Both factors contribute to the C2 score.",,,,
 q-006,medium,"Will an employee who recently became a Permanent Resident be counted as a local under C4?
 
 Followup question (voice): How about C3?","Yes. Permanent Residents (PRs) are counted as locals under C4. Support for Local Employment.
@@ -26,8 +26,8 @@ However, PRs are treated differently under C3. Diversity — they are classified
 To summarise: PRs are considered as locals for C4 but as foreigners for C3, based on their passport nationality.
 
 Is there anything else I can help you with?",,,,
-q-007,complex,"How many C1 points would a candidate earning $11,000 a month receive?","I need to know the candidate's age and your organisation's sector to determine the C1 salary points. The COMPASS C1 benchmark varies by both age and sector. Which sector is your organisation in, and how old is the candidate?",,,,
-q-008,complex,Does getting 40 COMPASS points guarantee that the Employment Pass will be approved?,"No. A score of 40 points means the application meets the minimum COMPASS points requirement, but approval is not fully guaranteed. You still need to meet the base salary criteria, job advertising rules, and pass background checks
+q-007,simple,"How many C1 points would a candidate earning $11,000 a month receive?","I need to know the candidate's age and your organisation's sector to determine the C1 salary points. The COMPASS C1 benchmark varies by both age and sector. Which sector is your organisation in, and how old is the candidate?",,,,
+q-008,simple,Does getting 40 COMPASS points guarantee that the Employment Pass will be approved?,"No. A score of 40 points means the application meets the minimum COMPASS points requirement, but approval is not fully guaranteed. You still need to meet the base salary criteria, job advertising rules, and pass background checks
 
 Is there anything else I can help you with?",,,,
 q-009,outofscope,When was the last time COMPASS criteria were changed? ,I don't have the specific information needed to answer that. Would you like me to connect you to a human officer?,,,,
@@ -44,7 +44,7 @@ q-013,medium,I changed my home address and mobile number after receiving my ONE 
 Is there anything else I can help you with?",,,,
 q-014,medium,"Does the S$30,000 salary requirement include bonuses and variable payments if applying for ONEPASS ?","The ONE Pass salary criterion is based on fixed monthly salary only. Bonuses, variable payments, allowances, and other non-fixed components are not included in the S$30,000 monthly salary requirement. The fixed monthly salary must have been earned consistently for at least 12 consecutive months leading up to the date of application.
 Is there anything else I can help you with?",,,,
-q-015,complex,"In past 1 year , I have worked in Singapore with a salary of S$30,000 per month for 8 months and 4 months worked outside Singapore , can I apply for the ONE Pass?
+q-015,simple,"In past 1 year , I have worked in Singapore with a salary of S$30,000 per month for 8 months and 4 months worked outside Singapore , can I apply for the ONE Pass?
 
 What kind of outstanding achievements qualify for ONEPASS?","You may apply for the ONE Pass based on outstanding achievements if you have accomplishments in at least one of these areas:
 
