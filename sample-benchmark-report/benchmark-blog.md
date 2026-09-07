@@ -28,13 +28,23 @@ traffic most pilots start with. And the whole effect comes from something most e
 own: their knowledge is already organised by product, by domain and by procedure, and nobody has
 handed that structure to the agent.
 
-If you have not read Part 1, three sentences will carry you. *Flat RAG*, which most teams run, cuts
-documents into passages of a few hundred words, indexes them by similarity, and hands the model the
-eight passages that look most like the question. A *knowledge taxonomy* is the structure your
-organisation already uses, manuals filed by model and revision, policies by domain, runbooks by
-system, made explicit as domain, topic and subtopic. *HCAG* is the agent pattern that uses it: the
-agent reasons about which branch a question belongs to, loads the whole relevant document with its
-images, and keeps it open for the rest of the task.
+If you have not read Part 1, here is the argument in brief. Flat RAG, which most teams run, cuts
+every document into fragments of a few hundred words, indexes all of them, and answers each question
+by pulling back the fragments that look most similar to it. That design has three problems, and no
+amount of tuning removes them. The first is noise. When thousands or millions of fragments compete in
+every search, fragments that are similar but not relevant come back alongside the right ones, and
+the model reasons over them as though they were evidence; a great deal of what gets called
+hallucination starts there. The second is compression. A question that spans several concepts has to
+be squeezed into a single query, and whatever that query fails to express is never retrieved, so the
+answer is assembled from part of the picture. The third is deduction. When answering means reasoning
+from a rule to its consequence, the fragment that matters is the one that states the rule, and there
+is no way to hand a chain of reasoning to a vector or keyword search and ask it to find that. A
+knowledge taxonomy addresses all three at once. Organise the knowledge into domains, topics and
+subtopics, and for any given problem only a few branches are ever in play, and within them only one
+document or a handful, which the agent keeps open for the whole of the task. The rest of the corpus
+cannot compete because it is not in the pool; the agent reads complete documents rather than
+fragments; and it reasons over that isolated, coherent material instead of over whatever a search
+happened to return. That isolation is what HCAG, the agent pattern from Part 1, exists to deliver.
 
 ---
 
