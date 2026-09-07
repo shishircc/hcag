@@ -115,8 +115,8 @@ In summary:
 - **C3:** PRs count by their **passport nationality**, not as Singaporean
 
 Can I help with anything else?",3,"The chatbot's answer is accurate and comprehensive, covering both C4 (PRs counted as local) and C3 (PRs classified by passport nationality), matching the reference answer precisely with a clear summary."
-q-007,complex,"How many C1 points would a candidate earning $11,000 a month receive?","I need to know the candidate's age and your organisation's sector to determine the C1 salary points. The COMPASS C1 benchmark varies by both age and sector. Which sector is your organisation in, and how old is the candidate?",,Thank you! Take care!,3,"The chatbot correctly identified that both age and sector are needed to determine C1 points, matching the reference answer's key requirement. It also provided helpful additional context about how the scoring works with concrete examples."
-q-008,complex,Does getting 40 COMPASS points guarantee that the Employment Pass will be approved?,"No. A score of 40 points means the application meets the minimum COMPASS points requirement, but approval is not fully guaranteed. You still need to meet the base salary criteria, job advertising rules, and pass background checks
+q-007,simple,"How many C1 points would a candidate earning $11,000 a month receive?","I need to know the candidate's age and your organisation's sector to determine the C1 salary points. The COMPASS C1 benchmark varies by both age and sector. Which sector is your organisation in, and how old is the candidate?",,Thank you! Take care!,3,"The chatbot correctly identified that both age and sector are needed to determine C1 points, matching the reference answer's key requirement. It also provided helpful additional context about how the scoring works with concrete examples."
+q-008,simple,Does getting 40 COMPASS points guarantee that the Employment Pass will be approved?,"No. A score of 40 points means the application meets the minimum COMPASS points requirement, but approval is not fully guaranteed. You still need to meet the base salary criteria, job advertising rules, and pass background checks
 
 Is there anything else I can help you with?",,"No, achieving 40 COMPASS points does not guarantee that an Employment Pass will be approved.
 
@@ -207,7 +207,7 @@ The requirement is specifically for a **fixed monthly salary** of at least S$30,
 This fixed monthly salary of S$30,000 must have been earned for 12 consecutive months leading up to the date of application (from one employer only), or it must be the prospective salary you will earn under an established company in Singapore.
 
 Can I help you with anything else about the ONE Pass?",3,"The answer correctly states that the S$30,000 requirement is based on fixed monthly salary only, excludes bonuses and variable payments, and mentions the 12-consecutive-month requirement. It adds minor extra detail (fixed monthly allowances, prospective salary option) that is accurate and not misleading."
-q-015,complex,"In past 1 year , I have worked in Singapore with a salary of S$30,000 per month for 8 months and 4 months worked outside Singapore , can I apply for the ONE Pass?
+q-015,simple,"In past 1 year , I have worked in Singapore with a salary of S$30,000 per month for 8 months and 4 months worked outside Singapore , can I apply for the ONE Pass?
 
 What kind of outstanding achievements qualify for ONEPASS?","You may apply for the ONE Pass based on outstanding achievements if you have accomplishments in at least one of these areas:
 
