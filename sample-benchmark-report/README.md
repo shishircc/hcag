@@ -36,6 +36,26 @@ questions and **120% better** on the hardest ones.
 | `hcag-agent.log` | HCAG server log — catalog loads, `check_and_load_kb` calls, active packet set per turn |
 | `rag-agent.log` | RAG server log — chunks kept/dropped and context tokens per turn |
 
+### The `validationbeta` prompt-tuning set
+
+A **separate** 16-question set, HCAG only. Where the files above compare two retrieval
+architectures, these show the improvement loop the taxonomy makes possible: read the rows scoring
+below 2, fix the reasoning defect in the system prompt, re-run. Narrative in
+[`../benchmark-blog.md`](../benchmark-blog.md) §6.
+
+| File | Run | Mean | Pass | Below 2 |
+|---|---|---:|---:|---:|
+| [`validationbeta.csv`](./validationbeta.csv) | the question set | — | — | — |
+| [`beta-01-baseline-scored.csv`](./beta-01-baseline-scored.csv) · [report](./beta-01-baseline-report.html) | baseline | 2.625 | 87.5% | **2** |
+| [`beta-02-tuned-scored.csv`](./beta-02-tuned-scored.csv) · [report](./beta-02-tuned-report.html) | after the prompt fix | **2.750** | **100%** | **0** |
+| [`beta-03-tuned-rerun-scored.csv`](./beta-03-tuned-rerun-scored.csv) · [report](./beta-03-tuned-rerun-report.html) | same prompt, independent re-run | **2.750** | **100%** | **0** |
+| [`beta-04-reverted-experiment-scored.csv`](./beta-04-reverted-experiment-scored.csv) · [report](./beta-04-reverted-experiment-report.html) | a further change, **reverted** | 2.688 | 93.8% | 1 |
+| [`hcag-kb-eval-scored-beta.csv`](./hcag-kb-eval-scored-beta.csv) · [report](./hcag-kb-eval-report-beta.html) | an earlier run of the same set | 2.688 | 93.8% | 1 |
+
+Row 4 is kept deliberately. It targeted the remaining 2s with a rule against borrowing conditions
+between pass types, and made the row it aimed at *worse* — the agent substituted a hallucinated
+portal name. It was reverted; the shipped prompt is the one that scored 2.750 twice.
+
 The three `.log` files are present in this folder on disk but are **not** committed — `.gitignore`
 excludes `*.log`.
 

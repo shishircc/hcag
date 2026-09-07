@@ -15,8 +15,9 @@ Flat RAG loses on knowledge-heavy tasks in three ways ([DESIGN.md §1.2](./DESIG
 ## Benchmark — HCAG vs flat RAG
 
 The same 37 questions, the same knowledge base, the same generator model and the same judge. The
-only variable is the retrieval architecture. **Full analysis, per-question data and method:
-[`sample-benchmark-report/`](./sample-benchmark-report/README.md)** · reports:
+only variable is the retrieval architecture. **The write-up, with what it means for agentic
+automation: [`benchmark-blog.md`](./benchmark-blog.md).** Full analysis, per-question data and
+method: [`sample-benchmark-report/`](./sample-benchmark-report/README.md) · reports:
 [HCAG](./sample-benchmark-report/hcag-kb-eval-report.html) ·
 [RAG](./sample-benchmark-report/rag-kb-eval-report.html)
 

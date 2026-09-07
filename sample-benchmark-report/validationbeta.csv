@@ -15,10 +15,10 @@ q-004,medium,Can two candidates applying through the same company receive differ
 Individual attributes (C1 Salary, C2 Qualifications) vary by candidate. For example, if one candidate earns a higher salary or holds a top-tier degree, they will score more points than another candidate from the same company.
 
 Firm-related attributes (C3 Diversity and C4 Support for Local Employment) are the same for all candidates from the same company at a given time, since they reflect the company's overall workforce profile. However, the C3 Diversity score can differ between candidates if their nationalities have different representation in the company's workforce.
- 
+They can also differ in the C5 and C6 bonus points 
 Is there anything else I can help you with?",,,,
 q-005,medium,"What contributes to the C2 score?
-","C2 assesses the candidate's qualifications, including both the institution and the type of qualification held. Points are awarded based on whether the degree is from a top-tier institution on the COMPASS Top-tier Institutions List, and also on the level of qualification, such as whether it is a bachelor's degree, master's degree, or doctorate. Both factors contribute to the C2 score.",,,,
+","C2 assesses the candidate's qualifications, including both the institution and the type of qualification held. Points are awarded based on whether the degree is from a top-tier institution on the COMPASS Top-tier Institutions List, and also on the level of qualification, such as whether it is a  degree equivalent or not. Both factors contribute to the C2 score.",,,,
 q-006,medium,"Will an employee who recently became a Permanent Resident be counted as a local under C4?
 
 Followup question (voice): How about C3?","Yes. Permanent Residents (PRs) are counted as locals under C4. Support for Local Employment.
