@@ -1,4 +1,4 @@
-# Knowledge Taxonomy, Part 2 — The Bechmark for Accuracy
+# Knowledge Taxonomy, Part 2 — The Benchmark for Accuracy
 
 > *This is the second of two pieces. The first,
 > [Your AI Agent Needs a Knowledge Taxonomy — a Small Investment That Pays Rich Dividends](https://www.linkedin.com/pulse/your-ai-agent-needs-knowledge-taxonomy-small-pays-rich-choudhary-qix9c),
