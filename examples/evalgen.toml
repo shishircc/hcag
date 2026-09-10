@@ -41,6 +41,27 @@ paragraph_min_chars = 120
 cross_packet_bias = "taxonomy"
 
 # ------------------------------------------------------------------------------
+# Personas — who the questions are asked by (§6.2.3, §6.5.1).
+# Optional: with no roster, generation is persona-free and the `persona`
+# column is empty, which is a supported mode and not a degraded one.
+# ------------------------------------------------------------------------------
+[personas]
+# Default roster; --personas overrides it. Set it so an eval set is not
+# silently regenerated without personas by a caller who forgot the flag.
+file = ""            # e.g. "./personas.csv"
+
+# How the requested counts are divided across the roster:
+#   "round-robin" — partition the counts; item i of a kind goes to persona i%P
+#   "matched"     — counts are per-persona; one grounding is put to every
+#                   persona in turn (P times the rows, and P times the calls)
+allocation = "round-robin"
+
+# Honour each persona's `topics` prefixes when sampling. A bias, never a
+# filter: a persona whose topics match nothing still generates from the whole
+# KB, with a WARN.
+topic_bias = true
+
+# ------------------------------------------------------------------------------
 # Log — same JSON-lines format as the runtime and other CLIs (§6.10).
 # ------------------------------------------------------------------------------
 [log]

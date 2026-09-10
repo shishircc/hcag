@@ -46,6 +46,9 @@ class ResolvedRun:
     out_path: Path
     report_path: Path
     kinds: set[str] | None = None
+    #: Persona ids to run (`--personas`). None runs every persona in the input,
+    #: persona-free rows included.
+    personas: set[str] | None = None
     skip_completed: bool = False
     quiet: bool = False
 
@@ -158,11 +161,14 @@ _POLL_SECONDS = 1.0
 def _filter_rows(
     rows: list[EvalRow],
     kinds: set[str] | None,
+    personas: set[str] | None,
     skip_completed: bool,
 ) -> list[EvalRow]:
     out = []
     for r in rows:
         if kinds and r.kind not in kinds:
+            continue
+        if personas and r.persona not in personas:
             continue
         if skip_completed and r.is_completed():
             continue
@@ -247,9 +253,20 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
     if not read.rows:
         raise RunError("input CSV has no rows")
 
-    all_rows = _filter_rows(read.rows, resolved.kinds, resolved.skip_completed)
+    if resolved.personas:
+        present = {r.persona for r in read.rows}
+        unknown = resolved.personas - present
+        if unknown:
+            raise RunError(
+                f"unknown personas in --personas filter: {sorted(unknown)}. "
+                f"Present in the input: {sorted(p for p in present if p)}"
+            )
+
+    all_rows = _filter_rows(
+        read.rows, resolved.kinds, resolved.personas, resolved.skip_completed
+    )
     if not all_rows:
-        raise RunError("no rows matched the --kinds / --skip-completed filters")
+        raise RunError("no rows matched the --kinds / --personas / --skip-completed filters")
 
     if resolved.kinds:
         unknown = resolved.kinds - VALID_KINDS
@@ -261,6 +278,10 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
         input=str(resolved.input_path),
         rows=len(all_rows),
         by_kind={k: sum(1 for r in all_rows if r.kind == k) for k in VALID_KINDS},
+        by_persona={
+            p: sum(1 for r in all_rows if r.persona == p)
+            for p in sorted({r.persona for r in all_rows if r.persona})
+        },
         backend_url=cfg.backend.url,
         classifier_model=cfg.classifier.llm.model,
         judge_model=cfg.judge.llm.model,

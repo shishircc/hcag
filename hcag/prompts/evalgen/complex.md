@@ -6,6 +6,8 @@ You will be given three or more paragraphs from the same packet. Your JSON must 
 
 $answer_rules
 
+$persona_framing
+
 Return a single JSON object, no prose, no code fences:
 {{
   "question": "<the question>",

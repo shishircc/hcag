@@ -234,29 +234,42 @@ REGISTRY: list[PromptSpec] = [
         "evalgen.answer_rules",
         description="completeness standard shared by every question kind (§6.4)",
     ),
+    # `answer_rules`' twin, and registered for the same reason: the framing
+    # renders to the empty string on a persona-free run, so every kind prompt
+    # carries the slot whether or not a roster was passed — and a prompt file
+    # missing the slot fails here at startup rather than generating a full CSV
+    # with the personas silently discarded (§6.4.6).
+    PromptSpec(
+        "evalgen.persona_framing",
+        frozenset({"persona_name", "persona_description"}),
+        "the asking role every question kind injects (§6.4.6)",
+    ),
     PromptSpec(
         "evalgen.simple",
-        frozenset({"content", "answer_rules"}),
+        frozenset({"content", "answer_rules", "persona_framing"}),
         "FAQ-style question (§6.4.1)",
     ),
     PromptSpec(
         "evalgen.medium",
-        frozenset({"packet_id", "paragraph", "answer_rules"}),
+        frozenset({"packet_id", "paragraph", "answer_rules", "persona_framing"}),
         "single-paragraph reasoning question (§6.4.2)",
     ),
     PromptSpec(
         "evalgen.complex",
-        frozenset({"packet_id", "paragraphs", "answer_rules"}),
+        frozenset({"packet_id", "paragraphs", "answer_rules", "persona_framing"}),
         "whole-packet reasoning question (§6.4.3)",
     ),
     PromptSpec(
         "evalgen.hard1",
-        frozenset({"packet_a_id", "packet_b_id", "paragraphs_a", "paragraphs_b", "answer_rules"}),
+        frozenset({
+            "packet_a_id", "packet_b_id", "paragraphs_a", "paragraphs_b",
+            "answer_rules", "persona_framing",
+        }),
         "cross-packet question (§6.4.4)",
     ),
     PromptSpec(
         "evalgen.hard2",
-        frozenset({"packet_id", "content", "answer_rules"}),
+        frozenset({"packet_id", "content", "answer_rules", "persona_framing"}),
         "multimodal question (§6.4.5)",
     ),
     PromptSpec(

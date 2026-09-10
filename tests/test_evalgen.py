@@ -134,11 +134,13 @@ def test_csv_writer_schema_and_empty_columns(tmp_path: Path) -> None:
     with out.open(encoding="utf-8", newline="") as f:
         rows = list(csv.reader(f))
     assert rows[0] == COLUMNS
-    assert rows[1] == ["q-0001", "simple", "Q1?", "A1", "https://x/a", "", "", ""]
+    # `persona` is empty on a persona-free run — a supported mode, not a
+    # missing value (§6.7.2).
+    assert rows[1] == ["q-0001", "simple", "", "Q1?", "A1", "https://x/a", "", "", ""]
     assert rows[2] == [
-        "q-0002", "hard-2", "Q2?", "A2", "https://x/b https://x/b.png", "", "", ""
+        "q-0002", "hard-2", "", "Q2?", "A2", "https://x/b https://x/b.png", "", "", ""
     ]
-    assert rows[3] == ["q-0003", "simple", "Q3?", "A3", "", "", "", ""]
+    assert rows[3] == ["q-0003", "simple", "", "Q3?", "A3", "", "", "", ""]
 
 
 def test_question_id_zero_padded() -> None:
@@ -209,7 +211,7 @@ def test_run_evalgen_end_to_end_with_stub(tmp_path: Path) -> None:
     assert [r[0] for r in rows[1:]] == [question_id("q", i) for i in range(1, 11)]
     # Last three columns always empty
     for r in rows[1:]:
-        assert r[4] == "" and r[5] == "" and r[6] == ""
+        assert r[-3:] == ["", "", ""]
 
 
 def test_run_evalgen_hard2_shortfall_when_no_images(tmp_path: Path) -> None:

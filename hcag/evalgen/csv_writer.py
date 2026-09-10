@@ -1,10 +1,15 @@
-"""Fixed 7-column CSV output per §6.7.
+"""Fixed 9-column CSV output per §6.7.
 
 Columns, in order:
-  question_id, kind, question, expected_answer, source, actual_answer, score, remark
+  question_id, kind, persona, question, expected_answer, source,
+  actual_answer, score, remark
 
 `evalgen` always writes the last three columns empty — they are populated by
 a downstream evaluation pass.
+
+`persona` sits after `kind` because that is where it reads. Columns are
+addressed by header name, never by position — the header row is always present
+precisely so that costs nothing.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from .generators import GeneratedItem
 COLUMNS = [
     "question_id",
     "kind",
+    "persona",
     "question",
     "expected_answer",
     "source",
@@ -44,6 +50,9 @@ def write_csv(path: Path, rows: Iterable[tuple[str, GeneratedItem]]) -> int:
             writer.writerow([
                 qid,
                 item.kind,
+                # Empty means persona-free (§6.7.2) — a supported mode, not a
+                # missing value.
+                item.persona_id,
                 item.question,
                 item.expected_answer,
                 # Space-separated: unambiguous because a URL cannot

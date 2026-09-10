@@ -1,4 +1,4 @@
-"""Read/write the 7-column eval CSV (§6.7, §7.7).
+"""Read/write the 9-column eval CSV (§6.7, §7.7).
 
 Same on-disk format as ``hcag.evalgen.csv_writer`` but supports the full
 lifecycle — reading rows produced by ``evalgen``, and writing them back with
@@ -20,6 +20,7 @@ Kind = Literal["simple", "medium", "complex", "hard-1", "hard-2"]
 COLUMNS = [
     "question_id",
     "kind",
+    "persona",
     "question",
     "expected_answer",
     "source",
@@ -28,11 +29,14 @@ COLUMNS = [
     "remark",
 ]
 
-#: Columns an input CSV must contain. `source` (§6.7.1) is deliberately not
-#: required: eval sets generated before provenance existed have seven columns,
-#: and refusing to score them would strand every eval set already in use. A
-#: missing `source` reads as empty and is written back as empty.
-REQUIRED_COLUMNS = [c for c in COLUMNS if c != "source"]
+#: Columns an input CSV must contain. `source` (§6.7.1) and `persona` (§6.7.2)
+#: are deliberately not required: eval sets generated before provenance existed
+#: have seven columns and ones generated before personas have eight, and
+#: refusing to score either would strand every eval set already in use. A
+#: missing column reads as empty. Because the full schema is always *written*,
+#: reading an older file and writing it back upgrades it in place.
+_OPTIONAL_COLUMNS = {"source", "persona"}
+REQUIRED_COLUMNS = [c for c in COLUMNS if c not in _OPTIONAL_COLUMNS]
 
 VALID_KINDS: set[str] = {"simple", "medium", "complex", "hard-1", "hard-2"}
 
@@ -45,6 +49,11 @@ class EvalRow:
     kind: str
     question: str
     expected_answer: str
+    #: The role the question was asked as (§6.7.2). Carried through untouched
+    #: and never shown to the agent: the persona is already expressed in the
+    #: question's wording, and passing the role separately would tell the agent
+    #: who is asking before it has to work that out from the words.
+    persona: str = ""
     #: Origin URLs the question was grounded in (§6.7.1). Carried through
     #: untouched: `eval` reads it, writes it back, and never shows it to the
     #: agent — feeding it in would measure retrieval-with-hints, not retrieval.
@@ -66,7 +75,7 @@ class ReadResult:
 
 
 def read_csv(path: Path) -> ReadResult:
-    """Read the 7-column eval CSV.
+    """Read the eval CSV, addressing columns by header name.
 
     Missing or misspelled columns raise; extra columns are ignored. Rows with
     unknown ``kind`` values pass through as-is with a warning — the runner
@@ -88,7 +97,7 @@ def read_csv(path: Path) -> ReadResult:
             raise ValueError(
                 f"input CSV is missing required columns: {missing}. Expected: {COLUMNS};"
                 f" found: {header}"
-                " (`source` is optional — pre-provenance eval sets are accepted)"
+                " (`source` and `persona` are optional — older eval sets are accepted)"
             )
         for i, raw in enumerate(reader, start=2):  # line 1 is the header
             score_raw = (raw.get("score") or "").strip()
@@ -106,6 +115,7 @@ def read_csv(path: Path) -> ReadResult:
             row = EvalRow(
                 question_id=(raw.get("question_id") or "").strip(),
                 kind=(raw.get("kind") or "").strip(),
+                persona=(raw.get("persona") or "").strip(),
                 question=raw.get("question") or "",
                 expected_answer=raw.get("expected_answer") or "",
                 source=raw.get("source") or "",
@@ -146,6 +156,7 @@ def write_csv(path: Path, rows: Iterable[EvalRow]) -> int:
                     [
                         row.question_id,
                         row.kind,
+                        row.persona,
                         row.question,
                         row.expected_answer,
                         row.source,

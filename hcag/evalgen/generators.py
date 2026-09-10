@@ -53,10 +53,30 @@ class GeneratedItem:
     #: substituted: a `source` column that sometimes holds a local path is
     #: worse than one that is sometimes blank.
     source_urls: list[str] = field(default_factory=list)
+    #: The role that asked it (§6.7.2). Empty on a persona-free run — a real
+    #: and supported mode, not a missing value.
+    persona_id: str = ""
 
 
 class GenerationError(Exception):
     """Raised when the LLM output cannot be validated for its kind."""
+
+
+class PersonaMismatch(GenerationError):
+    """The sampled content supports nothing this persona would ask (§6.4.6).
+
+    Distinct from every other validation failure because the remedy is
+    different: retrying the same packet will fail the same way, so the caller
+    resamples the content and holds the persona fixed. Forcing the pairing
+    yields either a question the role would never ask — in which case the
+    persona bought nothing — or an answer stretched past the packet, which puts
+    a wrong reference answer into the eval set.
+    """
+
+
+class ExamFraming(GenerationError):
+    """The question is a puzzle built from the page rather than one the persona
+    would ask (§6.4.6)."""
 
 
 # --- LLM plumbing ---------------------------------------------------------
@@ -88,6 +108,65 @@ def _rules(cfg) -> str:
     them silently drift from the fifth.
     """
     return _prompts(cfg).get("evalgen.answer_rules")
+
+
+def render_persona_framing(cfg, persona) -> str:
+    """Render the asking role into the block every kind prompt carries.
+
+    Returns the empty string when there is no persona, which is what keeps
+    persona-free generation byte-identical to what it was: the slot is present
+    in all five prompts either way (§2.15.5), and on a persona-free run it
+    renders to nothing.
+    """
+    if persona is None:
+        return ""
+    return _prompts(cfg).get(
+        "evalgen.persona_framing",
+        persona_name=persona.name,
+        persona_description=persona.description,
+    )
+
+
+#: The mechanical tells of an exam question (§6.4.6). Only the mechanical ones:
+#: bundling unrelated facts and asking for trivia are real failures too, but no
+#: regex sees them — those are the prompt's job, and this is the backstop for
+#: the phrasings a model falls into when it forgets it is playing a role.
+_EXAM_TELLS: list[tuple[str, "re.Pattern[str]"]] = [
+    (
+        "references the source",
+        re.compile(
+            r"\b(?:according to|as stated (?:in|on)|as (?:described|listed|set out) "
+            r"(?:in|on|above)|based on the (?:document|passage|text|content|packet)|"
+            r"per the (?:document|guidance|passage)|in the (?:table|section|passage|"
+            r"document|text|packet|paragraph)s? (?:above|below|provided|shown))\b",
+            re.IGNORECASE,
+        ),
+    ),
+    (
+        "enumeration scaffolding",
+        re.compile(
+            r"\b(?:which of the following|list (?:all|the) |name (?:all|the) "
+            r"(?:two|three|four|five|six)\b|state the (?:two|three|four|five|six)\b|"
+            r"what are the (?:two|three|four|five|six)\b|how many (?:criteria|"
+            r"conditions|requirements|categories|steps)\b)",
+            re.IGNORECASE,
+        ),
+    ),
+]
+
+
+def _check_typicality(question: str) -> None:
+    """Reject a question the persona would never have asked.
+
+    An eval set of well-formed, grounded, difficult questions that no user
+    would ever ask scores the agent against a population it will never see —
+    and does so while looking rigorous, which is worse than looking wrong,
+    because nobody investigates a rigorous-looking eval.
+    """
+    for reason, pattern in _EXAM_TELLS:
+        m = pattern.search(question)
+        if m:
+            raise ExamFraming(f"question {reason}: {m.group(0)!r}")
 
 
 def _prompts(cfg):
@@ -128,8 +207,16 @@ def _image_block(path) -> dict[str, Any]:
     return {"type": "image_url", "image_url": {"url": f"data:{mime};base64,{b64}"}}
 
 
+def _check_mismatch(data: dict) -> None:
+    """Honour the escape hatch the persona framing offers the model."""
+    reason = str(data.get("persona_mismatch", "")).strip()
+    if reason:
+        raise PersonaMismatch(reason)
+
+
 def _parse_question_answer(raw: str) -> tuple[str, str]:
     data = _extract_json(raw)
+    _check_mismatch(data)
     question = str(data.get("question", "")).strip()
     answer = str(data.get("expected_answer", "")).strip()
     if not question or not answer:
@@ -258,11 +345,18 @@ def gen_simple(
     packet: PacketRecord,
     rng: random.Random,
     max_content_chars: int = 20000,
+    persona_framing: str = "",
+    persona_id: str = "",
 ) -> GeneratedItem:
     content = _trim(packet.body, max_content_chars)
-    prompt = _prompts(cfg).get("evalgen.simple", content=content, answer_rules=_rules(cfg))
+    prompt = _prompts(cfg).get(
+        "evalgen.simple", content=content, answer_rules=_rules(cfg),
+        persona_framing=persona_framing,
+    )
     raw = _complete(cfg, prompt)
     question, answer = _parse_question_answer(raw)
+    if persona_framing:
+        _check_typicality(question)
     _check_grounded(answer, packet.body)
     return GeneratedItem(
         kind="simple",
@@ -270,6 +364,7 @@ def gen_simple(
         expected_answer=answer,
         source_packet_ids=[packet.id],
         source_urls=[u for u in [packet.url()] if u],
+        persona_id=persona_id,
     )
 
 
@@ -278,21 +373,26 @@ def gen_medium(
     packet: PacketRecord,
     rng: random.Random,
     max_paragraph_chars: int = 6000,
+    persona_framing: str = "",
+    persona_id: str = "",
 ) -> GeneratedItem:
     idx = rng.randrange(len(packet.paragraphs))
     paragraph = _trim(packet.paragraphs[idx], max_paragraph_chars)
     prompt = _prompts(cfg).get(
         "evalgen.medium", packet_id=packet.id, paragraph=paragraph,
-        answer_rules=_rules(cfg),
+        answer_rules=_rules(cfg), persona_framing=persona_framing,
     )
     raw = _complete(cfg, prompt)
     question, answer = _parse_question_answer(raw)
+    if persona_framing:
+        _check_typicality(question)
     return GeneratedItem(
         kind="medium",
         question=question,
         expected_answer=answer,
         source_packet_ids=[packet.id],
         source_urls=[u for u in [packet.url()] if u],
+        persona_id=persona_id,
     )
 
 
@@ -300,6 +400,8 @@ def gen_complex(
     cfg: LLMConfig,
     packet: PacketRecord,
     rng: random.Random,
+    persona_framing: str = "",
+    persona_id: str = "",
 ) -> GeneratedItem:
     if len(packet.paragraphs) < 3:
         raise GenerationError(f"packet {packet.id} has <3 paragraphs")
@@ -307,10 +409,11 @@ def gen_complex(
     formatted = _format_indexed_paragraphs(packet.paragraphs, indices)
     prompt = _prompts(cfg).get(
         "evalgen.complex", packet_id=packet.id, paragraphs=formatted,
-        answer_rules=_rules(cfg),
+        answer_rules=_rules(cfg), persona_framing=persona_framing,
     )
     raw = _complete(cfg, prompt)
     data = _extract_json(raw)
+    _check_mismatch(data)
     question = str(data.get("question", "")).strip()
     answer = str(data.get("expected_answer", "")).strip()
     cited = data.get("cited_paragraph_indices", [])
@@ -318,12 +421,17 @@ def gen_complex(
         raise GenerationError(f"missing question/expected_answer: {raw!r}")
     if not isinstance(cited, list) or len({int(i) for i in cited if isinstance(i, int)}) < 3:
         raise GenerationError(f"complex must cite >=3 distinct paragraphs, got {cited!r}")
+    if persona_framing:
+        # Three paragraphs describe what the ANSWER draws on. They never
+        # license a question that announces its own difficulty (§6.4.6).
+        _check_typicality(question)
     return GeneratedItem(
         kind="complex",
         question=question,
         expected_answer=answer,
         source_packet_ids=[packet.id],
         source_urls=[u for u in [packet.url()] if u],
+        persona_id=persona_id,
     )
 
 
@@ -333,6 +441,8 @@ def gen_hard1(
     all_packets: list[PacketRecord],
     bias: str,
     rng: random.Random,
+    persona_framing: str = "",
+    persona_id: str = "",
 ) -> GeneratedItem:
     other = _pair_packet(packet, all_packets, bias, rng)
     if other is None:
@@ -358,9 +468,11 @@ def gen_hard1(
         paragraphs_a=_format_indexed_paragraphs(packet.paragraphs, a_indices),
         paragraphs_b=_format_indexed_paragraphs(other.paragraphs, b_indices),
         answer_rules=_rules(cfg),
+        persona_framing=persona_framing,
     )
     raw = _complete(cfg, prompt)
     data = _extract_json(raw)
+    _check_mismatch(data)
     question = str(data.get("question", "")).strip()
     answer = str(data.get("expected_answer", "")).strip()
     cited = data.get("cited_packet_ids", [])
@@ -369,6 +481,8 @@ def gen_hard1(
     cited_set = {str(c) for c in cited if isinstance(c, str)}
     if not {packet.id, other.id}.issubset(cited_set):
         raise GenerationError(f"hard-1 must cite both packets, got {cited!r}")
+    if persona_framing:
+        _check_typicality(question)
     return GeneratedItem(
         kind="hard-1",
         question=question,
@@ -376,6 +490,7 @@ def gen_hard1(
         source_packet_ids=[packet.id, other.id],
         # Packet A then packet B, matching the question's structure.
         source_urls=[u for u in [packet.url(), other.url()] if u],
+        persona_id=persona_id,
     )
 
 
@@ -384,6 +499,8 @@ def gen_hard2(
     packet: PacketRecord,
     rng: random.Random,
     max_content_chars: int = 15000,
+    persona_framing: str = "",
+    persona_id: str = "",
 ) -> GeneratedItem:
     if not packet.assets:
         raise GenerationError(f"packet {packet.id} has no image assets")
@@ -391,7 +508,7 @@ def gen_hard2(
     content = _trim(packet.body, max_content_chars)
     text_prompt = _prompts(cfg).get(
         "evalgen.hard2", packet_id=packet.id, content=content,
-        answer_rules=_rules(cfg),
+        answer_rules=_rules(cfg), persona_framing=persona_framing,
     )
     message_content = [
         {"type": "text", "text": text_prompt},
@@ -399,6 +516,7 @@ def gen_hard2(
     ]
     raw = _complete(cfg, message_content)
     data = _extract_json(raw)
+    _check_mismatch(data)
     question = str(data.get("question", "")).strip()
     answer = str(data.get("expected_answer", "")).strip()
     image_ref = str(data.get("image_reference", "")).strip()
@@ -406,6 +524,8 @@ def gen_hard2(
         raise GenerationError(f"missing question/expected_answer: {raw!r}")
     if not image_ref:
         raise GenerationError("hard-2 must state what the image contributes")
+    if persona_framing:
+        _check_typicality(question)
     return GeneratedItem(
         kind="hard-2",
         question=question,
@@ -415,6 +535,7 @@ def gen_hard2(
         # grounding, so which one was used is the difference between a
         # reviewable row and a mystery (§6.7.1).
         source_urls=[u for u in [packet.url(), packet.image_url(image_path)] if u],
+        persona_id=persona_id,
     )
 
 

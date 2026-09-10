@@ -132,9 +132,10 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [5.11 Non-Goals](#511-non-goals)
 - [Part 6 — The `evalgen` CLI Tool](#part-6--the-evalgen-cli-tool)
   - [6.1 Purpose](#61-purpose)
-  - [6.2 KB Input Model](#62-kb-input-model)
+  - [6.2 Input Model](#62-input-model)
     - [6.2.1 Paragraphs — the grounding unit](#621-paragraphs--the-grounding-unit)
     - [6.2.2 Startup — config visibility and LLM preflight](#622-startup--config-visibility-and-llm-preflight)
+    - [6.2.3 The persona file](#623-the-persona-file)
   - [6.3 Invocation](#63-invocation)
   - [6.4 Question Types](#64-question-types)
     - [6.4.1 `simple`](#641-simple)
@@ -142,10 +143,13 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [6.4.3 `complex`](#643-complex)
     - [6.4.4 `hard-1` (cross-packet)](#644-hard-1-cross-packet)
     - [6.4.5 `hard-2` (multimodal)](#645-hard-2-multimodal)
+    - [6.4.6 Personas — who is asking](#646-personas--who-is-asking)
   - [6.5 Quantity Control](#65-quantity-control)
+    - [6.5.1 How personas divide the requested counts](#651-how-personas-divide-the-requested-counts)
   - [6.6 Generation Algorithm](#66-generation-algorithm)
   - [6.7 Output CSV Schema](#67-output-csv-schema)
     - [6.7.1 The `source` column](#671-the-source-column)
+    - [6.7.2 The `persona` column](#672-the-persona-column)
   - [6.8 Configuration](#68-configuration)
   - [6.9 Failure Modes](#69-failure-modes)
   - [6.10 Observability (CLI)](#610-observability-cli)
@@ -1635,14 +1639,17 @@ Every prompt the system can load is declared in one place, with its required pla
 | `preprocess.scope_own` | scoping clause for a leaf/mixed folder (§3.4.4) | — |
 | `preprocess.scope_branch` | scoping clause for a taxonomy node (§3.4.4) | — |
 | `evalgen.answer_rules` | the completeness standard every kind injects (§6.4.0) | — |
-| `evalgen.simple` | FAQ-style question (§6.4.1) | `$content`, `$answer_rules` |
-| `evalgen.medium` | single-paragraph reasoning question (§6.4.2) | `$packet_id`, `$paragraph`, `$answer_rules` |
-| `evalgen.complex` | whole-packet reasoning question (§6.4.3) | `$packet_id`, `$paragraphs`, `$answer_rules` |
-| `evalgen.hard1` | cross-packet question (§6.4.4) | `$packet_a_id`, `$packet_b_id`, `$paragraphs_a`, `$paragraphs_b`, `$answer_rules` |
-| `evalgen.hard2` | multimodal question (§6.4.5) | `$packet_id`, `$content`, `$answer_rules` |
+| `evalgen.persona_framing` | the asking role every kind injects (§6.4.6) | `$persona_name`, `$persona_description` |
+| `evalgen.simple` | FAQ-style question (§6.4.1) | `$content`, `$answer_rules`, `$persona_framing` |
+| `evalgen.medium` | single-paragraph reasoning question (§6.4.2) | `$packet_id`, `$paragraph`, `$answer_rules`, `$persona_framing` |
+| `evalgen.complex` | whole-packet reasoning question (§6.4.3) | `$packet_id`, `$paragraphs`, `$answer_rules`, `$persona_framing` |
+| `evalgen.hard1` | cross-packet question (§6.4.4) | `$packet_a_id`, `$packet_b_id`, `$paragraphs_a`, `$paragraphs_b`, `$answer_rules`, `$persona_framing` |
+| `evalgen.hard2` | multimodal question (§6.4.5) | `$packet_id`, `$content`, `$answer_rules`, `$persona_framing` |
 | `eval.classify` | answer / clarify / refusal classifier (§7.4.2) | `$question`, `$reply` |
 | `eval.clarify` | clarifier playing the user role (§7.4.2) | `$question`, `$expected_answer`, `$transcript`, `$last_reply` |
 | `eval.score` | LLM-judge rubric (§7.5) | `$question`, `$expected_answer`, `$actual_answer`, `$transcript` |
+
+`evalgen.persona_framing` is `evalgen.answer_rules`' twin and is registered the same way for the same reason (§6.4.0's "one file, not five"): the framing renders to the empty string on a persona-free run, so every kind prompt carries the slot whether or not a persona file was passed, and a prompt file missing the slot fails at startup instead of silently discarding the persona.
 
 What counts as a "hard" question about work-pass rules is a domain judgement, so `evalgen`'s wording belongs in files for the same reason the agent's does. The same holds for `evalrun`'s judge rubric: what separates a score of 1 from a score of 2 on a given KB is a domain call, and a team that wants to tighten it should not need a release to do so.
 
@@ -3216,9 +3223,13 @@ New OTEL spans:
 
 `evalgen` generates evaluation question / expected-answer pairs from a normalized KB, for use in scoring retrieval quality and answer quality against the runtime agent (Part 2) or the voice agent (Part 5). It gives KB owners a repeatable way to build an eval set that is grounded in the same content the agent will serve at runtime — so regressions in retrieval selection, packet coverage, or multimodal reasoning surface as measurable score drops on a fixed set of questions.
 
+Questions may be generated **in character**. An optional persona file (§6.2.3) — a CSV of `persona_id`, `persona_name`, `persona_description` — declares the roles the KB's users actually occupy: the HR officer filing an Employment Pass application for a candidate, the candidate trying to work out whether they qualify. Each generated item is asked from one of them (§6.4.6). The KB still decides what is true; the persona decides who is asking, in what words, and **which questions are worth asking at all** — the ones that role brings to the agent in the course of its work, not the ones an examiner would construct from the same page (§6.4.6).
+
 The tool is a **question / expected-answer generator only**. It does not run the agent, score responses, or persist verdicts; those columns are left empty in the CSV output and filled in by a separate evaluation pass (§6.7).
 
-## 6.2 KB Input Model
+## 6.2 Input Model
+
+`evalgen` reads two inputs. The **KB** is required and supplies everything a question can be grounded in. The **persona file** is optional and supplies the roles questions are asked from (§6.2.3); without it, generation is persona-free and behaves exactly as it did before personas existed.
 
 `evalgen` consumes a KB directory that has already been normalized by `hcag` (§3.4):
 
@@ -3236,6 +3247,8 @@ The tool is a **question / expected-answer generator only**. It does not run the
 **A missing `evalgen.toml` is announced, not silently absorbed.** The config resolves as `--config <path>`, else `<kb_root>/evalgen.toml`, else built-in defaults — and the fallback is deliberate, since `evalgen` is runnable without a config file. But the defaults resolve to a small, cheap model, and question quality tracks model strength: `hard-2` needs a **multimodal** model and produces nothing without one (§6.4.5), while the reasoning kinds degrade quietly into trivia. Getting that instead of the strong model an `evalgen.toml` would have named is invisible in the output, so the run says on stderr which path it looked for and which provider and model it fell back to. It is a warning rather than an error: running on defaults is legitimate, running on them *unknowingly* is not.
 
 **The LLM is preflighted.** One generation-shaped probe against the configured model, checked for a parseable JSON reply — the same contract the generators depend on. It exercises env-var resolution, provider dispatch, model-id validity, auth, and the model's ability to follow the output format. Systemic failures (bad key, unknown model) fail immediately; transient ones honour `llm.max_retries`. A reply that will not parse fails the probe, because a model too small to hold the output contract is far cheaper to detect on call one than on question forty.
+
+**The persona roster is echoed.** When `--personas` is given, the run prints the file path and the ids it parsed, in allocation order, before the first LLM call. A roster silently short by one row still generates a full CSV, just one whose coverage does not match what the author asked for — a trailing blank line, a row lost to an unbalanced quote, and the output looks entirely healthy. Parse failures themselves are startup errors (§6.9), not warnings: the roster shapes every row, so there is no degraded mode worth continuing into.
 
 On failure `evalgen` exits non-zero having written nothing — there is no partial CSV to mistake for a complete eval set. `llm.preflight = false` disables the probe for offline runs with stubbed calls.
 
@@ -3255,10 +3268,39 @@ That is not a table and not a fragment of one — no delimiter row, no second ce
 
 **No header reattachment, deliberately.** The obvious next worry is a table split across a page boundary, whose continuation would arrive as headerless rows meaning nothing on their own. That was measured rather than assumed: on a 19-packet `mom.gov.sg` KB, **every** headerless table block was a single-cell paragraph and **none** was a continuation — `pymupdf4llm` repeats the header on each page. Machinery to carry headers forward would be speculative, and speculative repair of table structure is the failure mode this section is trying to avoid. If a corpus is found where continuations do occur, that measurement is the thing to redo first.
 
+### 6.2.3 The persona file
+
+The persona file is a **CSV** declaring the roles questions are asked from. It is passed as `--personas <path>` (§6.3) and is entirely optional.
+
+| Column | Required | Description |
+|---|---|---|
+| `persona_id` | yes | Stable token identifying the role. Written to the eval set's `persona` column (§6.7.2), accepted by `--persona`, and used to group the scored report (§7.8). Lowercase letters, digits, `-` and `_`. |
+| `persona_name` | yes | Human-readable label — `HR professional`, `Prospective pass holder`. Rendered into the generation prompt as `$persona_name` and used as the display label in the report. |
+| `persona_description` | yes | The prose that does the work: who this person is, what they are trying to get done, what they already know and do not know, the words they use, and — most importantly — **what they typically ask** (§6.4.6). |
+| `topics` | no | Space-separated packet-id prefixes (the dotted paths of §3.4.5) biasing sampling toward the part of the taxonomy this role lives in (§6.4.6). Space-separated for the same reason `source` is (§6.7.1): a comma inside a CSV cell costs a layer of quoting for nothing. Omit the column entirely and every persona samples the whole KB. |
+
+Columns are matched by header name; order does not matter and unrecognized columns are ignored, so a roster may carry an owner or a review date without `evalgen` needing to know about them. Encoding and quoting are the same as everywhere else in this system: UTF-8, RFC 4180. Descriptions contain commas and often line breaks, so they are quoted; RFC 4180 permits embedded newlines inside a quoted field, which is what lets a multi-paragraph description live in one cell.
+
+**Why CSV.** The roster is a table of short records with one long prose field, and it is authored by the people who know the audience — a policy, service-design, or support team — rather than by whoever maintains the prompts. That is a spreadsheet, and handing those people a spreadsheet is the difference between a roster that gets revised when the audience is better understood and one that is written once and never touched. It is also the format the tool already reads and writes at both ends (§6.7, §7.2), so a reviewer opens the roster and the eval set with the same thing.
+
+**Ids are authored, not derived.** The id is a column rather than a slug of the name, so the name and description can be rewritten — sharpened after reading a bad batch of questions, which is the normal way a roster improves — without breaking comparability with eval sets generated earlier (§6.7.2). The obligation that comes with that: an id must not be **reused for a different role**. Rewording `hr-professional` is free; repointing it at, say, an employment agent silently makes two eval sets look comparable when they are not.
+
+Example:
+
+```csv
+persona_id,persona_name,persona_description,topics
+hr-professional,HR professional,"Files work-pass transactions for a Singapore employer. Applies for Employment Passes for candidates the company wants to hire, checks in advance whether a candidate is likely to qualify, renews passes before they lapse, cancels a pass when someone resigns or is terminated, and appeals rejections. Typically asks whether a specific candidate will clear the bar, what to submit and in what order, how long a transaction takes, what happens when a deadline is missed, and what the company is liable for. Says ""our candidate"" and ""we"", uses the transaction names, and almost never quotes a regulation by name.",passes-and-permits.employment-pass passes-and-permits.work-permit
+prospective-pass-holder,Prospective pass holder,"A foreign professional weighing or preparing a move to Singapore. Typically asks whether they personally qualify, what a salary offer means for someone of their age and sector, what the application will ask of them, how long it takes, what happens to the pass if the job ends, and what their family can and cannot do on a dependant's pass. Describes their own situation in plain words rather than in the scheme's vocabulary, and often does not know which pass type applies to them.",passes-and-permits.employment-pass
+```
+
+Both descriptions spend a sentence on what the role *typically asks*. That sentence is the most load-bearing part of the file: it is what §6.4.6 uses to keep generated questions inside the population of questions the role actually brings, and a description that only says who someone is leaves the generator to invent that population itself.
+
+**Validation is at startup, and it is strict.** A missing required column, a file with a header and no rows, a blank `persona_id` or `persona_description`, and two rows sharing an id are all startup errors (§6.9). None has a sensible degraded reading: an empty roster is a mis-authored file rather than a request for persona-free generation, which is what omitting the flag already means, and a duplicate id makes the `persona` column ambiguous for every row either one generated.
+
 ## 6.3 Invocation
 
 ```
-$ evalgen <kb_root> --out <output.csv> [--total <N> | --simple <n1> --medium <n2> --complex <n3> --hard-1 <n4> --hard-2 <n5>] [options]
+$ evalgen <kb_root> --out <output.csv> [--total <N> | --simple <n1> --medium <n2> --complex <n3> --hard-1 <n4> --hard-2 <n5>] [--personas <personas.csv>] [options]
 ```
 
 | Parameter | Required | Description |
@@ -3273,6 +3315,8 @@ $ evalgen <kb_root> --out <output.csv> [--total <N> | --simple <n1> --medium <n2
 | `--hard-2 <n>` | one-of | Explicit count of `hard-2` (multimodal) questions to generate. |
 | `--seed <int>` | no | Random seed for packet/paragraph selection. Fixed seed → reproducible eval set for a given KB revision. |
 | `--id-prefix <str>` | no | Prefix for `question_id` values (default `q`). Useful when merging multiple eval sets. |
+| `--personas <path>` | no | Path to a persona CSV (§6.2.3). Every generated item is asked as one of its personas would ask it. Omitted → persona-free generation and an empty `persona` column. |
+| `--persona <id>` | no | Restrict generation to one `persona_id` from that file. Repeatable. Requires `--personas`. |
 | `--config <path>` | no | Path to `evalgen.toml` (§6.8). Defaults to `<kb_root>/evalgen.toml` if present. |
 
 **Mutual exclusivity.** `--total` and any of the `--<kind> <n>` flags are mutually exclusive. Pass **either** a single `--total` **or** one-to-five explicit per-type flags; mixing the two forms is a startup error. Per-type flags default to `0` when omitted, so `--simple 20 --hard-2 5` generates exactly 25 questions of only those two kinds.
@@ -3290,9 +3334,24 @@ $ evalgen kb/ --out kb-eval.csv \
     --simple 20 --medium 20 --complex 20 --hard-1 20 --hard-2 20 --seed 42
 ```
 
+With personas:
+
+```
+$ evalgen kb/ --out kb-eval.csv --total 100 --seed 42 --personas personas.csv
+```
+
+Still 100 pairs, 20 per kind, but each kind's 20 are dealt round-robin across the roster — 10 asked as the HR professional and 10 as the prospective pass holder, for the two-persona file in §6.2.3 (§6.5). To regenerate only one persona's rows:
+
+```
+$ evalgen kb/ --out hr-eval.csv --total 50 --seed 42 \
+    --personas personas.csv --persona hr-professional
+```
+
 ## 6.4 Question Types
 
 Each row's `kind` column carries one of five string tags corresponding to how the question was constructed. The tags are stable — the evaluation pass filters and scores by `kind`.
+
+`kind` is one of two axes. It fixes **how hard** a question is and **what grounds** it. The persona (§6.4.6) fixes **who asks** it, **in what words**, and **whether it is a question anyone would actually ask**. The two are independent: every kind can be asked by every persona, and no persona changes which packets or paragraphs an item is grounded in.
 
 ### 6.4.0 Expected answers must be complete
 
@@ -3305,6 +3364,8 @@ So a generated answer must state the fact **with every condition the source atta
 **Comprehensive is not licence to invent.** The answer exhausts what the source says and stops there. If the source is itself incomplete, so is the answer.
 
 **One file, not five.** The standard lives in a single prompt shared by every kind, because a quality bar duplicated across five prompts is one that four of them silently drift from.
+
+The standard is also what a persona must not erode. A question asked in character narrows toward one person's case, and the answer is tempting to narrow with it; §6.4.6 says why it must not, and what a narrowed question's answer has to contain instead.
 
 ### 6.4.1 `simple`
 
@@ -3344,6 +3405,43 @@ So a generated answer must state the fact **with every condition the source atta
 - **Signal.** Measures the multimodal loading path (§2.6) — whether images are actually attached to the LLM call and whether the model uses them.
 - **Availability.** If the requested `--hard-2` count exceeds the number of image-bearing packets, `evalgen` generates as many as it can and logs a `WARN` indicating the shortfall. It does **not** substitute another kind to reach the requested total.
 
+### 6.4.6 Personas — who is asking
+
+A persona is applied on top of a kind, never in place of one. The kind selects the packets and paragraphs and sets the reasoning depth; the persona decides what that content is asked *about* and how. Every kind accepts every persona, `hard-2` included — a diagram is read by an HR officer and by a candidate alike.
+
+**Why a persona changes anything.** A question generated straight from a packet inherits the packet's vocabulary. *"What is the qualifying salary for an Employment Pass candidate aged 30 in the financial services sector?"* is the source document's own phrasing handed back as a test, and an eval built entirely of such questions measures retrieval against text that was indexed using those exact words. The person the agent actually serves does not talk like that. An HR officer asks what the company has to pay a 30-year-old quantitative analyst to get the pass approved; a candidate asks whether the offer they just received is enough. Same fact, same packet, almost no shared vocabulary — and the distance between the two phrasings is exactly the retrieval failure a KB-derived eval set cannot see, because it was generated from the side of the gap the retriever is already good at.
+
+Personas also generate questions the KB's structure never suggests. Cancellation, appeal after rejection, and what happens to a pass when employment ends are transactions an HR persona asks about as a matter of course, and they sit in different packets from the eligibility content a content-first sampler keeps landing on.
+
+**The question must be one the persona would typically ask — not a puzzle built from the page.** This is the point of the whole mechanism and the rule most likely to be violated quietly.
+
+Left to itself, a generator with the source text in front of it drifts toward exam questions, because that is the cheapest way to make a question hard: bundle three scattered facts into one sentence, ask for an enumeration, quiz on the one number in the packet that is easy to check. Every such item is well-formed, grounded, and difficult, and **no user will ever ask it**. An eval set made of them scores the agent against a population of questions it will never see, and it does so while looking rigorous — which is worse than looking wrong, because nobody investigates a rigorous-looking eval.
+
+The generated question must therefore be one the persona would plausibly bring to the agent **unprompted, with no knowledge that the source document exists**. Concretely, these are rejected and retried (§6.6):
+
+- **References to the corpus.** *"According to the guidance…"*, *"as stated on the page…"*, *"in the table above…"*. The asker cannot see the table. An agent that answers these is being handed the retrieval step for free, which is the step the eval exists to measure.
+- **Enumeration scaffolding.** *"List all four criteria"*, *"which of the following"*, *"state the two conditions under which…"*. A person asks about a situation; the count of things in the answer is what they are hoping to find out, not something they already know to ask for.
+- **Bundling for difficulty.** One sentence demanding the salary threshold, the levy tiers, and the appeal window. Nobody asks three unrelated things at once, and an agent that gets two of the three scores as a partial failure on a question that never had a coherent asker.
+- **Trivia.** A fact that is in the packet and answerable but that no one in the roster has a reason to want. Findable is not the same as asked.
+
+**Difficulty then has to come from the situation, not the construction.** The multi-paragraph and cross-packet requirements of `complex` and `hard-1` (§6.4.3, §6.4.4) describe what the **answer** must draw on. They never license a question that announces its own difficulty. *"Our candidate is on a Personalised Employment Pass and we want to move them onto a company-tied EP before their project starts — what do we need to do, and in what order?"* draws on two packets and several paragraphs, and no one would call it a puzzle. That is the shape: one real situation that happens to need several facts, asked by someone who does not know how many facts it will take.
+
+**Typical is not vague.** The failure at the opposite end is a question so true to life that it cannot be scored: real users leave out their age, their sector, and their pass type, and a question missing those has no single correct answer to hold a reference against. The item must still be answerable from the sampled content alone, so the generated question supplies whatever detail the answer turns on, phrased the way the asker would supply it — *"our candidate is 30 and joining the trading desk"*, not *"for a candidate aged 30 in the financial services sector"*. Realism lives in the framing and the situation, never in withholding what makes the answer determinate. Testing how the agent handles genuinely under-specified questions is a different mechanism with a different home: `evalrun`'s clarification loop (§7.4.2), where a transcript exists to resolve them in.
+
+**The persona is a role, not a source of fact.** Anything factual in a persona description — a salary figure, a deadline, a nationality rule — is ignored by the generator, which is instructed to read the description for intent, vocabulary, and the population of questions the role asks, and for nothing else. Grounding comes from the sampled content and nowhere else. Without this rule a persona file drifts stale in exactly the way §6.7.1 describes for expected answers, except invisibly, poisoning every row generated under it rather than one. The existing grounding check (§6.9) is the enforcement: an expected answer asserting something absent from the supplied content fails validation whatever it was that suggested it.
+
+**A persona may narrow the question. It may not narrow the answer.** This is the sharpest interaction with §6.4.0 and the one most likely to go wrong. Asked in character, *"our candidate is 30 and joining our trading desk — what do we need to pay to clear the EP bar?"* is a better eval item than the neutral phrasing, and its natural answer is a single number. A single number is precisely the reference answer §6.4.0 was written against. So the expected answer states the applicable value **and** the conditions that select it, **and** what changes when a condition differs: the financial-services figure for that age, the fact that sector and age are what select it, the non-financial-services figure alongside, and the date from which a different table applies. The narrowed question plus the conditioned answer is a strictly better test than either half — it asks the agent to apply the rule to a case, and it still catches an agent that recites one cell of a table as though it were the whole rule.
+
+**Content that the persona cannot ask about is resampled, not forced.** Sampling is content-driven: the kind picks packets and paragraphs, and only then is a persona applied to what was picked. Sometimes there is nothing there that the role would plausibly ask — a candidate persona handed a packet about an employer's levy-payment obligations. The generator reports the mismatch instead of writing a question, the item is resampled against the same persona, and after `max_retries_per_item` it is dropped with a `WARN` naming `reason=persona_content_mismatch` (§6.9).
+
+Forcing the pairing is the alternative and it fails both ways. Forced into character, the model either writes something the role would never ask, in which case the persona has bought nothing, or it stretches the answer past the packet to reach material the role cares about, in which case the eval set is wrong in the one way that is worst — confidently, in the reference column. Dropping is the only outcome that keeps both the persona and the grounding honest.
+
+**The optional `topics` column biases sampling to keep that loop cheap.** A narrow persona against a broad KB retries a lot, and every retry is an LLM call. A persona's `topics` prefixes (§6.2.3) weight sampling toward the subtree that role lives in — the same mechanism `cross_packet_bias = "taxonomy"` already uses for `hard-1` pairing (§6.8). It is a bias and not a filter: a persona whose topics match nothing still generates, from the whole KB, with a `WARN`. Making it a filter would turn one mistyped path into a silently empty persona, and a persona that generates nothing is indistinguishable in the output from one that was never listed. A roster that omits the column entirely is the normal case and costs only retries.
+
+**Near-duplicate questions across personas are the point, not a defect.** Two personas asking about the same salary table produce two rows about the same fact, which is what makes the pair diagnostic: an agent that scores 3 on one and 0 on the other has a vocabulary problem, not a knowledge problem, and that is invisible in any eval set where each fact is asked once. The exact-text duplicate rule (§6.10) still applies across the whole run — two personas that generate byte-identical text are two personas that are not pulling apart, and the second row is dropped.
+
+**Persona-free remains a first-class mode.** With no `--personas`, the framing renders empty, the prompts are what they were, and the `persona` column is blank. Eval sets generated before a roster existed stay comparable with ones generated after it, which matters because the whole tool exists to detect drift over time.
+
 ## 6.5 Quantity Control
 
 `evalgen` accepts the requested question count in exactly one of two forms:
@@ -3353,17 +3451,31 @@ So a generated answer must state the fact **with every condition the source atta
 
 If a per-type count exceeds the maximum feasible for that kind (e.g., more `hard-2` than image-bearing packets), `evalgen` emits as many as it can, logs a `WARN` naming the shortfall (`requested=N, generated=M, kind=hard-2, reason=insufficient_image_packets`), and continues with the remaining kinds. The run's exit code is non-zero only for `ERROR`-level events (§6.9), not shortfalls.
 
+### 6.5.1 How personas divide the requested counts
+
+**By default a persona roster does not change the totals — it partitions them.** Under `personas.allocation = "round-robin"`, the requested count for each kind is dealt across the roster in row order: item *i* of a kind goes to persona *i mod P*. `--total 100` with two personas is still 100 rows, 20 per kind, 10 per persona per kind. An uneven split favours the personas nearer the top of the file, which is why row order is worth being deliberate about — `--simple 20` across three personas gives 7, 7, 6.
+
+Round-robin runs *inside* each kind rather than across the whole run, so every persona is represented in every kind. Dealing across the run as a whole would let a small `--total` hand `hard-2` entirely to one persona, and a per-kind score that is really a per-persona score is worse than no breakdown at all.
+
+Persona assignment is a deterministic function of position and row order, not of the seed. The seed governs content sampling only. Re-running the same command against the same roster therefore reproduces both the same questions and the same persona layout; inserting a row in the middle of the roster reshuffles the layout, and appending one to the end does not.
+
+**`personas.allocation = "matched"` trades count for control.** Under it the requested counts are read as *per persona*, and each sampled grounding is put to every persona in turn: `--total 100` with three personas emits 300 rows in 100 groups of three, each group sharing one packet, one paragraph set, and one `source` cell. This is the controlled form of the comparison §6.4.6 describes — same fact, same grounding, one phrasing per role — and it is the mode to use when the question is which audience the agent serves worst rather than how the agent scores overall. It costs `P` times the LLM calls and produces `P` times the rows for human review, so it is not the default.
+
+`--persona <id>` narrows the roster before allocation, so restricting a run to one persona gives that persona the full requested counts under either allocation.
+
 ## 6.6 Generation Algorithm
 
 Broadly, for each kind, `evalgen`:
 
-1. Selects the required packet(s) and paragraph(s) per the kind's rules (§6.4), using the configured `--seed` for reproducibility.
-2. Sends the selected content — packet markdown plus any required images for `hard-2` — to the configured LLM (§6.8) with a fixed per-kind prompt template. The prompt instructs the model to produce one `question` and one `expected_answer` grounded strictly in the supplied content.
-3. Validates the LLM's response against per-kind constraints (e.g., `complex` must cite at least three paragraphs; `hard-2` must reference at least one image). On validation failure, the item is retried up to a configurable cap (default 2); persistent failures are dropped with a `WARN`.
-4. Assigns a stable `question_id` of the form `<prefix>-<zero-padded-index>` (e.g., `q-0001`) in generation order.
-5. Appends the row to the output CSV with the `actual_answer`, `score`, and `remark` columns left empty (§6.7).
+1. Assigns the item's persona from the roster per §6.5.1, if a roster was given.
+2. Selects the required packet(s) and paragraph(s) per the kind's rules (§6.4), using the configured `--seed` for reproducibility — weighted by the persona's `topics` prefixes when the roster carries them (§6.4.6).
+3. Sends the selected content — packet markdown plus any required images for `hard-2` — to the configured LLM (§6.8) with a fixed per-kind prompt template, into which the shared completeness standard (§6.4.0) and the rendered persona framing (§6.4.6) are injected. The prompt instructs the model to produce one `question` and one `expected_answer` grounded strictly in the supplied content, asked as the persona would ask it. On a persona-free run the framing renders empty and the prompt is what it was.
+4. Validates the LLM's response against per-kind constraints (e.g., `complex` must cite at least three paragraphs; `hard-2` must reference at least one image) and, on a persona run, against the typicality rule of §6.4.6 — a question that cites the source, asks for an enumeration, or bundles unrelated facts is rejected here. On validation failure, the item is retried up to a configurable cap (default 2); persistent failures are dropped with a `WARN`.
+5. Retries against a fresh sample when the model reports that the content supports nothing the persona would ask (§6.4.6), drawing on the same retry cap. The persona is held fixed across those retries — swapping it to salvage the sample would quietly rewrite the allocation of §6.5.1.
+6. Assigns a stable `question_id` of the form `<prefix>-<zero-padded-index>` (e.g., `q-0001`) in generation order.
+7. Appends the row to the output CSV with the `actual_answer`, `score`, and `remark` columns left empty (§6.7).
 
-Kinds are generated in the fixed order `simple → medium → complex → hard-1 → hard-2`, so `question_id`s cluster by kind — useful when diff-ing eval runs.
+Kinds are generated in the fixed order `simple → medium → complex → hard-1 → hard-2`, so `question_id`s cluster by kind — useful when diff-ing eval runs. Personas interleave within a kind rather than clustering, so a truncated or partially-failed run still covers the whole roster.
 
 ## 6.7 Output CSV Schema
 
@@ -3373,6 +3485,7 @@ Kinds are generated in the fixed order `simple → medium → complex → hard-1
 |---|---|---|
 | `question_id` | yes | Stable identifier (`<prefix>-<zero-padded-index>`), unique within the file. |
 | `kind` | yes | One of `simple`, `medium`, `complex`, `hard-1`, `hard-2`. |
+| `persona` | yes | The id of the persona the question was asked as (§6.7.2). Empty on a persona-free run. |
 | `question` | yes | The generated question text, single-line where possible; multi-line values are quoted per RFC 4180. |
 | `expected_answer` | yes | The reference answer produced against the KB. |
 | `source` | yes | Space-separated source URLs the question and answer were grounded in — the packets' original pages first, then any images used, in the order the generator used them (§6.7.1). |
@@ -3384,15 +3497,19 @@ CSV formatting rules:
 
 - UTF-8, LF line endings, RFC 4180 quoting.
 - Header row is always present.
-- The final three columns (`actual_answer`, `score`, `remark`) are always emitted as empty fields — never omitted, so downstream tools can open the file with a fixed 8-column schema.
+- The final three columns (`actual_answer`, `score`, `remark`) are always emitted as empty fields — never omitted, so downstream tools can open the file with a fixed 9-column schema.
+- **Columns are addressed by header name, never by position.** `persona` sits after `kind` because that is where it reads, and putting it there moves every column behind it. The header row is always present precisely so that costs nothing; a reader that indexes by position will break on this change and would have broken on the next one.
 
 Example (header + two rows):
 
 ```csv
-question_id,kind,question,expected_answer,source,actual_answer,score,remark
-q-0001,simple,"How long does a standard refund take to process?","5–7 business days.",https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts,,,
-q-0021,hard-2,"Which sector's qualifying salary is highest at age 45?","Financial services, at $11,800.",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/compass.png,,,
+question_id,kind,persona,question,expected_answer,source,actual_answer,score,remark
+q-0001,simple,hr-professional,"One of our engineers resigned last week — how long do we have to cancel their Employment Pass?","...",https://www.mom.gov.sg/passes-and-permits/employment-pass/cancel,,,
+q-0002,simple,prospective-pass-holder,"If I leave the job I moved here for, how long can I stay in Singapore?","...",https://www.mom.gov.sg/passes-and-permits/employment-pass/cancel,,,
+q-0021,hard-2,hr-professional,"We're hiring a 45-year-old for our trading desk — is the salary bar higher than for our engineering roles?","...",https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/compass.png,,,
 ```
+
+The `expected_answer` cells are elided here for width. In a real file each is several sentences long, because §6.4.0 requires the whole rule and §6.4.6 requires the conditions that select the value the question narrowed to. The first two rows are the pair §6.4.6 describes: one fact, one packet, two roles, wholly different words.
 
 ### 6.7.1 The `source` column
 
@@ -3406,6 +3523,16 @@ It also makes review possible at all. `evalgen` output is LLM-generated and need
 
 **This depends on provenance the KB must carry.** URLs are not recoverable from `compiled.md` alone — the chain is `crawl` recording each document's and image's origin (§4.5.3), `preprocess` carrying it into front-matter (§3.4.3), and `evalgen` reading it here. A KB built before that chain existed yields empty `source` cells rather than an error, which is the correct degradation: an eval set without provenance is worse but still usable.
 
+### 6.7.2 The `persona` column
+
+**The id, not the description.** The persona file is the authority on what a persona is; the row carries only enough to group by. Inlining the description would repeat a paragraph in every row it generated, and would let two eval sets carrying the same id disagree about what that id meant — the opposite of what the column is for.
+
+**What it is for is grouping.** A per-persona score breakdown (§7.8) is the payoff of the whole feature: overall pass rate says the agent is fine, and per-persona pass rate says it is fine for the HR team and failing the candidates, which is a different bug with a different fix. That breakdown needs one stable token per row and nothing more.
+
+**Empty means persona-free, and that is a legitimate value.** It is not a missing-data marker. A blank `persona` says the row was generated without a roster (§6.4.6), which is a real and supported mode; nothing downstream should treat it as an error, and nothing should fill it in retroactively.
+
+**The id is stable as long as the roster is honest about reuse** (§6.2.3). Because `persona_id` is an authored column rather than a slug of the name, rewording a persona's name or description leaves it intact, which is what makes a roster safe to sharpen between runs. The one thing that breaks the column is repointing an existing id at a different role: comparing per-persona scores across two eval sets compares ids, and two ids that no longer describe the same person make the comparison silently meaningless rather than visibly absent.
+
 ## 6.8 Configuration
 
 `evalgen` reads an optional `evalgen.toml` (or per-invocation flags):
@@ -3418,23 +3545,31 @@ api_key_env = "ANTHROPIC_API_KEY"
 endpoint = ""                     # override for local/self-hosted
 
 [llm.prompts]
-simple  = "prompts/eval_simple.md"
-medium  = "prompts/eval_medium.md"
-complex = "prompts/eval_complex.md"
-hard_1  = "prompts/eval_hard1.md"
-hard_2  = "prompts/eval_hard2.md"
+simple          = "prompts/eval_simple.md"
+medium          = "prompts/eval_medium.md"
+complex         = "prompts/eval_complex.md"
+hard_1          = "prompts/eval_hard1.md"
+hard_2          = "prompts/eval_hard2.md"
+persona_framing = "prompts/eval_persona.md"   # wraps each kind's prompt with the asking role (§6.4.6)
 
 [generation]
-max_retries_per_item = 2          # retry cap on validation failure
+max_retries_per_item = 2          # retry cap on validation failure (and on persona/content mismatch)
 paragraph_min_chars  = 120        # ignore too-short "paragraphs" for medium/complex/hard-1
 cross_packet_bias    = "taxonomy" # taxonomy | uniform — pair selection for hard-1
+
+[personas]
+file       = ""                   # default persona CSV; --personas overrides. Empty → persona-free
+allocation = "round-robin"        # round-robin | matched (§6.5.1)
+topic_bias = true                 # honour the roster's topics column when sampling (§6.4.6)
 
 [log]
 file_path = "./evalgen.log"
 level     = "INFO"
 ```
 
-Local model support mirrors `hcag` (§3.6): `provider = "ollama"` or `"llamacpp"` with a local `endpoint` runs the whole generation without cloud credentials. Question quality varies with model choice; `hard-2` in particular requires a multimodal-capable model.
+`personas.file` exists so a KB that has a roster does not depend on every caller remembering to pass it — an eval set silently regenerated without personas looks perfectly healthy and is not the same eval set. `--personas` overrides it; there is deliberately no flag to suppress it, since `--persona <id>` covers narrowing and a run that wants no personas at all can point `--config` at a config without one.
+
+Local model support mirrors `hcag` (§3.6): `provider = "ollama"` or `"llamacpp"` with a local `endpoint` runs the whole generation without cloud credentials. Question quality varies with model choice; `hard-2` in particular requires a multimodal-capable model. Personas raise the bar again: staying in a role while respecting §6.4.0's completeness standard is a harder instruction-following task than either alone, and a small model tends to drop one of the two — usually the completeness, which is the half that fails silently.
 
 ## 6.9 Failure Modes
 
@@ -3448,6 +3583,17 @@ Local model support mirrors `hcag` (§3.6): `provider = "ollama"` or `"llamacpp"
 | LLM validation fails past `max_retries_per_item` | WARN, item dropped; run continues. |
 | Output CSV path not writable | ERROR at startup — fail fast rather than partial write. |
 | Config references a prompt template that does not exist | ERROR at startup. |
+| `--personas` path missing or unreadable | ERROR at startup. |
+| Persona CSV missing a required column | ERROR at startup, naming the column and the headers it did find. |
+| Persona CSV has a header and no rows | ERROR at startup — an empty roster is a mis-authored file, not a request for persona-free generation. Omitting the flag is how that is requested. |
+| A row has a blank `persona_id` or `persona_description` | ERROR at startup, naming the row number — a role with no description renders a framing that says nothing. |
+| Two rows share a `persona_id` | ERROR at startup, naming both rows — the `persona` column would be ambiguous for every row either one generated. |
+| `--persona <id>` names an id not in the file | ERROR at startup, listing the ids that are present. |
+| `--persona` passed without `--personas` | ERROR at startup — mutually dependent. |
+| A kind prompt lacks the `$persona_framing` slot | ERROR at startup via the registry check (§2.15.5) — the alternative is generating a full CSV with the personas silently discarded. |
+| A persona's `topics` prefixes match no packet | WARN once per persona; sampling for that persona falls back to the whole KB (§6.4.6). |
+| Persona cannot be reconciled with the sampled content past `max_retries_per_item` | WARN, item dropped (`reason=persona_content_mismatch`); run continues. |
+| Question keeps failing the typicality rule past `max_retries_per_item` | WARN, item dropped (`reason=exam_framing`); run continues (§6.4.6). |
 
 If any `ERROR`-level event fires, `evalgen` exits with a non-zero status. `WARN`-level shortfalls do not affect exit status but are surfaced in the end-of-run summary.
 
@@ -3457,12 +3603,14 @@ If any `ERROR`-level event fires, `evalgen` exits with a non-zero status. `WARN`
 
 `evalgen` writes a JSON-lines log to the path in `[log]` config (default `./evalgen.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), and `crawl` (§4.7):
 
-- `INFO`: run start (KB path, requested counts, resolved counts after feasibility check), per-item generation summary (`question_id`, `kind`, source packet id(s), token usage), run end summary (per-kind generated/dropped counts, wall-clock elapsed).
-- `DEBUG`: full LLM prompts and responses per item, chosen paragraph offsets, image paths attached for `hard-2`.
-- `WARN`: kind shortfalls, dropped items (with reason), packets skipped for `hard-2` (no images), duplicate question detection (if the same question text is generated twice, the second is dropped).
-- `ERROR`: startup failures, unwritable output path, KB with no packets.
+- `INFO`: run start (KB path, requested counts, resolved counts after feasibility check, persona file path and roster ids in allocation order, allocation mode), per-item generation summary (`question_id`, `kind`, `persona`, source packet id(s), token usage), run end summary (generated/dropped counts broken down by kind **and** by persona, wall-clock elapsed).
+- `DEBUG`: full LLM prompts and responses per item — including the rendered persona framing, so a question that reads out of character can be traced to the description that produced it — chosen paragraph offsets, and image paths attached for `hard-2`.
+- `WARN`: kind shortfalls, dropped items (with reason, including `persona_content_mismatch` and `exam_framing`), packets skipped for `hard-2` (no images), personas whose `topics` matched nothing, duplicate question detection (if the same question text is generated twice, the second is dropped).
+- `ERROR`: startup failures, unwritable output path, KB with no packets, persona-file parse and validation failures (§6.9).
 
-If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`evalgen.run`, `evalgen.item`, `evalgen.llm.call`) are exported — symmetric with §2.11, §3.9, §4.7.
+The end-of-run summary carries the per-persona counts and not only the per-kind ones because that is where an unproductive persona shows up: a role that drops half its items to `persona_content_mismatch` is one whose description does not match what the KB actually covers, and the run is the only place that is visible — the CSV shows the rows that survived.
+
+If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`evalgen.run`, `evalgen.item`, `evalgen.llm.call`) are exported — symmetric with §2.11, §3.9, §4.7. `evalgen.item` carries `persona` as a span attribute alongside `kind`.
 
 ## 6.11 Non-Goals
 
@@ -3470,6 +3618,11 @@ If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`evalgen.run`, `evalgen.item`, `
 - **Judging answers.** The `score` and `remark` columns are always empty on output; `evalgen` does not implement an LLM-as-judge or any other scoring mechanism.
 - **Ground-truth curation.** Generated `expected_answer` values are grounded in the KB but are themselves LLM output. Human review of the eval set before use is expected; `evalgen` does not claim editorial correctness.
 - **Adversarial or jailbreak questions.** All questions are strictly grounded in the KB's own content. Prompt-injection probes, safety evals, and out-of-distribution questions are out of scope.
+- **Simulating a user.** A persona shapes the wording of one self-contained question. It does not hold a conversation, follow up, or react to an answer — multi-turn behaviour under a role belongs to `evalrun`'s clarifier (§7.4.2), which is where the transcript exists to support it.
+- **Inventing people.** Personas are roles, not individuals. The generator does not fabricate names, passport or identity numbers, employers, or nationalities to make a question concrete; a question needs a *situation* to be realistic, not an identity, and synthesizing plausible personal data into a file destined for version control is a cost with no matching benefit.
+- **Personas as a source of truth.** Facts asserted inside a persona description are ignored (§6.4.6). A roster is not a second KB.
+- **Deriving personas from the KB.** Who a KB's audiences are, and what they typically ask, is a judgement its owner makes; `evalgen` does not cluster the corpus to guess at roles.
+- **Mining real user questions.** The roster describes what a role typically asks in prose. Harvesting actual query logs and generating from those is a better source of typicality and a different feature, with its own privacy and retention obligations; `evalgen` reads a CSV a human wrote.
 - **Cross-run diffing or eval-set versioning.** Each invocation writes a fresh CSV. Snapshotting eval sets under version control and diffing successive runs is left to the caller (e.g., commit the CSV alongside the KB revision it was generated from).
 
 ## 6.12 Sequence Diagram
@@ -3485,21 +3638,26 @@ sequenceDiagram
     participant LLM as LLM
     participant CSV as output.csv
 
-    U->>CLI: evalgen ./kb --out eval.csv --total 100 --seed 42
+    U->>CLI: evalgen ./kb --out eval.csv --total 100 --seed 42<br/>--personas personas.csv
     CLI->>FS: scan_kb → PacketRecords (paragraphs + assets)
+    CLI->>FS: read personas.csv → roster (§6.2.3)
+    Note over CLI: validate roster: required columns, unique ids,<br/>non-empty descriptions — else ERROR
     CLI->>CLI: split_total(100) per §6.5
     CLI->>CLI: seed rng
 
     loop for kind in [simple, medium, complex, hard-1, hard-2]
         loop for i in requested count[kind]
-            CLI->>CLI: sample source packet(s) + paragraph(s)<br/>(taxonomy-biased for hard-1)
+            CLI->>CLI: persona = roster[i mod P] (§6.5.1)
+            CLI->>CLI: sample source packet(s) + paragraph(s)<br/>(taxonomy-biased for hard-1,<br/>Topics-biased for the persona)
             alt kind == hard-2 and no image-bearing packet available
                 Note over CLI: WARN shortfall, break kind loop
             end
-            CLI->>LLM: per-kind prompt + selected content<br/>(image blocks for hard-2)
-            LLM-->>CLI: {question, expected_answer}
+            CLI->>LLM: per-kind prompt + answer_rules + persona framing<br/>+ selected content (image blocks for hard-2)
+            LLM-->>CLI: {question, expected_answer} | {mismatch}
             alt validation ok (per §6.6 rules)
-                CLI->>CSV: append row (id, kind, question, expected, "", "", "")
+                CLI->>CSV: append row (id, kind, persona, question, expected, source, "", "", "")
+            else persona/content mismatch or exam framing, retries left
+                Note over CLI: resample content, same persona
             else validation failed, retries left
                 Note over CLI: retry with same source
             else retries exhausted
@@ -3507,7 +3665,7 @@ sequenceDiagram
             end
         end
     end
-    CLI-->>U: summary (per-kind generated/dropped counts, shortfalls)
+    CLI-->>U: summary (generated/dropped by kind and by persona, shortfalls)
 ```
 
 ---
@@ -3528,13 +3686,15 @@ The tool is symmetric with `evalgen` in scope: `evalgen` is a **generator only**
 |---|---|---|
 | `question_id`     | yes | passed through unchanged |
 | `kind`            | yes | passed through unchanged |
+| `persona`         | yes | passed through unchanged — used to group the report (§7.8), never sent to the agent |
 | `question`        | yes | passed through unchanged |
 | `expected_answer` | yes | passed through unchanged |
+| `source`          | yes | passed through unchanged (§7.6) |
 | `actual_answer`   | no  | **populated** — the chatbot's final answer text |
 | `score`           | no  | **populated** — integer `0`–`3` per the rubric (§7.5) |
 | `remark`          | no  | **populated** — one-sentence judge justification |
 
-The first four columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last three columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption.
+The first six columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last three columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption.
 
 ## 7.3 Invocation
 
@@ -3553,6 +3713,7 @@ $ evalrun <input.csv> --backend-url <url> --out <output.csv> --report <report.ht
 | `--request-timeout <sec>` | no | Per-`/chat` HTTP timeout. Default `60`. |
 | `--session-scope <mode>` | no | `per-question` (default, fresh `session_id` per question) or `per-run` (share one `session_id` across all questions). Fresh sessions isolate scoring; shared sessions stress the multi-turn memory path. |
 | `--kinds <list>` | no | Comma-separated subset of question kinds to run (e.g. `--kinds simple,hard-2`). Default: all five. |
+| `--personas <list>` | no | Comma-separated subset of persona ids to run (e.g. `--personas hr-professional`). Default: every persona present in the input, persona-free rows included. |
 | `--skip-completed` | no | Skip input rows whose `score` column is already populated. Off by default so re-runs re-score deterministically. |
 | `--seed <int>` | no | Seed for the judge LLM's sampling and any tie-breaking in the clarification generator. Fixed seed → reproducible scoring. |
 | `--config <path>` | no | Path to `evalrun.toml` (§7.9). Defaults to `./evalrun.toml` if present. |
@@ -3709,11 +3870,13 @@ The promptfoo integration is an implementation detail — the CLI surface, input
 
 `source` (§6.7.1) is carried through untouched: `evalrun` reads it, writes it back, and never uses it to answer. It is provenance for a human reviewing a row, and feeding it to the agent would make the eval measure retrieval-with-hints rather than retrieval. It is absent from the promptfoo test `vars` for that reason — the prompt is `{{question}}` alone, so provenance cannot reach the model even by accident. Scoring mutates the input rows in place rather than rebuilding them from the harness's output, so the column survives a scored run without any merge logic having to know about it.
 
-**`source` is optional on input.** Eval sets generated before provenance existed have seven columns, and refusing them would strand every eval set already in use; a missing `source` reads as empty. Because `evalrun` always *writes* the full schema, reading a seven-column file and writing it back upgrades it in place — the column appears, empty, and fills in on the next `evalgen` run against a provenance-carrying KB.
+`persona` (§6.7.2) is carried through the same way and is likewise absent from the promptfoo test `vars`. The reason is sharper here than for `source`: the persona is already expressed in the question's wording, which is the entire point of generating it in character, and passing the role separately would tell the agent who is asking before it has to work that out from the words — turning a test of whether the agent understands an HR officer's phrasing into a test of whether it can follow a label.
+
+**`source` and `persona` are both optional on input.** Eval sets generated before provenance existed have seven columns, and ones generated before personas have eight; refusing either would strand every eval set already in use, so a missing column reads as empty throughout. Because `evalrun` always *writes* the full schema, reading an older file and writing it back upgrades it in place — the columns appear, empty, and fill in on the next `evalgen` run against a provenance-carrying KB and a persona roster. It is also why columns are matched by header name (§6.7): the same tool must read seven-, eight-, and nine-column files.
 
 ## 7.7 Output — Completed CSV
 
-`evalrun` writes a CSV to `--out` with the same 8-column schema as the input (§6.7). Columns `question_id`, `kind`, `question`, `expected_answer`, and `source` are copied verbatim from the input row. Columns `actual_answer`, `score`, and `remark` are populated per §7.4 and §7.5.
+`evalrun` writes a CSV to `--out` with the same 9-column schema as the input (§6.7). Columns `question_id`, `kind`, `persona`, `question`, `expected_answer`, and `source` are copied verbatim from the input row. Columns `actual_answer`, `score`, and `remark` are populated per §7.4 and §7.5.
 
 Row-level rules:
 
@@ -3725,11 +3888,13 @@ Row-level rules:
 Example (header + three rows, one of each outcome shape):
 
 ```csv
-question_id,kind,question,expected_answer,actual_answer,score,remark
-q-0001,simple,"How long does a standard refund take to process?","5–7 business days.","Refunds typically clear in 5 to 7 business days.",3,"Answer matches expected timeframe exactly."
-q-0007,medium,"Which document must accompany a partial refund request?","The original signed invoice.","A copy of the invoice is required.",1,"Correct that an invoice is needed but omits the ""original"" and ""signed"" requirements."
-q-0021,hard-2,"According to the refund state machine, which state immediately follows ""pending_review""?","approved","[max_turns_exceeded] last_response=""Could you clarify which state machine you mean?""",0,"Chatbot never produced an answer within the turn limit."
+question_id,kind,persona,question,expected_answer,source,actual_answer,score,remark
+q-0001,simple,hr-professional,"How long do we have to cancel a pass after someone resigns?","...",https://...,"Within one week of the last day of employment.",3,"States the cancellation window correctly."
+q-0007,medium,prospective-pass-holder,"My offer is $5,600 and I turn 32 next month — is that enough for an EP?","...",https://...,"Yes, $5,600 meets the Employment Pass minimum.",1,"Quotes the entry-level figure without the age and sector conditions that decide whether it applies."
+q-0021,hard-2,hr-professional,"Is the salary bar higher for our trading desk than for our engineering roles?","...",https://...,"[max_turns_exceeded] last_response=""Which sector do you mean?""",0,"Chatbot never produced an answer within the turn limit."
 ```
+
+`expected_answer` is elided for width; each is several sentences per §6.4.0. Row `q-0007` is the failure §6.4.6 exists to catch — the persona narrowed the question to one person's case and the agent replied with the headline number instead of the conditions that decide whether it applies. An eval set whose reference answer was equally terse would have scored that a 3.
 
 ## 7.8 Output — HTML Report
 
@@ -3737,6 +3902,8 @@ q-0021,hard-2,"According to the refund state machine, which state immediately fo
 
 - **Run summary.** Total questions, per-kind counts, overall pass rate (fraction scoring `≥ 2`), mean and median score, wall-clock elapsed, backend URL, seed, model IDs (chatbot + judge).
 - **Per-kind breakdown.** One panel each for `simple`, `medium`, `complex`, `hard-1`, `hard-2` showing count, mean score, score histogram (0/1/2/3 bars), and pass rate. Enables at-a-glance drift detection — a `hard-1` regression tells you retrieval selection broke; a `hard-2` regression tells you multimodal loading broke, mirroring the signal design in §6.4.
+- **Per-persona breakdown.** The same panel shape as the per-kind one, keyed on `persona` (§6.7.2), shown only when the input carries personas. This is the view the roster was built for: an overall pass rate that looks healthy while one role's rows sit a point lower says the agent handles the vocabulary of the KB's authors and not that of half its users — a phrasing and retrieval problem, not a knowledge gap, and invisible in every other panel on the page. Rows with an empty `persona` are grouped under a single *unattributed* entry rather than dropped.
+- **Persona × kind grid** when both axes are populated: mean score per cell. It separates the two readings of a weak persona — low across every kind means that role's phrasing is not being retrieved against, low only on `complex` and `hard-1` means that role simply asks harder questions.
 - **Score distribution histogram** across all kinds.
 - **Row-level table** — every question with its score and the judge's remark, filterable by kind and by score bucket. The question and answer columns clip to one line; the remark column wraps to three, because a remark ellipsised to a single line cannot be read and it is the reason the row scored what it did. Every clipped cell carries its full text as a `title`, so hovering reads it without expanding.
 - **Expandable detail row** — the full record of one scored question, and the place where nothing is clipped: **question, expected answer, actual answer, the judge's remark (labelled with the score it justifies), and the multi-turn transcript.** A row with no remark says so rather than rendering an empty block, which distinguishes "the judge said nothing" from "the report dropped it". The detail cell spans every column of the table, including the `--baseline` Δ column when present — one short and the expanded block stops before the table's right edge.

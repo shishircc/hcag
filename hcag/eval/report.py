@@ -5,6 +5,12 @@ assets — with a run summary, per-kind panels for each of the five question
 types, a global score distribution, and a row-level table with expandable
 transcripts. If ``cfg.report.baseline`` is set, a per-kind delta bar appears
 at the top of the page.
+
+When the rows carry personas (§6.7.2) the page also gets a per-persona
+breakdown and a persona-by-kind grid. That is the view the roster was built
+for: an overall pass rate can look healthy while one role's rows sit a point
+lower, which is a phrasing and retrieval problem rather than a knowledge gap
+and is invisible in every other panel on the page.
 """
 
 from __future__ import annotations
@@ -47,6 +53,46 @@ def _group_by_kind(rows: list[EvalRow]) -> dict[str, list[EvalRow]]:
     for r in rows:
         out.setdefault(r.kind, []).append(r)
     return out
+
+
+#: Rows generated without a roster are grouped rather than dropped — an empty
+#: `persona` means persona-free, which is a supported mode and not missing data.
+UNATTRIBUTED = "(unattributed)"
+
+
+def _group_by_persona(rows: list[EvalRow]) -> dict[str, list[EvalRow]]:
+    out: dict[str, list[EvalRow]] = {}
+    for r in rows:
+        out.setdefault(r.persona or UNATTRIBUTED, []).append(r)
+    return dict(sorted(out.items()))
+
+
+def _persona_kind_grid(rows: list[EvalRow], personas: dict[str, list[EvalRow]]) -> str:
+    """Mean score per (persona, kind) cell.
+
+    It separates the two readings of a weak persona: low across every kind
+    means that role's phrasing is not being retrieved against, low only on
+    `complex` and `hard-1` means that role simply asks harder questions.
+    """
+    head = "".join(f"<th>{html.escape(k)}</th>" for k in KIND_ORDER)
+    body = []
+    for name, prows in personas.items():
+        by_kind = _group_by_kind(prows)
+        cells = []
+        for kind in KIND_ORDER:
+            cell = _stats_for(by_kind.get(kind, []))
+            if cell["scored"] == 0:
+                cells.append('<td class="muted">—</td>')
+            else:
+                cells.append(f'<td>{cell["mean_score"]} <span class="muted">({cell["scored"]})</span></td>')
+        body.append(f"<tr><td>{html.escape(name)}</td>{''.join(cells)}</tr>")
+    return (
+        '<table class="rows"><thead><tr><th>Persona</th>'
+        + head
+        + "</tr></thead><tbody>"
+        + "".join(body)
+        + "</tbody></table>"
+    )
 
 
 def _bar(pct: float, width: int = 200) -> str:
@@ -302,6 +348,19 @@ def render_report(
         baseline_html = _baseline_panel(rows, baseline_rows)
 
     panels_html = "".join(_panel(k, per_kind.get(k, [])) for k in KIND_ORDER)
+
+    # Shown only when the input carries personas: an empty section would
+    # suggest the run lost something it never had.
+    per_persona = _group_by_persona(rows)
+    persona_html = ""
+    if any(r.persona for r in rows):
+        persona_panels = "".join(_panel(name, prows) for name, prows in per_persona.items())
+        persona_html = (
+            "<h2>Per-persona breakdown</h2>"
+            f'<div class="panels">{persona_panels}</div>'
+            "<h2>Persona × kind</h2>"
+            + _persona_kind_grid(rows, per_persona)
+        )
     chip_html = (
         '<div class="filters"><span class="muted">Filter:</span>'
         '<button class="chip on" data-kind="all">all</button>'
@@ -338,6 +397,8 @@ def render_report(
 
 <h2>Per-kind breakdown</h2>
 <div class="panels">{panels_html}</div>
+
+{persona_html}
 
 <h2>Overall score distribution</h2>
 {_hist_bars(overall["histogram"], max(overall["histogram"].values()) if overall["histogram"] else 0)}

@@ -233,11 +233,33 @@ class EvalGenGenerationConfig(BaseModel):
     cross_packet_bias: Literal["taxonomy", "uniform"] = "taxonomy"
 
 
+class EvalGenPersonasConfig(BaseModel):
+    """Who the generated questions are asked by (§6.2.3, §6.5.1)."""
+
+    file: str = ""
+    """Default persona CSV; `--personas` overrides. Empty means persona-free.
+
+    It exists so a KB that has a roster does not depend on every caller
+    remembering to pass it: an eval set silently regenerated without personas
+    looks perfectly healthy and is not the same eval set.
+    """
+
+    allocation: Literal["round-robin", "matched"] = "round-robin"
+    """`round-robin` partitions the requested counts across the roster.
+    `matched` reads them as per-persona and puts one sampled grounding to every
+    persona in turn — the controlled comparison, at P times the LLM calls."""
+
+    topic_bias: bool = True
+    """Honour each persona's `topics` prefixes when sampling. A bias, not a
+    filter — a persona whose topics match nothing still generates (§6.4.6)."""
+
+
 class EvalGenConfig(BaseModel):
     """`evalgen` CLI configuration (§6.8)."""
 
     llm: LLMConfig = Field(default_factory=LLMConfig)
     generation: EvalGenGenerationConfig = Field(default_factory=EvalGenGenerationConfig)
+    personas: EvalGenPersonasConfig = Field(default_factory=EvalGenPersonasConfig)
     log: LogConfig = Field(default_factory=lambda: LogConfig(file_path="./evalgen.log"))
 
 

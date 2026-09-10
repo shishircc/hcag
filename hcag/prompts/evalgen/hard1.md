@@ -6,6 +6,8 @@ Your JSON must cite which packet each supporting paragraph came from (by packet 
 
 $answer_rules
 
+$persona_framing
+
 Return a single JSON object, no prose, no code fences:
 {{
   "question": "<the question>",

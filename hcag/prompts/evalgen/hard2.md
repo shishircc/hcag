@@ -4,6 +4,8 @@ Task: Produce ONE question whose answer **requires reading the attached image** 
 
 $answer_rules
 
+$persona_framing
+
 Return a single JSON object, no prose, no code fences:
 {{
   "question": "<the question>",

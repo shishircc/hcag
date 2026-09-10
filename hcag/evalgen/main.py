@@ -2,6 +2,7 @@
 
     $ evalgen <kb_root> --out <output.csv> \
         [--total <N> | --simple <n1> --medium <n2> --complex <n3> --hard-1 <n4> --hard-2 <n5>] \
+        [--personas <personas.csv>] [--persona <id>]... \
         [--seed <int>] [--id-prefix <str>] [--config <path>]
 
 Exits non-zero only on ERROR-level events (empty KB, unwritable output,
@@ -19,6 +20,7 @@ from ..cli.metadata_llm import LLMUnavailableError
 from ..config import load_evalgen_config
 from .generators import preflight
 from ..logger import build_logger
+from .personas import Persona, PersonaError, load_personas, select
 from .runner import EvalGenRequest, KIND_ORDER, run_evalgen, split_total
 
 
@@ -36,6 +38,15 @@ def _cli(
     hard_2: int = typer.Option(0, "--hard-2", help="Number of `hard-2` (multimodal) questions."),
     seed: int | None = typer.Option(None, "--seed", help="Random seed for reproducibility."),
     id_prefix: str = typer.Option("q", "--id-prefix", help="Prefix for question_id values."),
+    personas_file: Path | None = typer.Option(
+        None, "--personas",
+        help="Persona CSV (persona_id, persona_name, persona_description). "
+             "Questions are asked as one of its personas would ask them.",
+    ),
+    persona_ids: list[str] = typer.Option(
+        [], "--persona",
+        help="Restrict generation to this persona_id. Repeatable. Requires --personas.",
+    ),
     config: Path | None = typer.Option(
         None, "--config",
         help="Path to evalgen.toml. Defaults to <kb_root>/evalgen.toml if present.",
@@ -106,6 +117,34 @@ def _cli(
             err=True,
         )
 
+    personas: list[Persona] = []
+    roster_path = personas_file or (Path(cfg.personas.file) if cfg.personas.file else None)
+    if persona_ids and roster_path is None:
+        typer.echo("--persona requires --personas (or personas.file in evalgen.toml).", err=True)
+        raise typer.Exit(code=2)
+    if roster_path is not None:
+        try:
+            personas = select(load_personas(roster_path), list(persona_ids))
+        except PersonaError as e:
+            # Fatal, never a warning: the roster shapes every row, so there is
+            # no degraded mode worth continuing into (§6.2.3).
+            logger.error("evalgen.personas.failed", path=str(roster_path), error=str(e))
+            typer.echo(f"evalgen aborted, nothing written: {e}", err=True)
+            raise typer.Exit(code=1) from e
+        logger.info(
+            "evalgen.personas.loaded",
+            path=str(roster_path),
+            personas=[p.id for p in personas],
+            allocation=cfg.personas.allocation,
+        )
+        # Echoed before the first LLM call: a roster short by a row still
+        # writes a full CSV, and nothing in the output says so (§6.2.2).
+        typer.echo(
+            f"Personas from {roster_path} ({cfg.personas.allocation}): "
+            + ", ".join(p.id for p in personas),
+            err=True,
+        )
+
     if cfg.llm.preflight:
         try:
             preflight(cfg.llm, logger)
@@ -120,12 +159,17 @@ def _cli(
         counts=counts,
         seed=seed,
         id_prefix=id_prefix,
+        personas=personas,
     )
     stats = run_evalgen(request, cfg, logger)
 
+    per_persona = (
+        f" Generated per persona: {stats.generated_by_persona}."
+        if stats.generated_by_persona else ""
+    )
     typer.echo(
         f"evalgen complete: {stats.total_written} row(s) written to {out}. "
-        f"Generated per kind: {stats.generated}. "
+        f"Generated per kind: {stats.generated}.{per_persona} "
         f"Warnings: {stats.warnings}. Errors: {stats.errors}."
     )
     if stats.errors > 0:

@@ -25,19 +25,25 @@ def test_every_kind_carries_the_completeness_rules() -> None:
     lib = load_prompts()
     rules = lib.get("evalgen.answer_rules")
     rendered = {
-        "evalgen.simple": lib.get("evalgen.simple", content="C", answer_rules=rules),
+        "evalgen.simple": lib.get(
+            "evalgen.simple", content="C", answer_rules=rules, persona_framing=""
+        ),
         "evalgen.medium": lib.get(
-            "evalgen.medium", packet_id="p", paragraph="P", answer_rules=rules
+            "evalgen.medium", packet_id="p", paragraph="P", answer_rules=rules,
+            persona_framing="",
         ),
         "evalgen.complex": lib.get(
-            "evalgen.complex", packet_id="p", paragraphs="P", answer_rules=rules
+            "evalgen.complex", packet_id="p", paragraphs="P", answer_rules=rules,
+            persona_framing="",
         ),
         "evalgen.hard1": lib.get(
             "evalgen.hard1", packet_a_id="a", packet_b_id="b",
             paragraphs_a="A", paragraphs_b="B", answer_rules=rules,
+            persona_framing="",
         ),
         "evalgen.hard2": lib.get(
-            "evalgen.hard2", packet_id="p", content="C", answer_rules=rules
+            "evalgen.hard2", packet_id="p", content="C", answer_rules=rules,
+            persona_framing="",
         ),
     }
     for name, text in rendered.items():
@@ -67,7 +73,9 @@ def test_no_kind_still_asks_for_a_short_or_verbatim_answer() -> None:
 
 def test_simple_is_about_the_question_not_the_answer() -> None:
     """'No reasoning' describes how the reader gets there, not how much they get."""
-    text = load_prompts().get("evalgen.simple", content="C", answer_rules="R")
+    text = load_prompts().get(
+        "evalgen.simple", content="C", answer_rules="R", persona_framing=""
+    )
     assert "requires no reasoning" in text
     assert "describes the QUESTION, not the ANSWER" in text
 

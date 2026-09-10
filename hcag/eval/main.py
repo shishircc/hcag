@@ -38,6 +38,18 @@ def _parse_kinds(value: str | None) -> set[str] | None:
     return kinds
 
 
+def _parse_personas(value: str | None) -> set[str] | None:
+    """Persona ids are validated against the input file, not a fixed list.
+
+    Unlike kinds, the valid set is whatever roster generated the eval set, so
+    the check belongs where the rows are (§7.3).
+    """
+    if value is None:
+        return None
+    ids = {p.strip() for p in value.split(",") if p.strip()}
+    return ids or None
+
+
 @app.command()
 def run(
     input_csv: Path = typer.Argument(
@@ -86,6 +98,11 @@ def run(
         "--kinds",
         help="Comma-separated subset of question kinds to run.",
     ),
+    personas: str = typer.Option(
+        None,
+        "--personas",
+        help="Comma-separated subset of persona ids to run. Default: every persona in the input.",
+    ),
     skip_completed: bool = typer.Option(
         False,
         "--skip-completed",
@@ -125,6 +142,7 @@ def run(
         )
 
     parsed_kinds = _parse_kinds(kinds)
+    parsed_personas = _parse_personas(personas)
 
     cfg = load_eval_config(config) if config.exists() else EvalConfig()
     cfg = apply_cli_overrides(
@@ -164,6 +182,7 @@ def run(
         out_path=out,
         report_path=report,
         kinds=parsed_kinds,
+        personas=parsed_personas,
         skip_completed=skip_completed,
         quiet=quiet,
     )

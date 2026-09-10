@@ -19,9 +19,9 @@ def _write(path: Path, header: list[str], rows: list[list[str]]) -> None:
 
 def test_source_survives_a_read_write_round_trip(tmp_path: Path) -> None:
     """It was silently dropped before: the header check only verified required
-    columns were present, so an 8-column file validated and then lost data."""
+    columns were present, so a full-width file validated and then lost data."""
     src = tmp_path / "in.csv"
-    _write(src, COLUMNS, [["q-0001", "simple", "Q?", "A", SRC, "", "", ""]])
+    _write(src, COLUMNS, [["q-0001", "simple", "hr", "Q?", "A", SRC, "", "", ""]])
 
     result = read_csv(src)
     assert result.rows[0].source == SRC
@@ -39,7 +39,7 @@ def test_a_pre_provenance_seven_column_csv_still_loads(tmp_path: Path) -> None:
     assert "source" not in REQUIRED_COLUMNS
 
     src = tmp_path / "old.csv"
-    _write(src, [c for c in COLUMNS if c != "source"],
+    _write(src, [c for c in COLUMNS if c not in ("source", "persona")],
            [["q-0001", "simple", "Q?", "A", "", "", ""]])
 
     result = read_csv(src)
@@ -48,17 +48,17 @@ def test_a_pre_provenance_seven_column_csv_still_loads(tmp_path: Path) -> None:
 
 
 def test_an_upgraded_file_gains_an_empty_source_column(tmp_path: Path) -> None:
-    """Reading a 7-column file and writing it back produces 8 columns, so a
-    stale eval set upgrades in place rather than needing regeneration."""
+    """Reading a 7-column file and writing it back produces the full schema, so
+    a stale eval set upgrades in place rather than needing regeneration."""
     src = tmp_path / "old.csv"
-    _write(src, [c for c in COLUMNS if c != "source"],
+    _write(src, [c for c in COLUMNS if c not in ("source", "persona")],
            [["q-0001", "simple", "Q?", "A", "", "", ""]])
 
     out = tmp_path / "out.csv"
     write_csv(out, read_csv(src).rows)
     rows = list(csv.reader(out.open(encoding="utf-8", newline="")))
     assert rows[0] == COLUMNS
-    assert rows[1] == ["q-0001", "simple", "Q?", "A", "", "", "", ""]
+    assert rows[1] == ["q-0001", "simple", "", "Q?", "A", "", "", "", ""]
 
 
 def test_source_is_positioned_after_expected_answer() -> None:
