@@ -12,6 +12,7 @@ All events are structured-logged via the shared ``HcagLogger``.
 from __future__ import annotations
 
 import re
+import time
 from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
@@ -19,6 +20,7 @@ from urllib.parse import urlparse
 
 from ..logger import HcagLogger
 from .fetch import Fetcher, FetcherProtocol
+from .pacing import DEFAULT_REQUEST_DELAY_MS, RateLimiter
 from .html_conv import DEFAULT_MIN_EXTRACT_CHARS, FALLBACK_DISABLED, convert_html
 
 #: Below this share of the DOM's visible text, a "successful" extraction is
@@ -95,6 +97,8 @@ class CrawlStats:
     assets_offsite: int = 0   # PDFs/images fetched from outside the prefix (§4.3.4)
     dirs_collapsed: int = 0   # leaf dirs flattened by the finalize pass (§4.5.2)
     sidecars_written: int = 0  # .hcag-crawl.json link-order files (§4.5.3)
+    throttle_wait_ms: int = 0  # time spent waiting between requests (§4.3.5)
+    elapsed_ms: int = 0
     warnings: int = 0
     errors: int = 0
 
@@ -111,12 +115,23 @@ def crawl(
     min_extract_chars: int = DEFAULT_MIN_EXTRACT_CHARS,
     min_image_bytes: int = DEFAULT_MIN_IMAGE_BYTES,
     asset_hosts: tuple[str, ...] | None = None,
+    request_delay_ms: int = DEFAULT_REQUEST_DELAY_MS,
     console: Console | None = None,
 ) -> CrawlStats:
     stats = CrawlStats()
+    started = time.monotonic()
 
     if not seeds:
         logger.error("crawl.start.failed", reason="no_seeds")
+        stats.errors += 1
+        return stats
+
+    if request_delay_ms < 0:
+        logger.error(
+            "crawl.start.failed",
+            reason="negative_request_delay",
+            request_delay_ms=request_delay_ms,
+        )
         stats.errors += 1
         return stats
 
@@ -143,15 +158,32 @@ def crawl(
         extract_favor=extract_favor,
         min_extract_chars=min_extract_chars,
         min_image_bytes=min_image_bytes,
+        # How hard a run leaned on a site is not something to reconstruct from
+        # timestamps afterwards (§4.3.5).
+        request_delay_ms=request_delay_ms,
     )
+
+    if request_delay_ms == 0:
+        # Legitimate against a host the operator runs, and the one setting whose
+        # misuse is paid for by somebody else — so it is said out loud rather
+        # than accepted in silence.
+        logger.warn(
+            "crawl.pacing.disabled",
+            detail="requests will be issued as fast as the network allows",
+        )
+        stats.warnings += 1
 
     console = console or Console()
     report = CrawlReport()
     asset_hosts = frozenset(h.lower() for h in (asset_hosts or ()))
 
     owns_fetcher = fetcher is None
+    limiter: RateLimiter | None = None
     if fetcher is None:
-        fetcher = Fetcher()
+        # Only when `crawl` owns the client: a caller that injects a fetcher —
+        # every test does — owns its own pacing policy too.
+        limiter = RateLimiter(request_delay_ms, logger=logger, console=console)
+        fetcher = Fetcher(rate_limiter=limiter)
 
     try:
         visited: set[str] = set()
@@ -205,6 +237,10 @@ def crawl(
         _finalize_layout(kb_root, logger, stats, page_links, doc_urls, image_urls)
         console.report(report)
 
+        if limiter is not None:
+            stats.throttle_wait_ms = limiter.total_wait_ms
+        stats.elapsed_ms = int((time.monotonic() - started) * 1000)
+
         logger.info(
             "crawl.done",
             pages_fetched=stats.pages_fetched,
@@ -219,6 +255,10 @@ def crawl(
             dirs_collapsed=stats.dirs_collapsed,
             sidecars_written=stats.sidecars_written,
             assets_offsite=stats.assets_offsite,
+            # Wall-clock next to throttle wait is what separates "the site is
+            # slow" from "we are being polite", without any arithmetic (§4.3.5).
+            elapsed_ms=stats.elapsed_ms,
+            throttle_wait_ms=stats.throttle_wait_ms,
             warnings=stats.warnings,
             errors=stats.errors,
         )

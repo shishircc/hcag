@@ -13,7 +13,6 @@ def _make_catalog(sizes: dict[str, int]) -> Catalog:
                 id=k,
                 path=k,
                 title=k,
-                short_description="",
                 long_description="",
                 token_size_estimate=v,
             )

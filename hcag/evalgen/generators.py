@@ -544,7 +544,7 @@ def gen_hard2(
 
 _PREFLIGHT_PROMPT = (
     "Reply with ONE compact JSON object and nothing else: "
-    '{"title": "ok", "short_description": "ok", "long_description": "ok"}'
+    '{"title": "ok", "long_description": "ok"}'
 )
 
 

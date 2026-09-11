@@ -18,10 +18,10 @@ from hcag.config import CliConfig, LLMConfig
 from hcag.logger import build_logger
 
 
-def _ok(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+def _ok(cfg, *, own_content="", **kw):  # noqa: ARG001
     first = (own_content.splitlines() or [""])[0].lstrip("# ").strip() or "Node"
     return FolderMetadata(
-        title=first, short_description=f"s-{first}", long_description=f"l-{first}"
+        title=first, long_description=f"l-{first}"
     )
 
 
@@ -99,7 +99,7 @@ def test_preflight_runs_before_the_walk(tmp_path: Path) -> None:
     """The probe is the first call, and it is a real summarizer request."""
     seen: list[str] = []
 
-    def _record(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+    def _record(cfg, *, own_content="", **kw):  # noqa: ARG001
         seen.append(own_content)
         return _ok(cfg, own_content=own_content)
 
@@ -108,7 +108,9 @@ def test_preflight_runs_before_the_walk(tmp_path: Path) -> None:
         pp.preprocess_tree(root, _cfg(tmp_path), _logger(tmp_path), force=True)
 
     assert "Preflight" in seen[0]
-    assert len(seen) == 4  # probe + alpha + beta + root
+    # probe + alpha + beta. The root is a pure waypoint here, and a waypoint
+    # costs no call at all (D3a).
+    assert len(seen) == 3
 
 
 def test_preflight_rejects_a_model_that_cannot_produce_the_contract(tmp_path: Path) -> None:
@@ -129,14 +131,14 @@ def test_preflight_can_be_disabled(tmp_path: Path) -> None:
     cfg.llm.preflight = False
     calls: list[str] = []
 
-    def _record(cfg_, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+    def _record(cfg_, *, own_content="", **kw):  # noqa: ARG001
         calls.append(own_content)
         return _ok(cfg_, own_content=own_content)
 
     with patch("hcag.cli.preprocess.generate_folder_metadata", side_effect=_record):
         pp.preprocess_tree(root, cfg, _logger(tmp_path), force=True)
 
-    assert len(calls) == 3  # no probe — alpha + beta + root only
+    assert len(calls) == 2  # no probe, and no call for the waypoint root
     assert (root / "compiled.md").is_file()
 
 
@@ -147,7 +149,7 @@ def test_transient_failures_are_retried_then_succeed(tmp_path: Path) -> None:
     flaky = type("RateLimitError", (Exception,), {})
     attempts: list[int] = []
 
-    def _twice_then_ok(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+    def _twice_then_ok(cfg, *, own_content="", **kw):  # noqa: ARG001
         attempts.append(1)
         if len(attempts) <= 2:
             raise flaky("slow down")
@@ -167,7 +169,7 @@ def test_unavailable_mid_run_aborts_and_reports_progress(tmp_path: Path) -> None
     auth = type("AuthenticationError", (Exception,), {})
     calls: list[int] = []
 
-    def _die_after_two(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+    def _die_after_two(cfg, *, own_content="", **kw):  # noqa: ARG001
         calls.append(1)
         if len(calls) > 2:  # probe + alpha succeed, then the key is revoked
             raise auth("credentials revoked")
@@ -194,7 +196,7 @@ def test_per_folder_failure_aborts_by_default(tmp_path: Path) -> None:
     """No placeholder: it would silently degrade every ancestor's summary."""
     calls: list[int] = []
 
-    def _bad_reply_for_beta(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+    def _bad_reply_for_beta(cfg, *, own_content="", **kw):  # noqa: ARG001
         calls.append(1)
         if own_content.startswith("# beta"):
             raise ValueError("unparseable reply")
@@ -213,7 +215,7 @@ def test_per_folder_failure_aborts_by_default(tmp_path: Path) -> None:
 
 
 def test_allow_partial_degrades_instead_of_aborting(tmp_path: Path) -> None:
-    def _bad_reply_for_beta(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+    def _bad_reply_for_beta(cfg, *, own_content="", **kw):  # noqa: ARG001
         if own_content.startswith("# beta"):
             raise ValueError("unparseable reply")
         return _ok(cfg, own_content=own_content)
@@ -228,7 +230,7 @@ def test_allow_partial_degrades_instead_of_aborting(tmp_path: Path) -> None:
 
     assert (root / "compiled.md").is_file()
     fm, records, _ = read_compiled(root / "beta" / "compiled.md")
-    assert "summary unavailable" in fm.short_description
+    assert "description unavailable" in fm.long_description
     # The whole tree still renders, and beta stays reachable from the root.
     assert {r.id for r in read_compiled(root / "compiled.md")[1]} == {"alpha", "beta"}
 
@@ -239,7 +241,7 @@ def test_rerun_resumes_after_an_abort(tmp_path: Path) -> None:
     auth = type("AuthenticationError", (Exception,), {})
     calls: list[str] = []
 
-    def _die_after_two(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+    def _die_after_two(cfg, *, own_content="", **kw):  # noqa: ARG001
         calls.append(own_content)
         if len(calls) > 2:
             raise auth("credentials revoked")
@@ -254,7 +256,7 @@ def test_rerun_resumes_after_an_abort(tmp_path: Path) -> None:
     # Provider recovers. Re-run WITHOUT --force: alpha is skipped, not re-billed.
     resumed: list[str] = []
 
-    def _record(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+    def _record(cfg, *, own_content="", **kw):  # noqa: ARG001
         resumed.append(own_content)
         return _ok(cfg, own_content=own_content)
 

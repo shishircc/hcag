@@ -15,7 +15,7 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from ..compiled_io import read_compiled_frontmatter
+from ..compiled_io import extract_content_section, read_compiled_frontmatter, strip_compiled_frontmatter
 from ..logger import HcagLogger
 
 
@@ -27,8 +27,6 @@ _PARAGRAPH_SPLIT_RE = re.compile(r"\n\s*\n")
 _SOURCE_MARKER_RE = re.compile(r"^<!--\s*source:.*?-->\s*$", re.MULTILINE)
 _HR_RE = re.compile(r"^\s*-{3,}\s*$", re.MULTILINE)
 
-_CONTENT_HEADER_RE = re.compile(r"^##\s+Content\s*$", re.MULTILINE)
-_SUBTOPICS_HEADER_RE = re.compile(r"^##\s+Sub-topics\s*$", re.MULTILINE)
 
 
 @dataclass
@@ -37,7 +35,6 @@ class PacketRecord:
 
     id: str
     title: str
-    short_description: str
     long_description: str
     path: Path
     body: str
@@ -116,25 +113,14 @@ def _split_paragraphs(body: str, min_chars: int) -> list[str]:
 
 
 def _load_content_section(compiled_md: Path) -> str:
-    """Return just the ``## Content`` section of a compiled.md, marker + FM stripped."""
-    text = compiled_md.read_text(encoding="utf-8")
-    lines = text.splitlines()
-    if lines and lines[0].startswith("<!-- HCAG:COMPILED"):
-        lines = lines[1:]
-    text = "\n".join(lines)
-    # Strip YAML front-matter (--- ... ---)
-    if text.startswith("---"):
-        end = text.find("\n---", 3)
-        if end != -1:
-            text = text[end + 4:]
-    # Extract only the ## Content section — Sub-topics is catalog, not prose.
-    m = _CONTENT_HEADER_RE.search(text)
-    if m is None:
-        return ""
-    start = m.end()
-    end_match = _SUBTOPICS_HEADER_RE.search(text, start)
-    end = end_match.start() if end_match else len(text)
-    return _strip_body(text[start:end]).strip()
+    """Return just the delimited ``## Content`` section of a compiled.md.
+
+    Delegated to `compiled_io` rather than re-implemented here: the section is
+    machine-delimited (D3) precisely so that two readers cannot disagree about
+    where it ends, and a private copy of the scan is how they start to.
+    """
+    body = strip_compiled_frontmatter(compiled_md.read_text(encoding="utf-8"))
+    return _strip_body(extract_content_section(body)).strip()
 
 
 def _list_assets(assets_dir: Path) -> list[Path]:
@@ -181,7 +167,6 @@ def scan_kb(root: Path, paragraph_min_chars: int, logger: HcagLogger | None = No
             PacketRecord(
                 id=fm.id,
                 title=fm.title,
-                short_description=fm.short_description,
                 long_description=fm.long_description,
                 path=compiled_md,
                 body=body,

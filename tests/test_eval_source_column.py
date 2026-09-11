@@ -28,7 +28,7 @@ def test_source_survives_a_read_write_round_trip(tmp_path: Path) -> None:
 
     out = tmp_path / "out.csv"
     write_csv(out, result.rows)
-    rows = list(csv.reader(out.open(encoding="utf-8", newline="")))
+    rows = list(csv.reader(out.open(encoding="utf-8-sig", newline="")))
     assert rows[0] == COLUMNS
     assert rows[1][COLUMNS.index("source")] == SRC
 
@@ -56,7 +56,7 @@ def test_an_upgraded_file_gains_an_empty_source_column(tmp_path: Path) -> None:
 
     out = tmp_path / "out.csv"
     write_csv(out, read_csv(src).rows)
-    rows = list(csv.reader(out.open(encoding="utf-8", newline="")))
+    rows = list(csv.reader(out.open(encoding="utf-8-sig", newline="")))
     assert rows[0] == COLUMNS
     assert rows[1] == ["q-0001", "simple", "", "Q?", "A", "", "", "", ""]
 

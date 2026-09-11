@@ -18,7 +18,6 @@ ROOT = """<!-- HCAG:COMPILED id=_root -->
 ---
 id: ''
 title: Root
-short_description: r
 long_description: r
 token_size_estimate: 10
 kind: node
@@ -28,24 +27,19 @@ children: [billing]
 
 # Root
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-#### `billing`
-- **path**: `billing/`
-- **depth**: 1
-- **parent**: `_root`
-- **kind**: leaf
-- **title**: Billing
-- **short**: money
-- **long**: money
-- **tokens**: 50
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `billing` | `billing/` | 1 | Billing | money |
+<!-- HCAG:CATALOG END -->
 """
 
 LEAF = """<!-- HCAG:COMPILED id=billing -->
 ---
 id: billing
 title: Billing
-short_description: money
 long_description: money
 token_size_estimate: 50
 kind: leaf
@@ -56,7 +50,6 @@ children: []
 # Billing
 
 ## Content
-
 <!-- source: x.md -->
 Refunds settle in 5 business days.
 """

@@ -14,7 +14,7 @@ root_id = "_root"
 
 # ------------------------------------------------------------------------------
 # LLM used ONLY for build-time metadata generation:
-#   - packet title, short_description, long_description
+#   - packet title and long_description (from that folder's own content alone)
 #   - node title, node short description
 # Runtime agent uses its own separate config (see examples/agent.toml).
 # For CLI a cheap+fast model is usually fine.
@@ -58,22 +58,18 @@ kind     = "tiktoken"          # tiktoken | rough
 encoding = "cl100k_base"       # provider-agnostic proxy
 
 # ------------------------------------------------------------------------------
-# Catalog roll-up (D3a, DESIGN §3.4.4).
-# Each folder's `## Sub-topics` section indexes its ENTIRE subtree, not just
-# its immediate children — so the root's compiled.md is a complete index of the
-# KB and the agent can resolve any document in one hop. These knobs bound what
-# that costs in the system prompt.
+# Catalog (D3a, DESIGN §3.4.4).
+# The root's compiled.md carries one `## Catalog` table: a row per folder that
+# holds content, in depth-first order, with `id`, `path`, `depth`, `title` and
+# the folder's own `long` description. No other folder carries an index.
+#
+# One knob, deliberately. `long_depth` and `max_depth` bought index size by
+# describing folders less well; `include_tree` rendered an outline the table's
+# ordering now gives for free; `strip_subtopics_on_load` configured an elision
+# the runtime no longer performs.
 # ------------------------------------------------------------------------------
 [catalog]
-max_depth   = 0        # cap roll-up to N levels below each folder; 0 = unlimited
-long_depth  = 10        # include `long` on entries this deep or shallower; 0 = never
-include_tree = true    # emit the compact `#### Tree` outline atop the section
-warn_tokens = 40000    # WARN at build time if the ROOT catalog exceeds this
-
-# Runtime knob, read by the memory module (mirror it in agent.toml):
-# elide `## Sub-topics` when serving a non-root packet, since the root index is
-# already in the agent's system prompt (DESIGN §2.6).
-strip_subtopics_on_load = true
+warn_tokens = 40000    # WARN at build time if the root catalog exceeds this
 
 # ------------------------------------------------------------------------------
 # Build log — same JSON-lines format as the runtime log.

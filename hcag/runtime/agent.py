@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import re
+from datetime import date
 from typing import Any, Iterator
 
 from ..config import AgentConfig
@@ -28,6 +30,22 @@ from .llm import (
     packet_to_content_blocks,
     stream_or_buffer,
 )
+
+
+def _message_text(msg: Message) -> str:
+    """A message's text, whether it is a plain string or content blocks.
+
+    A tool result is a list of blocks (packet text, then images); a user turn
+    is a string. Both are read the same way by the grounding check (§2.7.2),
+    which cares only about what characters were in the conversation.
+    """
+    if isinstance(msg.content, str):
+        return msg.content
+    if isinstance(msg.content, list):
+        return "\n".join(
+            str(b.get("text", "")) for b in msg.content if isinstance(b, dict)
+        )
+    return ""
 
 
 def _messages_for_trace(history: list[Message], max_message_chars: int) -> list[dict[str, Any]]:
@@ -147,7 +165,6 @@ class AgentRuntime:
                 budget=TokenBudget(cfg.max_active_tokens),
                 logger=self.logger,
                 tracer=self.tracer,
-                strip_subtopics_on_load=cfg.catalog.strip_subtopics_on_load,
                 prompts=self.prompts,
             )
         self.memory = memory
@@ -165,6 +182,10 @@ class AgentRuntime:
         # Mirrors the delta's authoritative `active_after` so `assistant.final`
         # can report what the turn ended up holding (§2.14.1).
         self._active_ids: list[str] = []
+        #: Answers withheld this turn by the grounding check (D3b, §2.7.2).
+        self._grounding_nudges = 0
+        #: Every figure the asker has supplied, across the conversation.
+        self._asker_figures: set[str] = set()
         self._tool_defs = build_tool_defs(self.prompts)
 
     # ---- Bootstrap ------------------------------------------------------
@@ -212,10 +233,15 @@ class AgentRuntime:
 
         self._turn_index += 1
         self._turn_reload_calls = 0
+        self._grounding_nudges = 0
         self.logger.info("turn.start", turn=self._turn_index, user_chars=len(user_message))
 
         stream = EventStream(turn_id=f"t_{self._turn_index}")
         self._history.append(Message(role="user", content=user_message))
+        # Figures the asker supplied are not claims about the guidance (§2.7.2).
+        # Recorded here rather than read back off the history, which by then
+        # also holds this check's own notes.
+        self._asker_figures |= self._figures(user_message)
 
         # One root span per turn, so a trace is a conversation turn rather than
         # a loose pile of LLM calls (§2.11.2).
@@ -241,16 +267,28 @@ class AgentRuntime:
                 {
                     "hcag.turn.reload_calls": self._reload_calls,
                     "hcag.turn.redundant_reloads": self._redundant_reloads,
+                    "hcag.turn.grounding_nudges": self._grounding_nudges,
                     **self._content_attrs(inp=user_message, out=answer),
                 },
             )
 
     def _run_tool_loop(self, stream: EventStream, max_tool_iters: int) -> "Iterator[Event]":
         for _ in range(max_tool_iters):
+            # With nothing loaded, any answer the model produces is ungrounded by
+            # construction (D3b), and it may be discarded below. Buffer its text
+            # instead of streaming it so the user is never shown a draft that
+            # gets replaced. Costs nothing on the common path: a turn that opens
+            # with a tool call streams no text at all.
+            withhold = not self._active_ids
+            drafted: list[str] = []
+
             response = None
             for chunk in self._chat_stream():
                 if isinstance(chunk, TextDelta):
-                    yield stream.emit("assistant.delta", text=chunk.text)
+                    if withhold:
+                        drafted.append(chunk.text)
+                    else:
+                        yield stream.emit("assistant.delta", text=chunk.text)
                 elif isinstance(chunk, Final):
                     response = chunk.response
             if response is None:
@@ -261,6 +299,17 @@ class AgentRuntime:
             )
 
             if not response.tool_calls:
+                withheld = self._refuse_ungrounded_answer(response.text)
+                if withheld:
+                    # Not delivered, and the model is told so. Round again: it
+                    # either loads the row that covers the gap or repeats
+                    # itself, and a repeat is delivered with a WARN rather than
+                    # looped on (§2.7.2).
+                    yield stream.emit("assistant.withheld", reason=withheld)
+                    continue
+
+                for text in drafted:
+                    yield stream.emit("assistant.delta", text=text)
                 self.logger.info(
                     "turn.end",
                     turn=self._turn_index,
@@ -269,6 +318,7 @@ class AgentRuntime:
                     turn_reload_calls=self._turn_reload_calls,
                     redundant_reloads=self._redundant_reloads,
                     redundant_rate=round(self._redundant_reloads / self._turn_index, 3),
+                    grounding_nudges=self._grounding_nudges,
                 )
                 yield stream.emit(
                     "assistant.final", text=response.text, active_after=list(self._active_ids)
@@ -289,6 +339,136 @@ class AgentRuntime:
         self.logger.warn("turn.tool_loop_exhausted", turn=self._turn_index)
         tail = self._history[-1].content if isinstance(self._history[-1].content, str) else ""
         yield stream.emit("assistant.final", text=tail, active_after=list(self._active_ids))
+
+    # ---- Grounding enforcement (D3b, §2.7.2) ----------------------------
+
+    def _refuse_ungrounded_answer(self, text: str) -> str | None:
+        """The reason this answer must be withheld, or None to deliver it.
+
+        §2.7.1 states the rule to the model: call `check_and_load_kb` exactly
+        when the catalog names a row that covers part of the question and is
+        not already loaded — which makes loading a *precondition on answering*.
+        The runtime cannot evaluate that rule, because "covers part of the
+        question" is the retrieval judgement itself. It checks two consequences
+        of the rule being skipped instead, each decidable without knowing what
+        was relevant (§2.7.2).
+
+        Either way the answer is withheld **once** and the model re-invoked. A
+        second pass is always delivered: a greeting is indistinguishable from a
+        knowledge question here, and arithmetic is indistinguishable from
+        invention, so the cost of a false positive is capped at one round trip.
+        """
+        if not (text or "").strip():
+            return None  # a model emitting nothing is not answering
+
+        # Check 1 — nothing loaded at all. Then any relevant row is unloaded,
+        # and the answer came from the catalog, folder names, or pretraining.
+        if not self._active_ids:
+            return self._withhold(
+                text,
+                reason="no_packet_loaded",
+                note=self.prompts.get("agent.grounding_nudge"),
+            )
+
+        # Check 2 — reaches the turn that loaded *something* and answered partly
+        # from a row it did not load.
+        unsupported = self._unsupported_figures(text)
+        if unsupported:
+            return self._withhold(
+                text,
+                reason="unsupported_figures",
+                note=self.prompts.get(
+                    "agent.grounding_figures", figures=", ".join(sorted(unsupported))
+                ),
+                figures=sorted(unsupported),
+            )
+        return None
+
+    def _withhold(self, text: str, *, reason: str, note: str, **fields: Any) -> str | None:
+        """Withhold once per turn; on a repeat, deliver and record it."""
+        if self._grounding_nudges:
+            # It stood by the answer. Allowed, and recorded: this is the signal
+            # D3b describes, and it is the only place it can be seen.
+            self.logger.warn(
+                "agent.answer.ungrounded",
+                turn=self._turn_index,
+                reason=reason,
+                output_chars=len(text),
+                **fields,
+            )
+            return None
+
+        self._grounding_nudges += 1
+        self.logger.warn(
+            "agent.answer.withheld",
+            turn=self._turn_index,
+            reason=reason,
+            output_chars=len(text),
+            **fields,
+        )
+        self._history.append(Message(role="user", content=note))
+        return reason
+
+    #: A figure is a run of digits with separators inside it — `5,600`, `65.40`,
+    #: `2`. Trailing punctuation is stripped by `_figures`, so `45.` and `45` are
+    #: the same number rather than two.
+    _FIGURE_RE = re.compile(r"\d[\d,.]*")
+
+    @staticmethod
+    def _figures(text: str) -> set[str]:
+        """Normalized numeric tokens, so `$5,600` and `5600` compare equal."""
+        out = set()
+        for raw in AgentRuntime._FIGURE_RE.findall(text or ""):
+            token = raw.rstrip(".,").replace(",", "")
+            if token:
+                out.add(token)
+        return out
+
+    def _unsupported_figures(self, answer: str) -> set[str]:
+        """Figures in the answer that no packet in this conversation contains.
+
+        The asker's figures come from `_asker_figures`, not from scanning
+        user-role history: the in-band note this check appends is also a
+        user-role message, and it *names the unsupported figures*, so scanning
+        the role would mark them supported on the next pass and the check would
+        pass itself.
+
+        Concrete values are the right thing to check, for the reason §6.4.0
+        makes them the strict half of `evalgen`'s grounding test: they are what
+        an ungrounded answer gets wrong, what a reader acts on, and what a
+        catalog row is most likely to have supplied — a deadline, a threshold,
+        a fee. A figure appearing in no loaded packet did not come from the
+        active set.
+
+        Three sources are excluded, each a legitimate figure with no packet
+        behind it:
+
+        - **Figures the user supplied**, quoted back to them. Their salary is
+          not a claim about the guidance.
+        - **Today's date and arithmetic from it** (§2.15.3). "You have about a
+          week left" is a calculation, and blocking it would be worse than the
+          failure it prevents.
+        - **Formatting**, handled by normalizing separators.
+
+        Grounding is measured against the whole transcript rather than the
+        active set, because an evicted packet's tool result stays in history
+        (§2.4) and the model can still read it. What the model can see is what
+        it can legitimately have used.
+
+        The known weakness is small integers: a `2` occurs incidentally in
+        almost any packet, so the check is strong on distinctive figures and
+        weak on the ones a sentence could have produced by accident. Written
+        numbers ("two weeks") carry no digits and are not seen at all (§2.7.2).
+        """
+        wanted = self._figures(answer)
+        if not wanted:
+            return set()
+
+        supported = set(self._figures(date.today().isoformat())) | self._asker_figures
+        for msg in self._history:
+            if msg.role == "tool":
+                supported |= self._figures(_message_text(msg))
+        return wanted - supported
 
     # ---- Tracing --------------------------------------------------------
 

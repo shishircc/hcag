@@ -29,7 +29,7 @@ def test_persona_survives_a_read_write_round_trip(tmp_path: Path) -> None:
 
     out = tmp_path / "out.csv"
     write_csv(out, rows)
-    written = list(csv.reader(out.open(encoding="utf-8", newline="")))
+    written = list(csv.reader(out.open(encoding="utf-8-sig", newline="")))
     assert written[0] == COLUMNS
     assert written[1][COLUMNS.index("persona")] == "hr-professional"
 
@@ -55,7 +55,7 @@ def test_reading_an_older_file_and_writing_it_back_upgrades_it(tmp_path: Path) -
 
     out = tmp_path / "out.csv"
     write_csv(out, read_csv(src).rows)
-    written = list(csv.reader(out.open(encoding="utf-8", newline="")))
+    written = list(csv.reader(out.open(encoding="utf-8-sig", newline="")))
     assert written[0] == COLUMNS
     assert written[1] == ["q-0001", "simple", "", "Q?", "A", "", "", "", ""]
 

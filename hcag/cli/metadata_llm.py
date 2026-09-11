@@ -1,19 +1,20 @@
 """LLM-driven folder metadata generation (§3.4.4).
 
-Every folder — leaf, taxonomy node, mixed, or root — needs one summary record
-(title, short_description, long_description) that its parent renders as an
-entry in its ``## Sub-topics`` section. The same prompt handles all three
-folder kinds: leaves are summarized from their own content, taxonomy nodes
-from their children's descriptions, and mixed folders from both.
+A folder with content of its own gets one summary record — a title and a
+`long_description` — from **that content and nothing else**. Not its children's
+descriptions, not its parent's, not its siblings'. A folder with no content of
+its own is not summarized at all: no call is made, no description is written,
+and it gets no catalog row (D3a).
 
-**A parent is fed its children's `long_description`s, never their
-`short_description`s** (§3.4.4). Summarization here is iterated — the root's
-description is a summary of summaries — so anything dropped at one level can
-never be recovered at the next. Feeding one-line labels upward makes each
-parent summarize labels rather than content, and by the root a branch about
-"SAML assertion mapping, certificate rotation, and IdP metadata exchange" has
-flattened into "authentication settings". The parent's summarizer does the
-compressing; it should not compound a compression that already happened.
+That input rule is the whole point of this module, and it replaced two failures
+that were not incidental. Feeding a parent its children's descriptions made
+summarization *iterated*, so a branch about "SAML assertion mapping,
+certificate rotation, and IdP metadata exchange" arrived at the root as
+"authentication settings" — the descriptions nearest the root, which an agent
+reads first, were the most degraded in the file. And asking for a description of
+a pure taxonomy node, which has no text at all, produced confident specifics
+about documents nobody had read, in the system prompt, where they read exactly
+like source material.
 
 Uses LiteLLM directly (provider-neutral); never imports vendor SDKs.
 """
@@ -32,7 +33,6 @@ from ..prompting import PromptLibrary, load_prompts
 @dataclass
 class FolderMetadata:
     title: str
-    short_description: str
     long_description: str
 
 
@@ -56,8 +56,10 @@ class MetadataGenerationError(MetadataLLMError):
     """One folder's summary could not be produced after retries.
 
     Folder-specific rather than systemic: an unparseable reply, a content
-    filter. The build still aborts by default, because a placeholder summary
-    would silently degrade every ancestor above it (§3.4.4).
+    filter. The build still aborts by default — not because the failure spreads
+    (it no longer can), but because a folder with no description is one the
+    agent routes past, and one such folder in a KB of two hundred is invisible
+    in every aggregate (§3.4.9).
     """
 
 
@@ -177,63 +179,34 @@ def _complete(cfg: LLMConfig, prompt: str) -> str:
     return resp.choices[0].message.content or ""
 
 
-def _compose_sections(
-    own_content: str,
-    children_longs: list[tuple[str, str]],
-    max_child_chars: int,
-) -> str:
-    parts: list[str] = []
-    if own_content.strip():
-        parts.append("=== OWN CONTENT ===\n" + own_content.strip())
-    if children_longs:
-        blocks = []
-        for cid, long in children_longs:
-            text = " ".join((long or "").split())[:max_child_chars]
-            blocks.append(f"- `{cid}`\n  {text}" if text else f"- `{cid}`\n  (no description)")
-        parts.append("=== CHILD TOPICS ===\n" + "\n".join(blocks))
-    if not parts:
-        parts.append("(empty folder — infer a placeholder summary from its identifier)")
-    return "\n\n".join(parts)
-
-
 def generate_folder_metadata(
     cfg: LLMConfig,
     *,
-    own_content: str = "",
-    children_longs: list[tuple[str, str]] | None = None,
+    own_content: str,
     max_content_chars: int = 20000,
-    max_child_chars: int = 1200,
-    kind: str = "",
 ) -> FolderMetadata:
-    """Summarize one folder for its parent's catalog entry.
+    """Summarize one folder for its catalog row, from its own content alone.
 
-    ``own_content`` is the concatenated source markdown at this level (empty
-    for pure taxonomy nodes). ``children_longs`` is a list of
-    ``(id, long_description)`` tuples for the **immediate** children (empty
-    for pure leaves) — the long form, per the module docstring and §3.4.4.
+    ``own_content`` is the concatenated source markdown at this level. It is
+    the only input, and there is no parameter for anything else — a signature
+    that cannot express "and here are the children" is the cheapest place to
+    enforce the rule §3.4.4 exists to state.
 
-    Long inputs are trimmed rather than dropped: ``max_child_chars`` caps each
-    child individually so that a wide folder still sees *every* child. Dropping
-    children to fit a budget would hide whole branches from the summary, which
-    is the failure this design is trying to avoid in the first place.
+    Callers do not invoke this for a folder without content: such a folder has
+    nothing to describe and gets no row (D3a).
     """
     trimmed = own_content[:max_content_chars]
-    sections = _compose_sections(
-        trimmed, list(children_longs or []), max_child_chars=max_child_chars
-    )
-    # A `node` has nothing but its children to describe; anything else must be
-    # described by its own content (§3.4.4).
-    has_own = bool(trimmed.strip()) if not kind else kind in ("leaf", "mixed")
-    prompts = _prompts(cfg)
-    scope = prompts.get(
-        "preprocess.scope_own" if has_own else "preprocess.scope_branch"
-    )
+    if not trimmed.strip():
+        raise MetadataGenerationError(
+            "generate_folder_metadata called with no content; a folder with "
+            "nothing of its own is not summarized (D3a)"
+        )
+    sections = "=== OWN CONTENT ===\n" + trimmed.strip()
     raw = _complete(
-        cfg, prompts.get("preprocess.folder_metadata", sections=sections, scope=scope)
+        cfg, _prompts(cfg).get("preprocess.folder_metadata", sections=sections)
     )
     data = _extract_json(raw)
     return FolderMetadata(
         title=str(data.get("title", "Untitled")).strip(),
-        short_description=str(data.get("short_description", "")).replace("\n", " ").strip(),
         long_description=str(data.get("long_description", "")).strip(),
     )

@@ -291,7 +291,6 @@ def _packet_stub():
     return PacketRecord(
         id="passes.ep",
         title="EP",
-        short_description="s",
         long_description="l",
         path=Path("/tmp/passes/ep"),
         body="A pass must be cancelled within five days.",
@@ -326,7 +325,6 @@ def _write_packet(folder: Path, packet_id: str, with_image: bool = False) -> Non
     fm = CompiledFrontMatter(
         id=packet_id,
         title=f"Title for {packet_id}",
-        short_description=f"Short for {packet_id}",
         long_description=f"Long description for {packet_id}.",
         token_size_estimate=1000,
         kind="leaf",
@@ -336,8 +334,7 @@ def _write_packet(folder: Path, packet_id: str, with_image: bool = False) -> Non
     write_compiled_md(
         folder / "compiled.md",
         fm,
-        subtopics=[],
-        own_sections=[(f"src_{i}.md", p) for i, p in enumerate(PARAGRAPHS)],
+        [(f"src_{i}.md", p) for i, p in enumerate(PARAGRAPHS)],
     )
     if with_image:
         (folder / "assets").mkdir(exist_ok=True)
@@ -383,7 +380,7 @@ def _run(tmp_path: Path, personas, counts, cfg=None, gen=None):
         logger,
         generator_override=gen or _counting_stub(),
     )
-    with out.open(encoding="utf-8", newline="") as f:
+    with out.open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
     return stats, rows
 

@@ -1,4 +1,4 @@
-question_id,kind,question,expected_answer,source,actual_answer,score,remark
+﻿question_id,kind,question,expected_answer,source,actual_answer,score,remark
 q-001,simple,Does COMPASS also apply when an Employment Pass is being renewed?,"Yes. COMPASS applies to EP renewals for passes expiring from 1 September 2024 onwards. When renewing an EP, the candidate must pass COMPASS in addition to meeting the EP qualifying salary, unless they are exempted from COMPASS.",,"Yes, COMPASS does apply when an Employment Pass is being renewed.
 
 For EP renewals, the candidate needs to:

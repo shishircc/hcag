@@ -2,7 +2,7 @@
 
 Walks the tree depth-first, post-order. At every folder — leaf, taxonomy
 node, mixed, or root — assembles one ``compiled.md`` that carries the
-folder's own content and a ``## Sub-topics`` catalog.
+folder's own content, plus — at the root only — the KB's one ``## Catalog``.
 
 The DFS return channel carries **two** things (§3.4.1): the folder's own
 summary, and the folder's already-assembled *subtree index*. A parent
@@ -33,7 +33,8 @@ from ..compiled_io import (
     FolderKind,
     is_hcag_generated,
     read_compiled,
-    render_subtopics_section,
+    read_compiled_frontmatter,
+    render_catalog_table,
     write_compiled_md,
 )
 from .metadata_llm import (
@@ -82,30 +83,24 @@ class FolderInfo:
 
 
 @dataclass
-class FolderSummary:
-    """This folder's own summary record, as its parent will render it."""
-
-    id: str
-    path_rel_to_parent: str
-    title: str
-    short_description: str
-    long_description: str
-    token_size_estimate: int         # whole compiled.md + images
-    content_token_estimate: int      # ## Content + images only (the budgeting figure)
-    kind: FolderKind
-
-
-@dataclass
 class FolderResult:
     """What DFS returns to its caller (§3.4.1).
 
-    ``subtree`` is the flat, DFS-pre-ordered index of every descendant of this
-    folder, with ``depth`` and ``path`` expressed **relative to this folder**.
-    The caller rebases it one level before splicing it into its own index.
+    ``rows`` is this folder's catalog row — if it has content of its own —
+    followed by everything its children returned, already in DFS pre-order and
+    already carrying final, KB-absolute ids and paths. Nothing is re-parented
+    on the way up and nothing is re-summarized; the root writes the accumulated
+    list as the KB's one catalog (D3a).
+
+    ``folders`` counts every folder in this subtree including this one, which
+    is what an ancestor's ``descendants`` front-matter field reports. It is not
+    ``len(rows)``: a pure taxonomy node is a folder and is not a row.
     """
 
-    summary: FolderSummary
-    subtree: list[CatalogRecord] = field(default_factory=list)
+    id: str
+    rows: list[CatalogRecord] = field(default_factory=list)
+    folders: int = 1
+    subtree_depth: int = 0
 
 
 def scan_folder(path: Path, logger: HcagLogger | None = None) -> FolderInfo:
@@ -279,16 +274,15 @@ def _classify(info: FolderInfo) -> FolderKind | None:
 
 
 def _placeholder_summary(folder_id: str, kind: FolderKind, reason: str) -> FolderMetadata:
-    """Fallback when the LLM call fails so ancestors' catalogs still render.
+    """Fallback when the LLM call fails, so the folder still appears and loads.
 
-    Only reachable under ``--allow-partial`` (§3.4.9): by default a folder that
-    cannot be summarized aborts the run, because this placeholder is not a
-    local blemish — it is an *input* to every ancestor's summary (§3.4.4).
+    Only reachable under ``--allow-partial`` (§3.4.9). The text is deliberately
+    not plausible prose: a row that reads like a description is one an agent
+    will route on, and this folder's description is precisely what is missing.
     """
     return FolderMetadata(
         title=folder_id or "root",
-        short_description=f"(summary unavailable: {reason})",
-        long_description=f"Summary generation failed: {reason}. Content preserved as-is.",
+        long_description=f"(description unavailable: {reason})",
     )
 
 
@@ -315,8 +309,6 @@ def _summarize_with_retries(
     *,
     folder_id: str,
     own_content: str,
-    children_longs: list[tuple[str, str]],
-    kind: str = "",
 ) -> FolderMetadata:
     """Call the summarizer, retrying transient failures (§3.4.9).
 
@@ -328,12 +320,7 @@ def _summarize_with_retries(
     last: BaseException | None = None
     for attempt in range(attempts):
         try:
-            return generate_folder_metadata(
-                cfg.llm,
-                own_content=own_content,
-                children_longs=children_longs,
-                kind=kind,
-            )
+            return generate_folder_metadata(cfg.llm, own_content=own_content)
         except Exception as e:  # noqa: BLE001
             last = e
             kind = classify(e)
@@ -372,7 +359,6 @@ def preflight(cfg: CliConfig, logger: HcagLogger) -> None:
             logger,
             folder_id="(preflight)",
             own_content="# Preflight\n\nA short probe document used to verify LLM access.",
-            children_longs=[],
         )
     except LLMUnavailableError:
         raise
@@ -394,69 +380,20 @@ def preflight(cfg: CliConfig, logger: HcagLogger) -> None:
     )
 
 
-# --- Subtree roll-up (D3a, §3.4.1) -----------------------------------------
+# --- Catalog rows (D3a, §3.4.1) --------------------------------------------
+#
+# There is nothing here to rebase or roll up. A row is created once, at the
+# folder it describes, with its final KB-absolute id and path, and travels up
+# the recursion untouched. What used to be `_rebase` + `_roll_up` + a render
+# trim is now list concatenation, which is the point: no coordinate arithmetic
+# to get wrong, and no ancestor holding a copy that can disagree with the root.
 
 
-def _rebase(records: list[CatalogRecord], child_dirname: str) -> list[CatalogRecord]:
-    """Re-express a child's subtree index against *this* folder.
-
-    A pure coordinate shift: ``depth`` gains a level and ``path`` gains the
-    child's folder name as a prefix. ``id`` and ``parent`` are absolute dotted
-    paths from the KB root (§3.4.5) and are deliberately left untouched — that
-    invariance is what lets an id read from the root catalog be handed straight
-    to ``check_and_load_kb``.
-    """
-    return [
-        replace(
-            r,
-            depth=r.depth + 1,
-            path=f"{child_dirname}/{r.path}" if r.path else child_dirname,
-        )
-        for r in records
-    ]
-
-
-def _roll_up(folder_id: str, children: list[tuple[str, FolderResult]]) -> list[CatalogRecord]:
-    """Build this folder's subtree index from its children's DFS returns.
-
-    Emits DFS pre-order: each child's own record immediately followed by that
-    child's (rebased) subtree.
-    """
-    subtree: list[CatalogRecord] = []
-    for dirname, result in children:
-        s = result.summary
-        subtree.append(
-            CatalogRecord(
-                id=s.id,
-                path=dirname,
-                title=s.title,
-                short=s.short_description,
-                long=s.long_description,
-                tokens=s.content_token_estimate,
-                depth=1,
-                parent=folder_id,
-                kind=s.kind,
-            )
-        )
-        subtree.extend(_rebase(result.subtree, dirname))
-    return subtree
-
-
-def _render_view(records: list[CatalogRecord], cat: CatalogConfig) -> list[CatalogRecord]:
-    """Trim the full subtree index down to what actually gets written (§3.4.4).
-
-    ``max_depth`` caps how deep the section reaches; ``long_depth`` drops the
-    `long` description below the nearest levels. Trimming happens only at
-    render time — the untrimmed records keep travelling up the recursion,
-    because a record that is too deep to render here may be shallow enough to
-    carry its `long` in a different ancestor's catalog.
-    """
-    out: list[CatalogRecord] = []
-    for r in records:
-        if cat.max_depth > 0 and r.depth > cat.max_depth:
-            continue
-        out.append(r if r.depth <= cat.long_depth else replace(r, long=""))
-    return out
+def _rel_path(root: Path, folder: Path) -> str:
+    """Folder path relative to the KB root, POSIX, ``""`` for the root."""
+    if folder == root:
+        return ""
+    return folder.relative_to(root).as_posix()
 
 
 def _process_folder(
@@ -468,7 +405,7 @@ def _process_folder(
     state: _BuildState | None = None,
 ) -> FolderResult | None:
     """DFS post-order: recurse into subdirs first, then emit this folder's
-    ``compiled.md`` from the subtree index the recursion just returned.
+    ``compiled.md`` and hand its catalog rows up (§3.4.1).
     """
     state = state if state is not None else _BuildState()
     info = scan_folder(folder, logger=logger)
@@ -478,54 +415,60 @@ def _process_folder(
         return None
 
     folder_id = dotted_id_for(root, folder, root_id=cfg.root_id)
+    folder_path = _rel_path(root, folder)
+    depth = 0 if folder == root else len(folder_path.split("/"))
     compiled_path = folder / "compiled.md"
+    is_root = folder == root
 
-    # 1) Recurse into children (post-order). Each returns its own summary plus
-    #    the subtree index it just assembled.
-    children: list[tuple[str, FolderResult]] = []
+    # 1) Recurse into children (post-order). Each returns its rows — its own
+    #    first, if it has content, then its descendants' — already in order.
+    children: list[FolderResult] = []
     for sub in info.subdirs:
         result = _process_folder(sub, root, cfg, logger, force, state)
         if result is not None:
-            children.append((sub.name, result))
+            children.append(result)
 
-    # 2) Roll the children's returns up into this folder's subtree index.
-    subtree = _roll_up(folder_id, children)
-    rendered = _render_view(subtree, cfg.catalog)
-    subtree_depth = max((r.depth for r in subtree), default=0)
+    child_rows = [r for c in children for r in c.rows]
+    descendants = sum(c.folders for c in children)
+    subtree_depth = max((c.subtree_depth + 1 for c in children), default=0)
 
-    # 3) Overwrite policy.
-    if compiled_path.is_file() and not force:
+    def _result(own_row: CatalogRecord | None) -> FolderResult:
+        rows = ([own_row] if own_row is not None else []) + child_rows
+        return FolderResult(
+            id=folder_id,
+            rows=rows,
+            folders=descendants + 1,
+            subtree_depth=subtree_depth,
+        )
+
+    # 2) Overwrite policy. The children have already been walked, so a skipped
+    #    folder still contributes its subtree — only its own row is recovered
+    #    from the artifact on disk rather than regenerated (§3.4.7).
+    if compiled_path.is_file() and not force and not is_root:
         if not is_hcag_generated(compiled_path):
             raise RuntimeError(
                 f"Refusing to overwrite non-HCAG compiled.md: {compiled_path}"
             )
-        # Ancestors still need this folder's summary *and* its subtree index to
-        # render their own catalogs — recover both from the existing artifact.
-        existing = read_compiled(compiled_path)
-        if existing is None:
+        efm = read_compiled_frontmatter(compiled_path)
+        if efm is None:
             raise RuntimeError(f"Cannot read existing compiled.md: {compiled_path}")
-        efm, erecords, _ = existing
         logger.info(
-            "preprocess.skip_compiled",
-            folder=str(folder),
-            id=folder_id,
-            descendants=len(erecords),
+            "preprocess.skip_compiled", folder=str(folder), id=folder_id, kind=efm.kind
         )
-        return FolderResult(
-            summary=FolderSummary(
+        existing_row = (
+            CatalogRecord(
                 id=folder_id,
-                path_rel_to_parent=folder.name if folder != root else "",
+                path=folder_path,
+                depth=depth,
                 title=efm.title,
-                short_description=efm.short_description,
-                long_description=efm.long_description,
-                token_size_estimate=efm.token_size_estimate,
-                content_token_estimate=efm.content_token_estimate,
-                kind=efm.kind,
-            ),
-            subtree=erecords,
+                long=efm.long_description,
+            )
+            if efm.long_description
+            else None
         )
+        return _result(existing_row)
 
-    # 4) Assemble own content + relocate images (leaf and mixed folders).
+    # 3) Assemble own content + relocate images (leaf and mixed folders).
     if info.source_md_files:
         body_sections, copied_images = _relocate_images_and_rewrite(folder, info.source_md_files)
         own_content = "\n\n---\n\n".join(content for _, content in body_sections)
@@ -538,89 +481,105 @@ def _process_folder(
     provenance = {str(k): str(v) for k, v in (sidecar.get("documents") or {}).items()}
     sidecar_images = {str(k): str(v) for k, v in (sidecar.get("images") or {}).items()}
 
-    # 5) Summarize this folder via LLM — from its own content plus its
-    #    IMMEDIATE children's LONG descriptions (§3.4.4). Long, not short:
-    #    summarization is iterated up the tree, so feeding one-line labels
-    #    upward compounds the loss and leaves the root generic. The roll-up
-    #    copies records; it does not re-summarize, so cost stays at one call
-    #    per folder.
-    children_longs = [(r.summary.id, r.summary.long_description) for _, r in children]
-    logger.info(
-        "preprocess.metadata.request",
-        folder=str(folder),
-        id=folder_id,
-        kind=kind,
-        own_chars=len(own_content),
-        children=len(children),
-        descendants=len(rendered),
-    )
-    try:
-        meta = _summarize_with_retries(
-            cfg,
-            logger,
-            folder_id=folder_id,
-            own_content=own_content,
-            children_longs=children_longs,
+    # 4) Summarize — but only if this folder has content of its own, and from
+    #    that content alone (§3.4.4). A pure taxonomy node is a waypoint: no
+    #    call, no description, no row. Describing one meant describing a branch
+    #    nobody had read, which is where the invented prose came from (D3a).
+    meta: FolderMetadata | None = None
+    if own_content.strip():
+        logger.info(
+            "preprocess.metadata.request",
+            folder=str(folder),
+            id=folder_id,
             kind=kind,
+            own_chars=len(own_content),
         )
-    except LLMUnavailableError as e:
-        # Systemic: every remaining folder needs the same call, so there is
-        # nothing to be gained by walking the rest of the tree (§3.4.9).
-        # --allow-partial does not cover this — it is not a per-folder problem.
-        logger.error(
-            "preprocess.abort",
-            folder=str(folder),
-            id=folder_id,
-            reason="llm_unavailable",
-            folders_written=state.folders_written,
-            error=str(e),
-        )
-        raise PreprocessAborted(
-            f"LLM became unavailable at {folder_id or '<root>'}: {e}",
-            folders_written=state.folders_written,
-        ) from e
-    except MetadataGenerationError as e:
-        logger.error(
-            "preprocess.metadata.failed",
-            folder=str(folder),
-            id=folder_id,
-            error=str(e),
-            allow_partial=state.allow_partial,
-        )
-        if not state.allow_partial:
+        try:
+            meta = _summarize_with_retries(
+                cfg, logger, folder_id=folder_id, own_content=own_content
+            )
+        except LLMUnavailableError as e:
+            # Systemic: every remaining folder with content needs the same
+            # call, so there is nothing to be gained by walking the rest.
+            logger.error(
+                "preprocess.abort",
+                folder=str(folder),
+                id=folder_id,
+                reason="llm_unavailable",
+                folders_written=state.folders_written,
+                error=str(e),
+            )
             raise PreprocessAborted(
-                f"could not summarize {folder_id or '<root>'}: {e}. "
-                "A placeholder summary would silently degrade every ancestor's "
-                "description; re-run to resume, or pass --allow-partial to accept it.",
+                f"LLM became unavailable at {folder_id or '<root>'}: {e}",
                 folders_written=state.folders_written,
             ) from e
-        logger.warn(
-            "preprocess.metadata.degraded",
+        except MetadataGenerationError as e:
+            logger.error(
+                "preprocess.metadata.failed",
+                folder=str(folder),
+                id=folder_id,
+                error=str(e),
+                allow_partial=state.allow_partial,
+            )
+            if not state.allow_partial:
+                raise PreprocessAborted(
+                    f"could not summarize {folder_id or '<root>'}: {e}. "
+                    "A folder with no description is one the agent routes past; "
+                    "re-run to resume, or pass --allow-partial to accept it.",
+                    folders_written=state.folders_written,
+                ) from e
+            logger.warn(
+                "preprocess.metadata.degraded",
+                folder=str(folder),
+                id=folder_id,
+                reason="allow_partial",
+            )
+            state.degraded.append(folder_id or "<root>")
+            meta = _placeholder_summary(folder_id, kind, f"{type(e).__name__}")
+    else:
+        logger.info(
+            "preprocess.metadata.skipped",
             folder=str(folder),
             id=folder_id,
-            reason="allow_partial",
+            kind=kind,
+            reason="no_own_content",
         )
-        state.degraded.append(folder_id or "<root>")
-        meta = _placeholder_summary(folder_id, kind, f"{type(e).__name__}")
 
-    # 6) Token estimates (§3.4.3 step 6). The catalog section is rendered here
-    #    with the same function write_compiled_md uses, so the figure recorded
-    #    in front-matter and the bytes on disk cannot drift apart.
+    title = meta.title if meta else _title_from_folder(folder, folder_id)
+    own_row = (
+        CatalogRecord(
+            id=folder_id,
+            path=folder_path,
+            depth=depth,
+            title=title,
+            long=meta.long_description,
+        )
+        if meta is not None
+        else None
+    )
+
+    # 5) The root carries the KB's one catalog: its own row, if it has content,
+    #    followed by every descendant's, already in DFS pre-order.
+    catalog_rows = ([own_row] if own_row is not None else []) + child_rows if is_root else None
+
+    # 6) Token estimates (§3.4.3 step 6). The catalog is rendered here with the
+    #    same function write_compiled_md uses, so the figure in front-matter
+    #    and the bytes on disk cannot drift apart.
     content_tokens = estimate_tokens(
         own_content, cfg.tokenizer, image_count=len(copied_images)
     )
-    catalog_section = render_subtopics_section(
-        rendered, include_tree=cfg.catalog.include_tree
+    catalog_tokens = (
+        estimate_tokens(render_catalog_table(catalog_rows), cfg.tokenizer)
+        if catalog_rows
+        else 0
     )
-    catalog_tokens = estimate_tokens(catalog_section, cfg.tokenizer) if catalog_section else 0
     total_tokens = content_tokens + catalog_tokens
 
     # 7) Write compiled.md.
     fm = CompiledFrontMatter(
         id=folder_id,
-        title=meta.title,
-        short_description=meta.short_description,
-        long_description=meta.long_description,
+        title=title,
+        long_description=meta.long_description if meta else "",
         token_size_estimate=total_tokens,
         content_token_estimate=content_tokens,
         catalog_token_estimate=catalog_tokens,
@@ -630,17 +589,11 @@ def _process_folder(
         # crawl rather than a claim made at build time (§3.4.3 step 4a).
         source_urls=[provenance.get(name, "") for name, _ in body_sections],
         image_urls={n: sidecar_images[n] for n in copied_images if n in sidecar_images},
-        children=[r.summary.id for _, r in children],
-        descendants=len(rendered),
+        children=[c.id for c in children],
+        descendants=descendants,
         subtree_depth=subtree_depth,
     )
-    write_compiled_md(
-        compiled_path,
-        fm,
-        rendered,
-        body_sections,
-        include_tree=cfg.catalog.include_tree,
-    )
+    write_compiled_md(compiled_path, fm, body_sections, catalog=catalog_rows)
     state.folders_written += 1
 
     logger.info(
@@ -651,26 +604,24 @@ def _process_folder(
         tokens=total_tokens,
         content_tokens=content_tokens,
         catalog_tokens=catalog_tokens,
+        catalog_rows=len(catalog_rows) if catalog_rows else 0,
         images=len(copied_images),
         children=len(children),
-        descendants=len(rendered),
+        descendants=descendants,
         subtree_depth=subtree_depth,
     )
 
-    # 8) Return this folder's summary AND its subtree index to the parent.
-    return FolderResult(
-        summary=FolderSummary(
-            id=folder_id,
-            path_rel_to_parent=folder.name if folder != root else "",
-            title=meta.title,
-            short_description=meta.short_description,
-            long_description=meta.long_description,
-            token_size_estimate=total_tokens,
-            content_token_estimate=content_tokens,
-            kind=kind,
-        ),
-        subtree=subtree,
-    )
+    return _result(own_row)
+
+
+def _title_from_folder(folder: Path, folder_id: str) -> str:
+    """A waypoint's title, derived rather than generated (§3.4.2).
+
+    It is a label for a folder that holds nothing, so it costs no LLM call and
+    claims nothing: the folder's own name, tidied.
+    """
+    name = folder.name if folder_id else "root"
+    return name.replace("-", " ").replace("_", " ").strip().title() or name
 
 
 def _report_root_catalog(root: Path, cfg: CliConfig, logger: HcagLogger) -> None:
@@ -680,10 +631,13 @@ def _report_root_catalog(root: Path, cfg: CliConfig, logger: HcagLogger) -> None
     existing = read_compiled(root / "compiled.md")
     if existing is None:
         return
-    fm, records, _ = existing
+    fm, rows, _ = existing
     logger.info(
         "preprocess.root_catalog",
-        descendants=fm.descendants or len(records),
+        # Rows are content-bearing folders; `descendants` counts every folder,
+        # waypoints included. The gap is what the catalog no longer describes.
+        catalog_rows=len(rows),
+        folders=fm.descendants,
         subtree_depth=fm.subtree_depth,
         catalog_tokens=fm.catalog_token_estimate,
         warn_tokens=cfg.catalog.warn_tokens,

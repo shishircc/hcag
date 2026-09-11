@@ -1,4 +1,4 @@
-question_id,kind,question,expected_answer,source,actual_answer,score,remark
+﻿question_id,kind,question,expected_answer,source,actual_answer,score,remark
 q-001,simple,Does COMPASS also apply when an Employment Pass is being renewed?,"Yes. COMPASS applies to EP renewals for passes expiring from 1 September 2024 onwards. When renewing an EP, the candidate must pass COMPASS in addition to meeting the EP qualifying salary, unless they are exempted from COMPASS.",,"Yes, COMPASS applies to Employment Pass renewals. Specifically, candidates renewing their EP must pass the points-based Complementarity Assessment Framework (COMPASS) in addition to meeting the EP qualifying salary requirement [source: www.mom.gov.sg/passes-and-permits/employment-pass/renew-a-pass/index.md].
 
 However, COMPASS implementation for renewals is phased: it will apply to EP renewals for passes **expiring from 1 September 2024** [source: www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-booklet.md]. 

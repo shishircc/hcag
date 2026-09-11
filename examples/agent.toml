@@ -19,16 +19,10 @@ max_active_tokens = 100000000
 # Always check the catalog before answering. Cite packet IDs in your response.
 # """
 
-# ------------------------------------------------------------------------------
-# Catalog behavior at load time (DESIGN §2.6, D3a).
-# ------------------------------------------------------------------------------
-[catalog]
-# The root compiled.md's `## Sub-topics` section indexes EVERY folder in the KB
-# at every depth, and it is injected into the system prompt at bootstrap. A
-# non-root packet's own `## Sub-topics` section is therefore a verbatim subset
-# of what the agent already holds; eliding it on load keeps that text out of the
-# active set. Turn this off only if you want compiled.md shipped byte-for-byte.
-strip_subtopics_on_load = true
+# The runtime has no catalog knobs. The root compiled.md's `## Catalog` table
+# indexes every content-bearing folder in the KB and is injected into the system
+# prompt at bootstrap (DESIGN §2.7, D3a); no other folder carries an index, so
+# there is nothing to elide when a packet is served.
 
 # ------------------------------------------------------------------------------
 # LLM — provider-neutral. All calls go through LiteLLM.

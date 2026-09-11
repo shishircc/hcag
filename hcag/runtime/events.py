@@ -19,6 +19,10 @@ EventKind = Literal[
     "assistant.start",
     "assistant.delta",
     "assistant.final",
+    #: An answer was drafted with no packet loaded and withheld (D3b, §2.7.2).
+    #: Carries no text: the draft is never shown, because it is being replaced.
+    #: A client's only use for it is a progress indicator and a debug trail.
+    "assistant.withheld",
     "tool.start",
     "tool.end",
     "error",

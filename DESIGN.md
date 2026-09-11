@@ -29,6 +29,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
 - [Part 2 — Detailed Design](#part-2--detailed-design)
   - [2.1 KB Layout](#21-kb-layout)
   - [2.2 `compiled.md` Schema](#22-compiledmd-schema)
+    - [2.2.1 The catalog table](#221-the-catalog-table)
   - [2.3 Tool Contracts](#23-tool-contracts)
     - [2.3.1 `get_catalog`](#231-get_catalog)
     - [2.3.2 `check_and_load_kb`](#232-check_and_load_kb)
@@ -37,7 +38,8 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [2.5 Token Budget & Eviction Algorithm](#25-token-budget--eviction-algorithm)
   - [2.6 Packet Loading (Multimodal Assembly)](#26-packet-loading-multimodal-assembly)
   - [2.7 System Prompt Composition (Bootstrap)](#27-system-prompt-composition-bootstrap)
-    - [2.7.1 Reload discipline — when *not* to call `check_and_load_kb`](#271-reload-discipline--when-not-to-call-check_and_load_kb)
+    - [2.7.1 The load decision — one test, in both directions](#271-the-load-decision--one-test-in-both-directions)
+    - [2.7.2 Enforcing the load-before-answer half](#272-enforcing-the-load-before-answer-half)
   - [2.8 Error Handling](#28-error-handling)
   - [2.9 Component Class Diagram](#29-component-class-diagram)
   - [2.10 Sequence Diagrams](#210-sequence-diagrams)
@@ -79,7 +81,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [3.4.1 DFS traversal](#341-dfs-traversal)
     - [3.4.2 Per-folder classification](#342-per-folder-classification)
     - [3.4.3 `compiled.md` assembly](#343-compiledmd-assembly)
-    - [3.4.4 Catalog section content (subtree roll-up)](#344-catalog-section-content-subtree-roll-up)
+    - [3.4.4 Descriptions and the catalog table](#344-descriptions-and-the-catalog-table)
     - [3.4.5 Packet ID scheme](#345-packet-id-scheme)
     - [3.4.6 Asset policy](#346-asset-policy)
     - [3.4.7 Overwrite policy](#347-overwrite-policy)
@@ -100,6 +102,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [4.3.2 Visited-URL tracking](#432-visited-url-tracking)
     - [4.3.3 Depth](#433-depth)
     - [4.3.4 Asset scope](#434-asset-scope)
+    - [4.3.5 Request pacing](#435-request-pacing)
   - [4.4 Document Types](#44-document-types)
     - [4.4.1 HTML — main-content extraction](#441-html--main-content-extraction)
     - [4.4.2 PDF](#442-pdf)
@@ -148,6 +151,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
     - [6.5.1 How personas divide the requested counts](#651-how-personas-divide-the-requested-counts)
   - [6.6 Generation Algorithm](#66-generation-algorithm)
   - [6.7 Output CSV Schema](#67-output-csv-schema)
+    - [6.6.1 The determinacy check — route the question through the catalog](#661-the-determinacy-check--route-the-question-through-the-catalog)
     - [6.7.1 The `source` column](#671-the-source-column)
     - [6.7.2 The `persona` column](#672-the-persona-column)
   - [6.8 Configuration](#68-configuration)
@@ -159,6 +163,8 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [7.1 Purpose](#71-purpose)
   - [7.2 Input Model](#72-input-model)
   - [7.3 Invocation](#73-invocation)
+    - [7.3.1 Startup — config visibility and LLM preflight](#731-startup--config-visibility-and-llm-preflight)
+    - [7.3.2 Resuming a run — `--from`](#732-resuming-a-run----from)
   - [7.4 Execution Loop](#74-execution-loop)
     - [7.4.1 Single-turn exchange](#741-single-turn-exchange)
     - [7.4.2 Multi-turn clarification](#742-multi-turn-clarification)
@@ -360,7 +366,7 @@ To realize the three properties above, the agent:
 
 ## 1.6 Non-Goals
 
-- ~~Catalog generation~~ — **in scope**, covered by the `hcag` CLI in Part 3. The runtime agent still assumes a valid root `compiled.md` (with its `## Sub-topics` catalog section populated) already exists at query time; the CLI is what produces it.
+- ~~Catalog generation~~ — **in scope**, covered by the `hcag` CLI in Part 3. The runtime agent still assumes a valid root `compiled.md` (with its `## Catalog` section populated) already exists at query time; the CLI is what produces it.
 - **Semantic embedding retrieval.** No vector store, no similarity search. Selection is LLM-driven, informed by catalog metadata.
 - **Multi-user / concurrent-session** orchestration. Single conversation, single agent instance.
 - **Write-back / KB mutation** from the agent. The KB is read-only from the agent's perspective.
@@ -372,7 +378,7 @@ To realize the three properties above, the agent:
 |---|---|
 | **Knowledge Base (KB)** | A file-system tree of taxonomy folders rooted at a KB directory. Every folder — leaf, taxonomy node, mixed, and root — carries one `compiled.md`. |
 | **Packet** | A folder containing a `compiled.md` and an optional `assets/` subdirectory of images. Every folder is a packet in the runtime sense — leaves, taxonomy nodes, and the root alike are loadable via `check_and_load_kb`. |
-| **Catalog** | The `## Sub-topics` section inside every folder's `compiled.md`, indexing **every descendant folder in that folder's subtree** — not just its immediate children — with metadata (id, path, depth, parent, kind, title, short description, token size estimate; long description for the nearest levels). Catalogs are rolled up bottom-up by `hcag` (§3.4.4), so the **root**'s catalog section is a complete index of the entire KB. That is what the runtime injects at bootstrap. |
+| **Catalog** | The `## Catalog` section of the **root** `compiled.md`: one table, one row per content-bearing folder in the KB, columns `id`, `path`, `depth`, `title`, `long`, in depth-first order (D3a, §3.4.4). No other folder carries one. That is what the runtime injects at bootstrap. |
 | **Active Set** | The set of packets currently loaded into the agent's working context in the current conversation. |
 | **Delta** | The pair `(loaded, evicted)` returned when the active set changes — only new packet content is transmitted; only evicted IDs are named. |
 | **Token Budget** | A hard upper bound on the total tokens the active set may occupy. Enforced by the memory module via LRU eviction. |
@@ -385,31 +391,53 @@ Each decision below is a choice made deliberately over specific alternatives.
 The KB is a nested directory tree. Hierarchy is physical (folders), not conceptual (taxonomy) or temporal (memory tiers). **Rationale:** Simplest mental model; the directory is the source of truth; no separate taxonomy to keep in sync.
 
 ### D2. Every folder = one `compiled.md` (+ optional `assets/`)
-Each folder — leaf, taxonomy node, mixed, or root — has exactly one `compiled.md` that carries this level's own content and a catalog section indexing this folder's entire subtree (D3a). Images live in an optional `assets/` subdirectory alongside. Subfolders are independently loadable folders in their own right. **Rationale:** One file kind at every level means one code path in the memory module and one unit of retrieval throughout the system; images travel with the text they belong to; no distinction between "leaf" and "node" artifacts.
+Each folder — leaf, taxonomy node, mixed, or root — has exactly one `compiled.md` carrying this level's own content, in an explicitly delimited `## Content` section. The root's additionally carries the KB's `## Catalog` (D3a). Images live in an optional `assets/` subdirectory alongside. Subfolders are independently loadable folders in their own right. **Rationale:** One file kind at every level means one code path in the memory module and one unit of retrieval throughout the system; images travel with the text they belong to; no distinction between "leaf" and "node" artifacts.
 
-### D3. Catalog = the `## Sub-topics` section of every `compiled.md`
-No standalone catalog file. Each folder's `compiled.md` includes a `## Sub-topics` section describing what lives beneath it; loading a folder therefore exposes both its own content and its navigation index to the LLM in one step. The **root**'s `compiled.md` is what the runtime auto-injects at bootstrap. **Rationale:** One place to look at each level; no separate global index to reconcile at runtime; a standardized single-pass DFS build (Part 3) lets KB authors focus on extracting raw markdown from source documents.
+### D3. Catalog = the `## Catalog` section of the root `compiled.md`
+No standalone catalog file, and no per-folder index either: the KB has exactly one catalog and it lives in the root's `compiled.md`, which is what the runtime auto-injects at bootstrap. Every folder's `compiled.md` carries its own content; only the root's carries the index of the KB. **Rationale:** One index, in one place, that cannot disagree with itself. A per-folder index has to be kept consistent with the root's at build time and is never read at runtime anyway — the agent holds the whole catalog from turn one, so a copy inside a loaded packet is duplicate text with no navigational value.
 
-### D3a. Catalogs roll up the **whole subtree**, not one level
-A folder's `## Sub-topics` section indexes **every descendant folder beneath it, at every depth** — not just its immediate children. The roll-up happens on the DFS return path in `hcag` (§3.4.1): each folder returns its own summary *plus its already-assembled subtree index* to its parent, the parent re-parents those records under itself and appends its own, and so on up to the root. The consequence is the property that matters at runtime: **the root's `compiled.md` contains the catalog of the entire KB** — every branch, every mid-tree node, and every leaf document — so the agent can locate any document anywhere in the hierarchy from the bootstrap catalog alone.
+**Both sections are machine-delimited, not merely headed.** `## Catalog` and `## Content` are each wrapped in `<!-- HCAG:CATALOG BEGIN -->` / `<!-- HCAG:CATALOG END -->` and `<!-- HCAG:CONTENT BEGIN -->` / `<!-- HCAG:CONTENT END -->`. Locating a section by scanning for its `##` heading works until a source document contains a heading of the same name — and crawled corpora do, since "Content" is an unremarkable thing for a page to call a section. The consequence of a mis-parse is silent and severe: content read as catalog, or a truncated packet. The markers are also what makes the boundary legible to the model reading the file, which is the other half of why they are there.
 
-**Rationale:** The one-level-at-a-time alternative forces the agent to *walk* the tree — load `billing/`, read its children, load `billing/refunds/`, read its children, and so on — which costs one round trip per level of depth, burns context on intermediate taxonomy nodes it does not actually need to reason over, and (worst) makes the agent guess from a single-line parent summary whether the answer is somewhere down that branch at all. A deep KB turns a one-hop retrieval into a four- or five-hop search whose failure mode is silent: a wrong guess at level 1 hides everything below it. With the full index present from turn one, branch selection and leaf selection collapse into a single decision, and `check_and_load_kb` is called once with the exact leaf ID.
+### D3a. One flat catalog table, written only from what each folder actually holds
 
-**Cost and its containment.** A full index is larger than a one-level listing, and the cost is paid twice over — once at the root, and again (redundantly) inside every intermediate node's own catalog. Three mechanisms bound it: entries carry the full `long` description only for the nearest levels and drop to `short` below that (§3.4.4); `catalog.max_depth` can cap roll-up depth for very deep trees (§3.6); and the memory module elides the `## Sub-topics` section when serving any non-root packet, since the agent already holds the complete index in its system prompt (§2.6). See §3.4.4 for the sizing model.
+The catalog is a single Markdown table: one row per **content-bearing** folder in the KB, in depth-first pre-order, with columns `id`, `path`, `depth`, `title`, `long`. Hierarchy is carried by `path` and `depth`. Nothing is nested, nothing is indented, and no description is ever written from another description.
+
+**This replaces a tree of rolled-up summaries, and it replaces it because the roll-up manufactured text.** In the earlier design a folder's description was generated from its own content *plus its children's descriptions*, and every ancestor re-indexed its entire subtree. Two failures followed, and neither was incidental:
+
+- **Loss.** A description written from descriptions is a compression of a compression. A branch genuinely about *"SAML assertion mapping, certificate rotation, and IdP metadata exchange"* arrived at the root, two hops later, as *"authentication settings"* — generic exactly where routing has to discriminate, and unrecoverable, because the detail was discarded a level below. The root description, the first prose the agent reads about the KB, was the most compressed text in the file.
+- **Invention.** A pure taxonomy node has no text of its own. Asked to describe one, the summarizer had only a handful of child summaries and a folder name, and it wrote fluent, specific, confident prose about a branch nobody had read. Those inventions went into the system prompt, where D3b's rule is the only thing standing between them and an answer.
+
+**The new rule removes the input that caused both: a description is generated from one folder's own content, and from nothing else.** No children, no siblings, no parent. A folder with no content of its own gets no description, no LLM call, and no row — a waypoint has nothing to serve, and a row for it is an invitation to spend a turn loading nothing. Its existence stays visible in every descendant's `path`.
+
+Three costs fall away with it. The build makes one LLM call per *content-bearing* folder rather than one per folder. The tree stops carrying `N × D` copies of an index nobody reads. And the runtime no longer elides anything when it serves a packet, because no packet except the root has a catalog to elide.
+
+**Why a table.** The nested per-entry block it replaces spent eight labelled lines on each folder; a row spends one. On a 200-folder KB that is the difference between a catalog the model scans and a wall of prose it skims. A table also makes an absent value obvious — an empty cell in a column every other row fills — where a missing bullet in a block is invisible. And the columns are exactly what a routing decision needs: `id` to pass to `check_and_load_kb`, `path` and `depth` to see where the folder sits, `title` and `long` to judge whether the answer is in it.
+
+**What is deliberately not in the table.** `parent` is the `id` minus its last segment (§3.4.5), so a column for it would restate the key. `kind` distinguished a loadable folder from a waypoint, and every row is now loadable. `tokens` let the agent budget-check before requesting a load, which the memory module already enforces by eviction (§2.5) — and an agent that declines to load the right packet because it looks expensive fails the question in a way no metric catches.
+
+**The single-index property still holds.** The agent sees every content folder in the KB from turn one and resolves a question to a packet id in one hop, without walking the tree a level at a time. That was the point of the roll-up, and it survives; what does not survive is generating prose about folders nobody read.
 
 ### D3b. The catalog routes; only packet content answers
-The `## Sub-topics` index is **navigation metadata, never a source**. Its `title`, `short`, and `long` fields exist so the agent can decide *which* packet to load. Every factual claim in an answer must come from the `## Content` of a packet actually loaded into the conversation (§2.6). If no loaded packet supports an answer, the agent says so and loads the packet that would — it does not fill the gap from a catalog description, from folder names, or from its own pretrained knowledge.
+The `## Catalog` table is **navigation metadata, never a source**. Its `title` and `long` columns exist so the agent can decide *which* packet to load. Every factual claim in an answer must come from the `## Content` of a packet actually loaded into the conversation (§2.6). If no loaded packet supports an answer, the agent says so and loads the packet that would — it does not fill the gap from a catalog description, from folder names, or from its own pretrained knowledge.
 
-**Rationale:** This is the failure mode that most damages a KB-grounded agent, and D3a makes it *more* likely, not less. A whole-KB index puts several hundred LLM-written descriptions in the system prompt — fluent, on-topic prose that reads exactly like source material. A model asked "how long do refunds take?" with `billing.refunds — "Covers the full refund lifecycle: eligibility, states, partial refunds, chargebacks"` in front of it can produce a confident, plausible, entirely ungrounded answer without ever calling `check_and_load_kb`. The answer looks sourced. Nothing in it is.
+**Rationale:** This is the failure mode that most damages a KB-grounded agent, and a whole-KB index makes it *more* likely, not less. The catalog puts several hundred LLM-written descriptions in the system prompt — fluent, on-topic prose that reads exactly like source material. A model asked "how long do refunds take?" with `billing.refunds` described as *"Covers the full refund lifecycle: eligibility, states, partial refunds, chargebacks"* in front of it can produce a confident, plausible, entirely ungrounded answer without ever calling `check_and_load_kb`. The answer looks sourced. Nothing in it is.
 
-Worse, the descriptions are *summaries of summaries* (§3.4.4): a mid-tree entry is a roll-up of a roll-up, so an answer drawn from one is several lossy compressions away from the document it purports to cite. The catalog is deliberately built to be *suggestive* — that is what makes routing work — and suggestive is precisely what must not be answered from.
+D3a's revision helps here and does not close it. Every description is now one hop from real text rather than a summary of summaries, so a description at least corresponds to a document that exists and was read. But it is still LLM prose *about* a document rather than the document, still written to be suggestive — that is what makes routing work — and suggestive is precisely what must not be answered from. A description that correctly says a folder covers refund eligibility still cannot tell anyone how long a refund takes.
 
 Two symptoms tell an operator this is happening, and both are visible without reading transcripts: `reload.redundant_rate` (§2.7.1) near zero looks healthy, but paired with a **zero** `hcag.turn.reload_calls` on turns that clearly needed knowledge, it means the agent is answering from the index. Second, a trace's `gen_ai.chat` input payload (§2.11.2) shows whether any packet content was in context at all when the answer was produced.
 
-**Enforcement** is prompt-level, and stated at all three places the model encounters the catalog: the system prompt opens with the rule before anything else (§2.7); the injected catalog block is delimited as `INDEX ONLY` with the rule repeated inside it, because a block of plausible prose is otherwise easy to mistake for content; and the `check_and_load_kb` description says that a question the catalog appears to describe is a question that must be *loaded*, not answered. This is not enforceable at the module boundary — the memory module cannot see what the model concluded — so it is stated redundantly rather than assumed.
+**Enforcement is stated in prompt at all three places the model encounters the catalog**, and then checked once in the runtime.
+
+The three statements: the system prompt opens with the rule before anything else (§2.7); the injected catalog is delimited as `INDEX ONLY` with the rule repeated inside it, because a table of plausible prose is otherwise easy to mistake for content; and the `check_and_load_kb` description says that a question the catalog appears to describe is a question that must be *loaded*, not answered — and that the load is a step before replying, not an alternative to it.
+
+**Wording alone was tried and it lost.** Asked how soon a ONE Pass holder must report a change of address, a deployed agent answered *"within 2 weeks, through the EP eService"* without loading anything. Both facts were in the catalog row, which read *"the requirement to update residential address or mobile number within 2 weeks … via EP eService"*. The model was not being careless; it was using the best information in front of it. On that KB, 87 of 150 rows state a figure or a deadline, so the index reads as a reference document, and the rule asks the model to ignore an answer it can already see.
+
+What it cost the user is the part that is easy to miss. The packet also says the holder may be penalised for missing the deadline, and that the new address must first meet housing requirements. Neither is in the row. The answer was fluent, correct as far as it went, and missing the two things that would have changed what the person did.
+
+**So the rule is stated to the model as one test and checked in the runtime as its consequences (§2.7.1, §2.7.2).** The test: `check_and_load_kb` is called exactly when the catalog names a row covering part of the question that is not already loaded — which makes loading a *precondition on answering*, not merely a licence to call. The runtime cannot evaluate that test, because "covers part of the question" is the retrieval judgement itself. What it can see is two consequences of the test being skipped: an answer produced with nothing loaded at all, and an answer stating figures that appear in no loaded packet. Both are decidable without knowing what was relevant, and both withhold the answer once rather than refusing it.
 
 ### D4. Catalog auto-injected into system prompt (fetched via memory module)
-At conversation start, the agent runtime calls `memory_module.get_catalog()` — which returns the `## Sub-topics` section of the root `compiled.md`, i.e. (per D3a) the **complete index of every folder in the KB** — and injects it into the system prompt. The agent always "knows" the full shape of the KB and the identity of every document in it. `get_catalog` remains available as a tool for re-inspection mid-session, but the common path is a single bootstrap call and no further catalog reads at all. **Rationale:** Removes an entire round-trip class from the per-turn common path; combined with D3a it removes the *per-level* round trips as well — the agent resolves a question directly to a leaf packet ID in one hop instead of descending the tree one `check_and_load_kb` at a time. The catalog is injected once and never mutates mid-session, which is also what makes the system-prompt prefix cacheable (§2.12).
+At conversation start, the agent runtime calls `memory_module.get_catalog()` — which returns the `## Catalog` section of the root `compiled.md`, i.e. (per D3a) the **table of every content-bearing folder in the KB** — and injects it into the system prompt. The agent always "knows" the full shape of the KB and the identity of every document in it. `get_catalog` remains available as a tool for re-inspection mid-session, but the common path is a single bootstrap call and no further catalog reads at all. **Rationale:** Removes an entire round-trip class from the per-turn common path; combined with D3a it removes the *per-level* round trips as well — the agent resolves a question directly to a leaf packet ID in one hop instead of descending the tree one `check_and_load_kb` at a time. The catalog is injected once and never mutates mid-session, which is also what makes the system-prompt prefix cacheable (§2.12).
 
 ### D4a. Memory module is the sole KB accessor
 Neither the agent runtime nor the LLM ever reads the KB file system directly — not for the catalog, not for packets, not for images. Every byte of KB content is fetched via the memory module's tools (`get_catalog`, `check_and_load_kb`). **Rationale:** The KB backing store is an implementation detail of the memory module. Today it is a local file tree; tomorrow it can become an object store, a versioned KV, or a remote service — with zero change to the agent contract. This isolation is enforced at the layering boundary: the runtime has no KB path, no reader, no direct dependency on the file system for KB content.
@@ -500,7 +528,7 @@ Two tools are exposed to the agent:
 
 ```
 <kb_root>/
-├── compiled.md                       # Root artifact — its `## Sub-topics` section is the catalog
+├── compiled.md                       # Root artifact — its `## Catalog` section is the catalog
 ├── billing/
 │   ├── compiled.md                   # Mixed: own overview content + catalog of refunds/invoices
 │   ├── assets/
@@ -534,96 +562,69 @@ Two tools are exposed to the agent:
 
 ## 2.2 `compiled.md` Schema
 
-`compiled.md` is a human-readable + machine-parseable markdown document. Every folder produces one, and the same schema applies to leaves, taxonomy nodes, mixed folders, and the root. Each file has YAML front-matter carrying the folder's own summary metadata, plus two optional body sections — the `## Sub-topics` catalog (present when the folder has children) and the `## Content` block (present when the folder has its own source markdown).
+`compiled.md` is a human-readable + machine-parseable markdown document. Every folder produces one, and the same schema applies to leaves, taxonomy nodes, mixed folders, and the root. Each file has YAML front-matter carrying the folder's own metadata, plus body sections that are **explicitly delimited rather than merely headed** (D3):
 
-The `## Sub-topics` section is a **subtree index, not a child listing** (D3a): it holds one entry per descendant folder at every depth beneath this one, in DFS pre-order. At the root, that is every folder in the KB.
+| Section | Present in | Delimiters |
+|---|---|---|
+| `## Catalog` | the root only | `<!-- HCAG:CATALOG BEGIN -->` … `<!-- HCAG:CATALOG END -->` |
+| `## Content` | any folder with source markdown of its own | `<!-- HCAG:CONTENT BEGIN -->` … `<!-- HCAG:CONTENT END -->` |
+
+A pure taxonomy node therefore has front-matter and nothing else. That is not a degenerate case to work around — it is the honest representation of a folder that holds no knowledge, and it is why such folders do not appear in the catalog (D3a).
 
 **Front-matter fields** (readable per folder):
 
 | Field | Type | Description |
 |---|---|---|
 | `id` | string | Dotted-path packet identifier for this folder (§3.4.5). |
-| `title` | string | Human-readable title (LLM-generated). |
-| `short_description` | string | One-line summary — shown in the parent's `## Sub-topics` listing. |
-| `long_description` | string | Multi-sentence description. Two consumers: the runtime LLM deciding whether to load this folder, and — at build time — the **parent's** summarizer, which is fed its children's `long_description`s rather than their `short_description`s (§3.4.4). Both make this the field to invest prose in. |
+| `title` | string | Human-readable title. LLM-generated for a content-bearing folder; for a pure node, the folder name in title case. |
+| `long_description` | string | Multi-sentence description of **this folder's own content**, generated from that content alone (§3.4.4). It is the `long` column of this folder's catalog row and the field the runtime LLM routes on, which makes it the one field worth investing prose in. Absent for a pure taxonomy node, which has no content to describe. |
 | `token_size_estimate` | integer | Precomputed total token count for the assembled `compiled.md` + image blocks. Used for budgeting **without** loading. |
-| `kind` | enum | `leaf` \| `node` \| `mixed`. |
+| `kind` | enum | `leaf` \| `node` \| `mixed`. Front-matter only — it is not a catalog column (D3a). |
 | `source_files` | list<string> | Source `.md` filenames concatenated into `## Content`, **in reading order** (§3.4.3): `index.md` first, then the order the index page links them, then the rest alphabetically. Empty for pure taxonomy nodes. |
 | `source_urls` | list<string> | The origin URL of each entry in `source_files`, positionally aligned, read from the crawl sidecar (§4.5.3). An entry is the empty string where the origin is unknown — a hand-authored file, or a KB crawled before provenance was recorded. Omitted entirely when no source has a known origin. |
 | `image_urls` | map<string,string> | Origin URL per file under `assets/`, same source and same degradation. Lets a consumer cite the image a multimodal answer used (§6.7.1). |
 | `children` | list<string> | IDs of **immediate** child folders. Empty for pure leaves. |
-| `descendants` | integer | Count of folders in this folder's subtree, excluding itself — i.e. the number of entries in its `## Sub-topics` section. `0` for a pure leaf. |
+| `descendants` | integer | Count of folders in this folder's subtree, excluding itself. `0` for a pure leaf. |
 | `subtree_depth` | integer | Depth of the deepest descendant, relative to this folder. `0` for a pure leaf. |
-| `content_token_estimate` | integer | Tokens for the `## Content` section + image blocks only, excluding `## Sub-topics`. **This is the figure the runtime budgets against** (§2.5), because the catalog section is elided when a non-root packet is served (§2.6). |
-| `catalog_token_estimate` | integer | Tokens for the `## Sub-topics` section alone. At the root this is the size of the bootstrap catalog injection (§2.7). |
+| `content_token_estimate` | integer | Tokens for the `## Content` section + image blocks only. **This is the figure the runtime budgets against** (§2.5). Equal to `token_size_estimate` minus front-matter everywhere except the root. |
+| `catalog_token_estimate` | integer | Tokens for the `## Catalog` section. **Root only**; absent elsewhere. This is the size of the bootstrap injection (§2.7). |
 
-**Sub-topics entry fields** (one entry per **descendant** folder at any depth, when descendants exist):
+**`short_description` no longer exists.** It was a one-line label duplicating a field that is written to be substantive, and it did two jobs badly: it was the catalog's default description, where one line is too little to route on, and it was the metadata header's summary, where the packet's own content is already present. Both now read `long_description`, and there is one description per folder rather than two that can disagree.
 
-| Field | Type | Description |
-|---|---|---|
-| `id` | string | The descendant's packet ID — the exact string to pass to `check_and_load_kb`. |
-| `path` | string | Path relative to **this** folder (the catalog owner), so an entry is a self-contained locator. |
-| `depth` | integer | Levels below this folder. `1` = immediate child. |
-| `parent` | string | ID of the entry's immediate parent. Reconstructs the tree from a flat list without parsing paths. |
-| `kind` | enum | `leaf` \| `node` \| `mixed` — tells the agent at a glance whether this entry holds actual document content (`leaf`/`mixed`) or is a pure taxonomy waypoint (`node`). |
-| `title` | string | Descendant's title. |
-| `short` | string | Descendant's short_description. |
-| `long` | string | Descendant's long_description. Present only for entries with `depth <= catalog.long_depth` (§3.6, default `1`); omitted deeper to bound catalog size. |
-| `tokens` | integer | Descendant's `content_token_estimate` — lets the LLM budget-check before requesting a load. |
+### 2.2.1 The catalog table
 
-**Ordering.** Entries appear in **DFS pre-order** (a parent immediately followed by its own subtree, siblings alphabetical). The list therefore reads top-down as an outline, and `depth` + `parent` make the nesting explicit without relying on indentation.
+One Markdown table, one row per **content-bearing** folder in the KB, in **depth-first pre-order** — a folder immediately followed by its own subtree, siblings alphabetical — so the table reads top-down as an outline of the KB.
 
-**Tree outline.** When `catalog.include_tree` is enabled (§3.6, default on), the section opens with a compact `#### Tree` block — one line per descendant, indented by depth, carrying only `id` and `title`. It is a cheap shape-at-a-glance index that lets the agent narrow to a branch before reading the detailed entries below it.
+| Column | Description |
+|---|---|
+| `id` | The folder's packet ID — the exact string to pass to `check_and_load_kb`. |
+| `path` | Path from the KB root, e.g. `billing/refunds/`. A self-contained locator, and the only place a pure taxonomy node's existence shows. |
+| `depth` | Levels below the root. `1` = a top-level folder. |
+| `title` | The folder's title. |
+| `long` | The folder's `long_description`, describing what that folder's own content holds. Never a summary of anything below it. |
 
-**Illustrative rendering** (an excerpt of the **root**'s `## Sub-topics` — note it spans multiple levels, not just the top branches):
+Rows for pure taxonomy nodes are **absent**, not empty: a node has no content, so loading it returns nothing, and a row is an invitation to spend a turn discovering that. `depth` therefore skips values where a branch is a pure waypoint, which is the correct reading — the table indexes knowledge, not directories.
+
+**Every description is single-hop.** The `long` in a row was generated from that folder's own `## Content` and nothing else (§3.4.4). No row describes another row's subject, so two rows never compete to answer the same question with the same words.
+
+**The table is the model's view of the catalog, not the runtime's.** The memory module's in-memory `CatalogEntry` (§2.13) carries one field the table does not: `content_token_estimate`, which §2.5 budgets against before a packet is loaded. It is read from each folder's front-matter in one pass at bootstrap, not parsed out of the table, which is why dropping the old `tokens` column costs nothing operationally. The distinction is worth keeping sharp: the table exists to help a model choose, and a number it cannot act on — the module evicts, the model does not — is a column of noise in several hundred rows.
+
+**Illustrative rendering** (an excerpt of the root's `## Catalog`):
 
 ```markdown
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-#### Tree
-
-- `billing` — Billing
-  - `billing.refunds` — Refund Processing
-  - `billing.invoices` — Invoice Generation
-- `auth` — Authentication
-  - `auth.sso` — Single Sign-On
-    - `auth.sso.saml` — SAML Configuration
-
-#### `billing`
-
-- **path**: `billing/`
-- **depth**: 1
-- **parent**: `_root`
-- **kind**: mixed
-- **title**: Billing
-- **short**: Money movement — invoicing, refunds, and reconciliation.
-- **long**: Covers the billing domain end to end: how invoices are generated
-  and dunned, how refunds are issued and settled, and how both reconcile
-  against the ledger.
-- **tokens**: 1180
-
-#### `billing.refunds`
-
-- **path**: `billing/refunds/`
-- **depth**: 2
-- **parent**: `billing`
-- **kind**: leaf
-- **title**: Refund Processing
-- **short**: How refunds are issued, states, and edge cases.
-- **tokens**: 3420
-
-#### `auth.sso.saml`
-
-- **path**: `auth/sso/saml/`
-- **depth**: 3
-- **parent**: `auth.sso`
-- **kind**: leaf
-- **title**: SAML Configuration
-- **short**: IdP metadata exchange, assertion mapping, and cert rotation.
-- **tokens**: 2240
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `billing` | `billing/` | 1 | Billing Overview | Defines the billing cycle, the invoice-to-cash sequence, and which ledger each movement posts to. Does not cover refund states, which are held under `billing.refunds`. |
+| `billing.refunds` | `billing/refunds/` | 2 | Refund Processing and States | The refund state machine end to end: eligibility windows, the five states and their transitions, partial refunds and how they are apportioned, and the 5-7 business-day settlement timeline. |
+| `billing.refunds.chargebacks` | `billing/refunds/chargebacks/` | 3 | Network Chargeback Handling | Card-network chargeback reason codes, what evidence each requires, and the representment deadlines by network. |
+| `auth.sso.saml` | `auth/sso/saml/` | 3 | SAML Configuration | IdP metadata exchange, assertion attribute mapping, and certificate rotation procedure including the overlap window. |
+<!-- HCAG:CATALOG END -->
 ```
 
-`billing` (depth 1) carries a `long`; `billing.refunds` and `auth.sso.saml` (depth ≥ 2) carry `short` only, per `catalog.long_depth = 1`. The agent answering a question about SAML certificate rotation can request `auth.sso.saml` directly from this catalog — it never has to load `auth` or `auth.sso` to discover that the leaf exists.
+`auth` and `auth.sso` have no rows: both are pure waypoints holding no content of their own. Their existence is legible in the fourth row's `path`, and the agent answering a question about SAML certificate rotation requests `auth.sso.saml` directly — which is what it would have done anyway.
 
 ## 2.3 Tool Contracts
 
@@ -631,7 +632,7 @@ The `## Sub-topics` section is a **subtree index, not a child listing** (D3a): i
 
 **Input:** none.
 
-**Output:** the current KB's catalog (string) — the `## Sub-topics` section of `<kb_root>/compiled.md`, formatted per §2.2. Because catalogs roll up the whole subtree (D3a), the root's section is the **complete index of every folder in the KB**, at every depth: there is no deeper catalog left to discover. Equivalent to what is auto-injected at conversation start; provided only in case the agent wants to re-examine it, and normally never called (§2.12 item 5).
+**Output:** the current KB's catalog (string) — the `## Catalog` section of `<kb_root>/compiled.md`, formatted per §2.2.1. It is the **whole index**: every content-bearing folder in the KB, at every depth, in one table. There is no deeper catalog to discover, because no other folder has one (D3a). Equivalent to what is auto-injected at conversation start; provided only in case the agent wants to re-examine it, and normally never called (§2.12 item 5).
 
 ### 2.3.2 `check_and_load_kb`
 
@@ -664,7 +665,7 @@ The `## Sub-topics` section is a **subtree index, not a child listing** (D3a): i
 ]
 ```
 
-A textual **metadata header** precedes each folder's content so the LLM can always identify what it is looking at from context alone. When the loaded folder has a `## Sub-topics` section (a taxonomy node or mixed folder), the agent gains visibility into that folder's children and can request them in a subsequent `check_and_load_kb` call. Images from the folder's own `assets/` follow the markdown.
+A textual **metadata header** precedes each folder's content so the LLM can always identify what it is looking at from context alone. It names the packet and nothing more; the agent already holds every folder's id, path and description in the catalog from turn one, so a loaded packet has no navigational work left to do. Images from the folder's own `assets/` follow the markdown.
 
 ### 2.3.3 Selection semantics
 
@@ -703,8 +704,8 @@ Let to_add = [id for id in requested_ids if id not in active_ids]
 Let ordered = dedup_keep_last(active_ids + to_add)
 
 # Sum token estimates from catalog. content_token_estimate (not
-# token_size_estimate) is the right figure: the `## Sub-topics` section is
-# elided when a non-root packet is served (§2.6), so it never occupies budget.
+# token_size_estimate) is the right figure: what a packet costs the active
+# set is its content, and only the root carries a catalog section at all.
 Let total = sum(catalog[id].content_token_estimate for id in ordered)
 Let evicted = []
 
@@ -736,10 +737,12 @@ Return { loaded, evicted, active_after: ordered }
 Given a packet ID (any folder in the KB, from the root down to a leaf), the module:
 
 1. Resolves `<kb_root>/<path>/compiled.md` using the dotted-path ID (§3.4.5). The root has an empty ID and resolves to `<kb_root>/compiled.md`.
-2. Reads `compiled.md` as UTF-8. Front-matter is parsed out; the body is what's shipped to the agent, with one subtraction: **for any packet other than the root, the `## Sub-topics` section is elided.** Since catalogs roll up the whole subtree (D3a), a loaded folder's index is already a verbatim subset of the root catalog sitting in the agent's system prompt, and re-shipping it would duplicate that text inside the active set for no navigational gain. What remains is the `## Content` section — the actual document text this packet exists to deliver. (Configurable via `catalog.strip_subtopics_on_load`, §3.6, default on; turning it off ships the section and makes `token_size_estimate` rather than `content_token_estimate` the correct budgeting figure.) A pure taxonomy node therefore loads as a metadata header and nothing else — which is the expected shape, because with the full index at bootstrap the agent has little reason to load one at all.
+2. Reads `compiled.md` as UTF-8. Front-matter is parsed out and the delimited `## Content` section (D3) is what ships — the actual document text this packet exists to deliver. **Nothing has to be elided.** Under the old subtree roll-up every packet carried its own index and the module stripped it before serving; now only the root has a catalog section, and the root is not served as a packet. The special case, its configuration knob, and the class of bug where a stale flag shipped several thousand tokens of duplicate index inside every load, all disappear with it.
+
+   A pure taxonomy node has no `## Content` at all, so it loads as a metadata header and nothing else. That is the expected shape, and it is why such a folder has no catalog row to tempt the agent into loading it (D3a).
 3. Enumerates `<kb_root>/<path>/assets/*` (if the folder exists) for image files.
 4. Emits, in order:
-   - A text metadata header block (packet ID, title, short description, `kind`).
+   - A text metadata header block (packet ID, title, `kind`). No description: the packet's own content follows immediately, and a generated summary sitting above the source it summarizes is something a model can quote in preference to the text itself.
    - The raw markdown body of `compiled.md` (post-frontmatter).
    - One image content block per file under `assets/`, in a stable order (lexicographic filename).
 
@@ -749,14 +752,14 @@ Images are read from disk and passed as multimodal image content blocks to the a
 
 The prompt text below is illustrative: it is **loaded from `agent/system.md` and `agent/catalog_delimiter.md` at startup**, not written in the runtime (D11, §2.15). What the runtime owns is the *composition* — that the catalog goes into the system prompt once, at bootstrap — not the wording.
 
-The agent runtime **never** reads the KB directly. At conversation start it obtains the catalog by calling `memory_module.get_catalog()` — which returns the `## Sub-topics` section of `<kb_root>/compiled.md`, i.e. the **full index of every folder in the KB at every depth** (D3a) — and injects the returned string into the system prompt:
+The agent runtime **never** reads the KB directly. At conversation start it obtains the catalog by calling `memory_module.get_catalog()` — which returns the `## Catalog` section of `<kb_root>/compiled.md`, i.e. the **table of every content-bearing folder in the KB at every depth** (D3a) — and injects the returned string into the system prompt:
 
 ```
 <static agent instructions>
 <usage guidance for get_catalog and check_and_load_kb>
 
 --- KNOWLEDGE CATALOG (INDEX ONLY — every folder, all depths) ---
-The entries below are routing metadata. Use them to choose packet ids to
+The table below is routing metadata. Use it to choose packet ids to
 load. Do NOT answer any question from the text below; answers come only
 from the ## Content of packets you have loaded.
 
@@ -783,28 +786,76 @@ The agent is instructed to:
 - Never assume it can read the KB directly — every folder's `compiled.md` must be obtained via `check_and_load_kb`.
 - Not call `get_catalog`: the injected catalog is complete and does not change mid-session.
 
-**The agent answers as a support officer, not as a retrieval system.** Grounding decides what it may rely on; the persona decides what it sounds like, and the two are separate rules in `agent/system.md`. The officer states what is true as fact, in its own words, and never narrates its own machinery — no "based on the knowledge base", no "the documents state", no mention of catalogs, packets or ids, which are internal. A user should experience a colleague who knows the policy.
+**The agent answers as a support officer, not as a retrieval system.** Grounding decides what it may rely on; the persona decides what it sounds like, and the two are separate rules in `agent/system.md`. The officer states what is true as fact, in its own words, and never narrates its own working. A user should experience a colleague who knows the policy.
+
+**The rule is stated as a test, not as a list of banned phrases**, because a list is read as a definition. It shipped as six examples — "based on the knowledge base", "the documents state", "according to my sources", and so on — and every one of them named an artifact or a channel. A reply then opened *"Based on the information I have, I need to give you both good and challenging news about your candidate's situation"*, which names no artifact, and the trailing "or any variant" was left carrying the whole rule alone. This is the same failure as "route" below: the enumeration became the category, and the intended one was wider.
+
+The test now stated is **whether the words are about the agent rather than about the asker's situation** — what it consulted, what it holds, how sure it is, what it is about to do. Three families are named under it, and the second and third were the ones getting through:
+
+- **Where it came from.** The original list. Naming the knowledge base, the documents, the sources, the loading.
+- **What it holds, or how sure it is.** "Based on the information I have", "as far as I know", "the guidance I have access to". These name no system and are banned all the same: the agent's own state of knowledge is not a fact about the asker's case.
+- **What the reply is about to do.** "I need to give you both good and challenging news", "let me explain", "here's what you need to know". This family was not covered at all — the rule banned narrating the *source* and nothing banned narrating the *answer*. A preamble announcing the reply is not the reply.
+
+**The rule was also stated twice, and the second statement was weaker.** A later `STYLE` paragraph repeated it in looser words forty-five lines further down. Two versions of one rule that differ in strength is a hazard of its own: the weaker one is satisfiable on its own terms, and in a long prompt the later text is the one in view. It is deleted; its only distinct clause, that the catalog is internal, was already in `GROUNDING`.
 
 Three behaviours follow from that framing, and they are prompt text (D11), not runtime code:
 
 - **Plan, then hand over in parts.** The agent plans silently — what is this person trying to do, what does resolving it need, what is the ONE next step — and then replies in **50–80 words**, giving the piece that moves them forward and stopping. An eight-step procedure is eight turns, not one reply with eight bullets, and each part closes by handing the user the next move. The limit is per reply, not an average.
-- **Work "can I" questions as a procedure, not a principle.** Eligibility is the easiest question type to answer wrongly, because the wrong answer comes from silently narrowing it: asked "can a self-employed person apply?", a model answers "does self-employment income satisfy the salary route?" — lists the achievements route that waives that very requirement, and still concludes *cannot apply*. Telling it "answer no only when the guidance says no" did not prevent this; a three-step procedure did. List every route, test the asker against each, answer no only if all of them fail. Three supporting rules carry the weight: a fact about the person (self-employed, retired, overseas) disqualifies nobody unless the guidance names it as disqualifying; the assessment posture ("assessed case by case", "may be considered") is stated early because for a borderline asker it is the most useful fact there is; and a final consistency check — if the reply names a route the asker could plausibly meet, the conclusion cannot be "no". Measured on `claude-sonnet-4-5`, this took the reported failure from a confident "cannot apply" to 3/3 correct openings. **The counter-rule matters as much**: pushing toward "yes, if" makes a model invent a way in ("your own company could count"), which is worse than the false no it replaced, so naming a route is explicitly not permission to explain how this asker might satisfy it.
+
+  **This rule lived only here for a while, which is why replies did not follow it.** The shipped prompt said "if longer than 400 characters, divide and share in smaller parts" and named no format at all, so a reply came back with a markdown heading and two bullet lists — obeying nothing that was written down, because the prohibition existed in this document and not in the prompt the model reads. The prompt now carries the word limit in the same units this paragraph uses, and carries the format rule explicitly.
+
+  **What that format rule bans is the shape of a document, not Markdown itself**, and the distinction is worth stating because the two rules read as a contradiction otherwise. §10.3 renders assistant messages as Markdown and argues at length that the whole pipeline preserves structure so it can survive to the reader; this paragraph says an eight-step procedure is eight turns rather than one reply with eight bullets. Both hold. A three-item list inside an 80-word reply renders as a list and helps. Headings, section titles, tables, and a list that dumps every criterion at once with sub-points under each are what turn a reply into a page, and none of them fits the word limit regardless. The reported reply had a heading and two bullet blocks and ran several times over.
+- **Work verdict questions as a procedure, not a principle.** Eligibility is the easiest question type to answer wrongly, because the wrong answer comes from silently narrowing it: asked "can a self-employed person apply?", a model answers "does self-employment income satisfy the salary route?" — lists the achievements route that waives that very requirement, and still concludes *cannot apply*. Telling it "answer no only when the guidance says no" did not prevent this; a three-step procedure did. List every way in, test the asker against each, answer no only if all of them fail. Three supporting rules carry the weight: a fact about the person (self-employed, retired, overseas) disqualifies nobody unless the guidance names it as disqualifying; the assessment posture ("assessed case by case", "may be considered") is stated first rather than after a ruling, because for a borderline asker it is the most useful fact there is; and a final consistency check — if the reply names a way in the asker could plausibly meet, the conclusion cannot be "no". Measured on `claude-sonnet-4-5`, this took the reported failure from a confident "cannot apply" to 3/3 correct openings. **The counter-rule matters as much**: pushing toward "yes, if" makes a model invent a way in ("your own company could count"), which is worse than the false no it replaced, so naming a way in is explicitly not permission to explain how this asker might satisfy it.
+
+  **Three later revisions, each from a reply where the procedure above was in force and did not fire.** They are recorded because the pattern is the same every time — the rule was right and its *scope* was wrong.
+
+  - **The trigger is the shape of the answer, not the shape of the question.** Asked *"does the company qualify as established, and what documents do we need?"*, the model never entered the procedure: the section was headed "can I" questions, and this reads as a factual classification of an employer. It is the same question. The heading now names the class by what the reply will be — a ruling that something is met or not met, whether the subject is a person, an employer, a figure, a document or a date.
+  - **A "route" is any provision that could change the outcome**, not only an alternative pathway. In the same reply the thing that could save the candidate was the *same* revenue test measured on a different basis: *"combined amounts from the entire global office can also be considered, and will be assessed on a case-by-case basis."* Told to list routes, a model enumerates the two thresholds and files that sentence as a caveat decorating a settled answer. The instruction now enumerates what counts — an alternative threshold, a different basis of measurement, a discretionary assessment, an exemption, a waiver, an appeal, a transitional date — and says a caveat attached to a rule is one of them.
+  - **The permitted verdicts are named, and the fourth is forbidden.** The procedure said what to do when a route is open ("yes, if") and when all fail ("no"), and said a flat no was unavailable where assessment is case by case. It never said what to do when the literal test fails *and* discretion exists, so the model invented a shape that evades the ban on a technicality: **"no, but it might be considered"**. The reply opened *"The company does not qualify as established"* and conceded four paragraphs later that combined global revenue *"can also be considered … assessed on a case-by-case basis"* — with the asker's own combined figure clearing the threshold. The verdict is now chosen from exactly three: **met**, **open but not settled**, **not met**. Where the literal figures fail and a discretionary basis exists that the asker could plausibly fall under, the answer is *open*, the concession is the answer rather than a footnote to it, and the reply leads with what decides it and what to submit. A reader stops at the first sentence and acts on it, so a verdict contradicted two paragraphs later is a wrong answer delivered with its own correction attached.
 - **Clarify to reach the contextual answer.** When the answer genuinely differs on something the agent does not know — pass type, salary, which of two situations applies — it asks **one** question, the one that most narrows the outcome. It gives whatever already holds either way first: nobody should have to answer a question to receive information the agent could already have given.
+- **Reason freely, and silently.** The prompt licenses inference — working from general knowledge and the ordinary meaning of words, where the loaded content supports the conclusion, rather than refusing for want of a sentence that says it outright. That licence shipped as a standalone `REASONING` line that said to use reasoning and nothing about keeping it private, forty-five lines below the rule that says to plan silently. The later, looser statement won: a reply arrived with its whole deliberation on screen — *"Looking at the content I already have loaded…"*, a weighing of what the packet did and did not contain, a `---`, and then the actual answer beneath it. This is the third instance of one rule stated twice at different strengths, after `STYLE` against `VOICE` (§2.7) and the two halves of the load decision (§2.7.1), and each time the weaker statement was the one obeyed. The licence and the silence are now one rule in one place: the reply begins at the answer, and what the agent worked out belongs to the user while how it worked it out does not.
 - **Escalate rather than guess.** When the guidance does not cover the situation, or the agent cannot reason to an answer it would stand behind, it says so plainly and offers a human colleague — in its own voice, never as a bare "contact us", and never as a system limitation. It escalates too when only a person can act: a decision on a specific file, an exception, an appeal, a complaint. A confident wrong answer is the worst outcome available; an honest hand-over is a good one.
 
 **This trades measured score for real-world usefulness, and §7.5's rubric has not moved with it.** The judge rewards an answer "substantively equivalent to the reference", and the reference answers are long and complete; it also weighs against a reply the user had to steer with clarifying questions. Chunked answers and clarification will therefore *lower* the eval score while being the behaviour a support desk wants. Before reading a drop in `mean_score` as a regression, check whether it is this. The rubric is the thing to change if the persona is here to stay.
 
 **Cross-branch lookup.** The full index also makes questions that straddle branches tractable in one hop. A question touching both refund settlement and ledger reconciliation surfaces `billing.refunds` and `finance.ledger` in the same catalog read, and both are requested in one `check_and_load_kb` call — under one-level catalogs the agent would have had to open and read two separate branches to discover that the second leaf existed.
 
-### 2.7.1 Reload discipline — when *not* to call `check_and_load_kb`
+### 2.7.1 The load decision — one test, in both directions
 
-D5 says the agent classifies once and reloads only when it judges the active set insufficient. In practice the failure mode is the opposite of under-loading: a model handed a retrieval tool tends to call it **every turn**, as a reflex — re-requesting packets it already holds, "refreshing" before answering, or treating the call as the ritual that precedes a response. This section makes the rule explicit and specifies how it is enforced, because the default behavior of an unconstrained tool-using model is exactly the behavior this design cannot afford.
+`check_and_load_kb` is called **exactly when the catalog names a row that covers some part of the question and is not already in the active set.** One condition, and it settles both questions a turn has to answer: whether to call, and whether it is yet permitted to reply.
 
-**The rule.** `check_and_load_kb` acquires *missing* knowledge. It is not an acknowledgement of a turn, not a refresh, and not a way to confirm what is loaded. The default action on any turn is **no call at all**. Before calling, the agent must be able to name a specific catalog entry that (a) covers the gap and (b) is not already in its active set. The decision, in order:
+- **If such a row exists, the agent must load it before answering.** Answering first is answering without the source, whatever the catalog row appears to say about it (D3b).
+- **If no such row exists — everything relevant is already loaded — the agent must answer without calling.** There is nothing to acquire, and the call costs a full round trip to learn that.
+
+Both directions are failures and they look nothing alike. Under-loading produces a fluent answer with no source behind it, which no latency metric shows. Over-calling produces a slow, correct answer, which no correctness metric shows. The rest of this section is about the second, because it is the one an unconstrained tool-using model falls into by default; §2.7.2 is about the first, because it is the one that reaches the user as a wrong answer.
+
+D5 says the agent classifies once and reloads only when it judges the active set insufficient. In practice the reflex runs the other way: a model handed a retrieval tool tends to call it **every turn** — re-requesting packets it already holds, "refreshing" before answering, or treating the call as the ritual that precedes a response.
+
+**The rule.** `check_and_load_kb` acquires *missing* knowledge. It is not an acknowledgement of a turn, not a refresh, and not a way to confirm what is loaded. The default action on any turn is **no call at all**. Before calling, the agent must be able to name a specific catalog row that (a) covers the gap and (b) is not already in its active set. The decision, in order:
 
 1. **Can the question be answered from the active set?** Then answer it. No call.
 2. **Is the needed material inside a packet that is already active?** Then it is already in context — the model can re-read it. No call. A packet does not need re-requesting to be re-read.
-3. **Is there a catalog entry covering the gap that is absent from `active_after`?** Only then call, with exactly those ids and no others.
+3. **Is there a catalog row covering the gap that is absent from `active_after`?** Then call, with exactly those ids and no others — and do not answer until it returns.
+
+**Step 3 is a precondition on answering, not only a licence to call.** Reading it as "you may call now" leaves the model free to skip the call and answer anyway, which is exactly what happened in the incident D3b records: the catalog row named the deadline, the model read step 3 as optional, and the packet was never opened.
+
+**The budget is round trips, not packets — and the prompt said so badly enough to matter.** One call carries as many ids as the question needs, sibling calls in one message are merged into a single load (§2.4), and the rule below pushes *toward* over-including: an extra packet costs almost nothing next to a second round trip. The prompt nonetheless carried this under the heading "ONE CALL PER TURN", opening "a turn gets one load". A reader of this design misread that as a one-packet budget, and a model under pressure can land in the same place — load the single best-looking id, find it thin, answer short. It is now headed ONE ROUND TRIP and states the distinction in its first sentence.
+
+**A second call is legitimate when the loaded content proves the first choice wrong.** This is the one exception, and it needs to be stated because the rule that forbids dribbling also forbade recovery. Observed: asked whether replacing a returned EP card costs anything, the agent loaded the `employment-pass` hub, found it held the replacement *fee table* but not the renewal rule that actually decides the question, said so in the reply — *"the complete fee structure … was not included in what loaded"* — and answered anyway from what it had, inventing a procedure. It had spent its one call.
+
+The distinction that keeps this from reopening reflex-calling is **what licenses the second call**. Evidence from loaded content licenses it: the `## Content` in front of the model does not contain the rule, which is a fact it can see. Uncertainty does not: "I am not sure this is enough" *before* reading anything means the first call was too narrow, and the remedy is a wider first call rather than a sequence of small ones. Answering from content the model can see is insufficient is the worst available outcome — it costs the user a wrong instruction they will act on, against a few seconds for a second round trip.
+
+**Relevance is the model's judgement, made against the catalog, and nothing else can make it.** The runtime cannot know which rows bear on a question — that is the retrieval decision itself, and a component able to make it would not need the agent. So the rule is stated to the model, and the runtime checks the consequences it *can* see (§2.7.2) rather than the judgement it cannot.
+
+**A description is not a list of contents, and the prompt now says so.** A `long` is a few sentences about a folder of tens of thousands of characters (§3.4.4). It names what the folder is about; it cannot enumerate every rule inside and does not try. The failure that follows is a model treating absence from a description as absence from the packet, and it is the harder half of §3.4.4's problem: that section works on making descriptions accurate, and no amount of accuracy makes four sentences exhaustive. The routing rule therefore has to hold on the reading side too — *which folder owns this subject* rather than *which description mentions my words*.
+
+**Keyword matching fails in both directions, and only one direction was documented.** The prompt already warned about a narrow row naming the question's exact words when the governing rule sits in the broader topic above it. The symmetric case is a broad row naming them because it lists everything beneath it: a hub matches on mention, not on possession, and §3.4.4's hub-page discussion is the supply side of the same failure.
+
+**The id choice is therefore specified as two steps, not one.** The model resolves, in order, **the situation the person is in** — renewing, cancelling, appealing, applying, changing employer, which fixes the folder that governs it — and then **the specific thing being asked within it**, which fixes the folder holding the detail. They are often different folders, and then both belong in one call (§2.7.1).
+
+**Where the two steps land on one folder, the situation-specific rule is the one that applies — and that is the case worth stating carefully.** Observed: *"I mailed my EP card back after the renewal was approved — do I have to pay to replace it?"* The agent loaded the `employment-pass` hub and answered from the general card-replacement fees it holds. The rule that decides the question is in `renew-a-pass`: at renewal the notification letter may say to keep the existing card, and returning it needlessly costs $65.40 to replace. Both folders state a replacement fee. Only one states the rule for someone renewing, and the hub's answer was plausible, in the asker's own words, and about a different situation.
+
+**This also corrected a heuristic that had been pointing the wrong way.** The prompt had said that where a broad topic and a specialised child both look relevant, "the parent usually carries the governing rule and the child the detail" — true of the eligibility case it was written from (§3.4.4), and backwards here, where the child carries the governing rule for this situation and the parent the general one. Depth decides nothing on its own. What decides is whether the person named a situation: if they did, the folder for that situation governs even when a broader folder states a general version of the same rule; if they did not, and are asking the rule at large, the broader folder usually carries it.
 
 Concretely forbidden, each a call that produces no new knowledge:
 
@@ -828,6 +879,52 @@ Concretely forbidden, each a call that produces no new knowledge:
 
 **Making it visible.** The runtime counts redundant calls and reports `reload.redundant_rate` — redundant calls divided by turns — alongside the per-turn logs (§2.11.3). It is the single number that says whether the discipline is holding; the healthy value is at or near zero, and a rate near 1.0 means the model is calling the tool every turn and the three layers above need attention (usually layer 1, the tool description). Sustained thrash — repeated load/evict cycles over the same ids — is logged at `WARN` for the same reason.
 
+### 2.7.2 Enforcing the load-before-answer half
+
+§2.7.1's condition is what the model is told. This section is what the runtime can verify, which is strictly less — and the gap between the two is stated here rather than papered over.
+
+**The rule to enforce.** An answer must not leave the runtime while a catalog row that covers part of the question sits unloaded.
+
+**Why it cannot be checked directly.** "Covers part of the question" is the retrieval judgement itself. A runtime able to evaluate it would be able to do the agent's job, and a cheap approximation of it — keyword overlap between the question and the catalog, say — would fire on every question that shares a word with a row it does not need, and would push the model toward loading more, which §2.7.1 spends its length arguing against. So the runtime checks **consequences of the rule being broken**, each of which is decidable without knowing what is relevant.
+
+#### Check 1 — nothing is loaded at all
+
+With an empty active set there is no packet content in the conversation, so an answer came from the catalog, from folder names, or from pretraining. All three are the failure D3b names, and no judgement about relevance is needed to see it: if *any* row is relevant, it is unloaded.
+
+This is the floor, and it is where the reported incident sat: zero packets loaded, the whole answer taken from a row that read *"the requirement to update residential address or mobile number within 2 weeks … via EP eService"*.
+
+#### Check 2 — the answer states specifics no loaded packet contains
+
+The floor does not reach a turn that loaded *something* and answered partly from a row it did not load — the case where one of two relevant packets is missing. That case is decidable from a weaker signal: **every figure in an answer should appear in a packet the conversation is holding.**
+
+Concrete values are the right thing to check, for the same reason §6.4.0 makes them the strict half of `evalgen`'s grounding test. They are what an ungrounded answer gets wrong, what a reader acts on, and what a catalog row is most likely to have supplied — a deadline, a threshold, a fee, a processing time. When a figure in the answer appears in no loaded packet, that figure did not come from the active set.
+
+Comparison is on normalized numeric tokens, and three sources are excluded before the check runs, because each is a legitimate figure with no packet behind it:
+
+- **Figures the user supplied**, quoted back to them. Their salary is not a claim about the guidance.
+- **Today's date and anything derived from it** (§2.15.3). "You have about a week left" is arithmetic, not a citation, and blocking it would be worse than the failure it prevents.
+- **Formatting differences.** `$5,600` and `5600` are the same figure; `2 weeks` and `two weeks` are not distinguished by a numeric check at all, which is a known hole rather than a solved case.
+
+#### What both checks do when they fire
+
+The same thing, once per turn: the answer is **withheld rather than delivered**, an in-band note (`agent.grounding_nudge`) tells the model which part was unsupported and that the rule is to load the row that covers it, and the turn is re-invoked. A second pass is always allowed through, whatever it says.
+
+Three properties of that response are deliberate:
+
+- **It never refuses and never loops.** A greeting and a knowledge question are indistinguishable at this layer, and so are an arithmetic figure and a fabricated one. Yielding on the second pass caps the cost of a false positive at one round trip.
+- **It never asks for a load in general, only for the row that covers the gap.** A note that said "load something" would trade this failure for the one §2.7.1 exists to prevent.
+- **The second pass is logged at `WARN` as `agent.answer.ungrounded`.** That is the signal D3b asks an operator to watch, as a real event rather than something inferred from a zero reload count, with a `grounding_nudges` count on the turn span.
+
+**Text is withheld, not streamed and retracted.** While a turn is subject to check 1 the assistant's text is buffered rather than emitted as `assistant.delta` (§2.14.1), so a user never watches an ungrounded answer appear and then get replaced. This costs nothing on the common path: a turn that opens with a tool call streams no text at all. A client that wants to show progress gets an `assistant.withheld` event, which carries no text because the draft is being replaced rather than shown. Check 2 runs on a turn whose text may already have streamed, so it can only re-invoke and replace — which is why check 1 exists separately rather than being folded into it.
+
+#### What is left uncovered, stated plainly
+
+- **A qualitative claim with no figure in it.** "You can do this online" is unsupported in exactly the same way and passes both checks.
+- **A relevant packet nobody thought to load**, where the answer given is fully supported by what *was* loaded but incomplete because of what was not. This is the under-loading failure in its pure form, and it is invisible from inside a turn: the answer is grounded in everything present, and what is absent leaves no trace. The catalog-side defence is the only one available — a row that describes what a folder decides, rather than what it decided, gives the model no way to believe it already has the answer.
+- **The turn after a load.** Once the active set is non-empty, a row stating a deadline is still an answer sitting in the system prompt, and check 2 only catches it if the deadline is a figure the loaded packets do not contain.
+
+These checks bound the worst case. They do not make the catalog safe to answer from, and no runtime check will.
+
 ## 2.8 Error Handling
 
 | Condition | Behavior |
@@ -837,7 +934,7 @@ Concretely forbidden, each a call that produces no new knowledge:
 | Image under `assets/` unreadable | Include the packet with a placeholder text block noting the missing image; add to `errors[]`. |
 | Single requested packet exceeds `MAX_ACTIVE_TOKENS` | Return `errors[]` entry with reason prefixed `budget_exceeded:` (followed by a short detail); do not load; active set unchanged. |
 | Root `compiled.md` missing at startup | Startup failure — the agent cannot function without a catalog. |
-| Root `compiled.md` present but its `## Sub-topics` section is missing or empty while the KB has subfolders | Startup failure — the roll-up (D3a) did not run or did not complete; a partial index would silently hide branches from the agent. Re-run `hcag --force`. |
+| Root `compiled.md` present but its `## Catalog` section is missing, unterminated, or empty while the KB has content-bearing subfolders | Startup failure — the build did not run or did not complete, and a partial index silently hides folders from the agent. An unterminated section (a `BEGIN` marker with no `END`) is treated as missing rather than read to end-of-file, because a truncated write is exactly how it happens. Re-run `hcag --force`. |
 | Requested ID appears in the catalog but its `compiled.md` is absent on disk | Treated as a stale-catalog condition: `errors[]` entry with reason prefixed `stale_catalog:`; other loads proceed. Indicates the KB tree changed without a `preprocess` re-run. |
 
 ## 2.9 Component Class Diagram
@@ -905,10 +1002,10 @@ classDiagram
     class CatalogEntry {
         +string id
         +string path
+        +int depth
         +string title
-        +string short_description
         +string long_description
-        +int token_size_estimate
+        +int content_token_estimate
     }
 
     class CheckAndLoadRequest {
@@ -1005,7 +1102,7 @@ classDiagram
 | `FileSystemMemoryModule` | Concrete implementation. Composes a `KBStorage`, an `EvictionPolicy`, and a `TokenBudget`. Assembles `Packet` objects from storage-returned bytes. | §2.5, §2.6 |
 | `KBStorage` (interface) | Backing-store abstraction. The seam that lets the KB move off local disk later (D4a). | §1.9, D4a |
 | `LocalFsStorage` | Default implementation: reads catalog and packet files from a local KB root. | §2.1 |
-| `Catalog` / `CatalogEntry` | Parsed catalog and per-packet metadata for **every folder in the KB** — the root catalog is a whole-tree index (D3a), so this is a complete map keyed by packet ID, and `CatalogEntry` carries `depth`/`parent`/`kind` for tree reconstruction. `Catalog.raw_markdown()` returns the exact string for system-prompt injection. | §2.2, D3a |
+| `Catalog` / `CatalogEntry` | Parsed catalog and per-packet metadata for **every content-bearing folder in the KB** (D3a), keyed by packet ID. `CatalogEntry` carries `id`, `path`, `depth`, `title` and `long`; a parent id is the key minus its last segment, so the tree reconstructs without a stored field. `Catalog.raw_markdown()` returns the exact string for system-prompt injection. | §2.2.1, D3a |
 | `CheckAndLoadRequest` | Input DTO for `check_and_load_kb`. Carries `context`, `requested_packet_ids`, `active_packet_ids`. | §2.3.2 |
 | `Delta` | Output DTO. Contains `loaded` (new content), `evicted` (IDs only), `active_after` (authoritative), and per-packet `errors`. | §2.3.2, D6 |
 | `Packet` | A loaded packet: id, title, and an ordered list of `ContentBlock`s (metadata header text, packet markdown, and images). | §2.6 |
@@ -1043,7 +1140,7 @@ sequenceDiagram
 
     Note over R,K: BOOTSTRAP
     R->>M: get_catalog
-    M->>K: read root compiled.md (## Sub-topics section)
+    M->>K: read root compiled.md (## Catalog section)
     K-->>M: complete KB index - every folder, all depths
     M-->>R: catalog
     R->>L: init system prompt with catalog
@@ -1057,7 +1154,7 @@ sequenceDiagram
     M->>K: read billing/refunds/compiled.md
     M->>K: read billing/refunds/assets
     K-->>M: text and images
-    Note over M: elides ## Sub-topics for non-root packets<br/>index is already in the system prompt
+    Note over M: ships ## Content only<br/>the catalog lives at the root and is already in the system prompt
     M-->>L: delta
     Note over L,M: loaded = bill.refunds<br/>evicted = empty<br/>active_after = bill.refunds
     L-->>R: answer
@@ -1346,7 +1443,7 @@ The file log is the **decision log**. Its job is to make it possible to reconstr
 
 The "classify once, reuse across steps" property in §1.1 and §1.2 only pays off if the prompt prefix that the model sees stays byte-stable across turns. Concrete implementation guidance:
 
-1. **Stable system prompt.** The catalog is injected once at conversation start and does not change mid-session. If catalog re-inspection is needed, use the `get_catalog` tool (which appears as a per-turn tool result, not a system-prompt mutation). The whole-tree roll-up (D3a) makes the system prompt larger but **more** cache-friendly, not less: the index is a one-time prefix cost paid at the cache-write rate on turn one and read at ~10% thereafter, and it displaces per-level `check_and_load_kb` round trips that would each have appended a fresh, uncached tool-result block mid-conversation.
+1. **Stable system prompt.** The catalog is injected once at conversation start and does not change mid-session. If catalog re-inspection is needed, use the `get_catalog` tool (which appears as a per-turn tool result, not a system-prompt mutation). The whole-KB index (D3a) makes the system prompt larger but **more** cache-friendly, not less: it is a one-time prefix cost paid at the cache-write rate on turn one and read at ~10% thereafter, and it displaces per-level `check_and_load_kb` round trips that would each have appended a fresh, uncached tool-result block mid-conversation. The move to a table cuts that prefix substantially — a row against eight labelled lines per folder — so the cheapest turn in the system got cheaper.
 2. **Stable tool-result blocks.** A prior `check_and_load_kb` response, once emitted into history, is never rewritten. Delta semantics (D6) guarantee this — subsequent calls append new tool results rather than modifying old ones.
 3. **Deterministic packet serialization.** For a given packet ID, the module must emit byte-identical content (same metadata header, same markdown, same image ordering) across calls. Any nondeterminism (e.g., variable timestamps in headers) breaks caching.
 4. **Cache-control markers.** In runtimes that expose them (e.g., Anthropic prompt caching), mark the system prompt and each `check_and_load_kb` tool result as a cache breakpoint. Combined with (1)–(3), this yields the 90%+ token-cost reduction on subsequent reasoning steps within the same task.
@@ -1500,6 +1597,8 @@ A turn is not just text arriving in pieces. An HCAG turn *loads packets*, and wh
   "active_after": ["…employment-pass.eligibility"] }
 ```
 
+`assistant.withheld` joins them for the case in §2.7.2: an answer was drafted with no packet loaded and is being replaced. It carries no text, because the draft is never shown; a client's only use for it is a progress indicator and a debug trail, and a client that ignores it sees a turn that simply took longer.
+
 **This is deliberately the same vocabulary as the voice transcription channel (§5.7)** — `assistant.delta`, `assistant.final`, `system.*`, the monotonic `seq`, the grouping `turn_id`. One event schema, two transports: a LiveKit data channel for voice, SSE for chat. The widget renders both modes from one reducer, and a bug in delta handling is one bug rather than two. The alternative — a bespoke chat schema — would have made the widget's two modes structurally different for no reason beyond how the bytes arrive.
 
 `tool.*` events are new here and are added to §5.7's channel as well, so voice can show the same "consulting *Employment Pass eligibility*…" affordance while the packet loads. That pause is otherwise the most conspicuous silence in a voice turn.
@@ -1603,10 +1702,10 @@ That declaration is the point of the whole mechanism. An SME editing `agent/syst
 
 | Variable | Value | Notes |
 |---|---|---|
-| `$catalog` | the root `## Sub-topics` index (§2.7) | The KB's shape. Required by `agent.system`. |
+| `$catalog` | the root `## Catalog` table (§2.7) | The KB's shape. Required by `agent.system`. |
 | `$packets` | the content of any preloaded packets, concatenated | Empty unless the deployment warm-starts an active set (§5.4.1). Puts known-needed knowledge in the cached prefix instead of arriving as tool results — which is why the voice agent wants it, and why it cannot later be evicted (§2.5). |
 | `$today` | today's date, `YYYY-MM-DD` | See below. |
-| `$sections`, `$scope` | build-time summarizer inputs (§3.4.4) | |
+| `$sections` | the folder's own content, as the build-time summarizer sees it (§3.4.4) | |
 
 Operator-defined variables can be added through configuration; the registry check means an unused or misspelled one fails at startup rather than rendering as literal text in the model's context.
 
@@ -1633,11 +1732,10 @@ Every prompt the system can load is declared in one place, with its required pla
 | `agent.catalog_delimiter` | the `INDEX ONLY` block wrapping the injected catalog (D3b) | `$catalog` |
 | `tool.get_catalog` | `get_catalog` description (§1.10) | — |
 | `tool.check_and_load_kb` | `check_and_load_kb` description (§2.7.1) | — |
+| `agent.grounding_nudge` | the in-band note when an answer is withheld for having no packet loaded (§2.7.2) | — |
 | `memory.redundant_note` | the in-band note on a redundant call (§2.3.3) | `$requested` |
 | `voice.system` | voice system prompt (§5.8) | `$catalog` |
-| `preprocess.folder_metadata` | build-time folder summary (§3.4.4) | `$sections`, `$scope` |
-| `preprocess.scope_own` | scoping clause for a leaf/mixed folder (§3.4.4) | — |
-| `preprocess.scope_branch` | scoping clause for a taxonomy node (§3.4.4) | — |
+| `preprocess.folder_metadata` | build-time folder summary (§3.4.4) | `$sections` |
 | `evalgen.answer_rules` | the completeness standard every kind injects (§6.4.0) | — |
 | `evalgen.persona_framing` | the asking role every kind injects (§6.4.6) | `$persona_name`, `$persona_description` |
 | `evalgen.simple` | FAQ-style question (§6.4.1) | `$content`, `$answer_rules`, `$persona_framing` |
@@ -1677,7 +1775,7 @@ The three `eval.*` prompts are also the clearest demonstration of why `Template`
 
 `hcag` is a command-line tool that transforms a **raw KB folder tree** — where subject-matter experts have dropped `.md` files and images according to a taxonomy of their choosing — into a **normalized KB** that the runtime memory module (Part 2) can serve directly. It standardizes:
 
-- The **format** of `compiled.md` — the single per-folder artifact that carries both this level's own content and a rolled-up catalog of this folder's entire subtree (D3a).
+- The **format** of `compiled.md` — the single per-folder artifact carrying this level's own content, and, at the root, the KB's one catalog table (D3a).
 - The **metadata schema** each catalog entry must carry (id, path, title, short/long description, token estimate).
 - The **layout** of every folder's assets (`compiled.md` + `assets/`).
 
@@ -1727,7 +1825,7 @@ A single subcommand does the full build in one pass:
 
 | Command | Purpose |
 |---|---|
-| `hcag <root>` | Preflights the LLM (§3.4.9) and aborts before touching the tree if it is unusable, then walks the tree in **DFS post-order**. At every folder — leaf, taxonomy node, or mixed — assembles one `compiled.md` that concatenates a catalog section with the folder's own source content. Images are copied into a per-folder `assets/`. The recursion bubbles each folder's summary **and its already-assembled subtree index** up to its parent, so every level's catalog covers its entire subtree rather than one level down (D3a, §3.4.4). The root folder's `compiled.md` is written on the way back out and carries the complete KB index — no separate aggregate pass needed. |
+| `hcag <root>` | Preflights the LLM (§3.4.9) and aborts before touching the tree if it is unusable, then walks the tree in **DFS post-order**. At every folder — leaf, taxonomy node, or mixed — assembles one `compiled.md` carrying that folder's own source content in a delimited `## Content` section. Images are copied into a per-folder `assets/`. Each content-bearing folder is summarized once, from its own content alone, and contributes one catalog row; the recursion returns those rows upward and the root renders them as the KB's single `## Catalog` table (D3a, §3.4.4). No separate aggregate pass needed. |
 
 **`hcag` takes no subcommand.** Building a KB is the only thing this CLI does, so a `preprocess` verb would be a word every invocation had to carry and no invocation could vary. It was there when a second command (`aggregate`) existed; that command is gone (§3.5), and the verb went with it. Flags still scope a run — `--only`, `--force`, `--allow-partial` — which is the axis that actually varies.
 
@@ -1742,12 +1840,9 @@ A single subcommand does the full build in one pass:
 
 ### 3.4.1 DFS traversal
 
-The tool walks the tree with a **depth-first, post-order** traversal — children before parents, siblings in alphabetical order for determinism. The recursion's return value is what makes the whole design work, and it carries **two** things:
+The tool walks the tree with a **depth-first, post-order** traversal — children before parents, siblings in alphabetical order for determinism. The recursion returns one thing: the flat, DFS-pre-ordered list of catalog rows for the folder and everything beneath it.
 
-1. the folder's own *summary record* (id, title, short + long description, kind, token estimates), and
-2. the folder's **subtree index** — the flat, DFS-pre-ordered list of records for every folder beneath it, which that folder just finished assembling from its own children's returns.
-
-A parent therefore receives, from each child, not just "here is my summary" but "here is my summary **and everything underneath me**". It re-parents those inherited records (incrementing `depth`, prefixing `path`), splices them in after the child's own record, appends its own contributions, and renders the result as its `## Sub-topics` section. Applied recursively, the index grows as the recursion unwinds and reaches its full size exactly at the root — which is why the root's `compiled.md` ends up holding a catalog of the entire KB (D3a). This is what lets one pass do the whole job — the old bottom-up `preprocess` step used to prepare per-level intermediates that a separate top-down `aggregate` step then rolled up; the DFS return channel replaces the intermediate handshake.
+A parent concatenates what its children returned, prepends its own row if it has content of its own, and hands the result up. Nothing is re-parented, because ids and paths are absolute from the KB root (§3.4.5) and were already correct when the row was created. Nothing is re-summarized, because a row's `long` came from that folder's own content and no ancestor has anything to add to it. The list reaches its full size at the root, which renders it as the single `## Catalog` table (D3a) — every intermediate folder writes only its own `## Content`.
 
 Pseudocode. Note `preflight()` outside the recursion — the LLM is proven usable
 before the walk begins, not discovered to be broken partway up it (§3.4.9):
@@ -1755,39 +1850,39 @@ before the walk begins, not discovered to be broken partway up it (§3.4.9):
 ```
 def preprocess(root):
     preflight(llm)          # one probe call; raises and exits non-zero on failure
-    process(root, 0)        # nothing above has written a byte until this line
-
+    rows = process(root, 0) # nothing above has written a byte until this line
+    write_root_catalog(root, rows)
 
 def process(folder, depth_from_root):
-    subtree = []                                     # flat, DFS pre-order
+    rows = []                                        # flat, DFS pre-order
+
+    own_content = assemble_own_content(folder)       # concat source .md + copy images
+
+    if own_content:
+        # One LLM call, and only for a folder that has text of its own. The
+        # summarizer sees this folder's content and nothing else (§3.4.4).
+        summary = summarize(folder, own_content)
+        rows.append(row(id=folder.id, path=folder.path_from_root,
+                        depth=depth_from_root, title=summary.title,
+                        long=summary.long_description))
+    else:
+        # A pure waypoint. No call, no description, no row (D3a).
+        summary = mechanical_summary(folder)         # title from the folder name
 
     for sub in sorted(folder.subdirs):
-        child_summary, child_subtree = process(sub, depth_from_root + 1)
+        rows.extend(process(sub, depth_from_root + 1))
 
-        # (a) the child itself becomes a depth-1 entry of this folder
-        subtree.append(entry(child_summary, depth=1,
-                             parent=folder.id, path=sub.name + "/"))
-
-        # (b) everything the child indexed is re-parented one level deeper
-        #     and spliced in right after it, preserving pre-order
-        for rec in child_subtree:
-            subtree.append(rebase(rec, depth_delta=+1,
-                                  path_prefix=sub.name + "/"))
-
-    own_content     = assemble_own_content(folder)   # concat source .md + copy images
-    summary         = summarize(folder, [e for e in subtree if e.depth == 1])
-    catalog_section = render_catalog(subtree)        # WHOLE subtree, not just depth 1
-    write_compiled_md(folder, summary, catalog_section, own_content)
-
-    return summary, subtree                          # bubble both up to the parent
+    write_compiled_md(folder, summary, own_content)  # content section only
+    return rows
 ```
 
-Two properties follow from `rebase` being a pure coordinate shift:
+Three properties follow, and each was a cost in the design this replaces:
 
-- **`id` is invariant.** IDs are absolute dotted paths from the KB root (§3.4.5), so an entry's `id` is identical in every ancestor's catalog. Only `depth`, `parent`, and the relative `path` are rewritten as the record climbs. The agent can copy an ID straight out of the root catalog into `check_and_load_kb`.
-- **Each folder's LLM summary is computed once**, from its own content plus its **immediate** children's `long_description`s (§3.4.4) — the roll-up copies records, it does not re-summarize. Cost stays O(folders) LLM calls, exactly as before; only the rendering step grows.
+- **One LLM call per content-bearing folder**, not per folder. A KB whose tree is mostly waypoints — which is what a crawled site's path structure produces — gets materially cheaper to build.
+- **`id` and `path` are computed once.** They are absolute from the KB root, so there is no rebase step and no coordinate arithmetic to get wrong as records climb.
+- **The catalog is written once, at the root.** Intermediate folders no longer render an index, so the `N × D` duplication on disk is gone along with the possibility of an ancestor's copy disagreeing with the root's.
 
-The root folder is the outermost call — its `compiled.md` is written last, and its catalog section is the accumulated index of every folder in the tree, alongside any root-level own content. There is no separate "root catalog" file.
+Pre-order is preserved by construction: a folder's own row is appended before it recurses into its children, so a parent is always immediately followed by its subtree, and siblings follow alphabetical order.
 
 ### 3.4.2 Per-folder classification
 
@@ -1796,12 +1891,14 @@ For each folder `F` encountered:
 1. Let `has_md = any .md file directly in F (excluding generated compiled.md)`
 2. Let `has_subdirs = any subdirectory of F`
 3. Classify:
-   - `has_md AND NOT has_subdirs` → **leaf**: `compiled.md` has content only (catalog section is empty — a leaf has no subtree to index).
-   - `has_subdirs AND NOT has_md` → **taxonomy node**: `compiled.md` has catalog section only (own-content section is empty). The catalog covers the node's whole subtree, not just its immediate children.
-   - `has_md AND has_subdirs` → **mixed**: `compiled.md` has both sections.
+   - `has_md AND NOT has_subdirs` → **leaf**: `compiled.md` has a `## Content` section. Summarized, and gets a catalog row.
+   - `has_subdirs AND NOT has_md` → **taxonomy node**: `compiled.md` is front-matter only. Not summarized — no LLM call — and no catalog row (D3a).
+   - `has_md AND has_subdirs` → **mixed**: same as a leaf. Its children are separate folders with rows of their own; being a parent changes nothing about how this folder is described.
    - Neither → skip with WARN.
 
-The classification decides which sections of `compiled.md` are populated; every folder in the first three cases gets exactly one `compiled.md`.
+Every folder in the first three cases gets exactly one `compiled.md`. The classification now decides two things — whether a `## Content` section exists, and whether the folder costs an LLM call and earns a catalog row — where it used to also decide which of two summarizer prompts ran. That second prompt is gone: a node is not summarized at all (§3.4.4).
+
+The root is classified like any other folder, with one addition: it always writes the `## Catalog` section, whether or not it has content of its own.
 
 ### 3.4.3 `compiled.md` assembly
 
@@ -1819,7 +1916,7 @@ For every folder that classifies as leaf, taxonomy node, or mixed, produce one `
 
    3. **Then anything unmentioned, alphabetically.** A page the index does not link to still belongs to the packet — it was crawled from somewhere — and appending it in a deterministic order keeps the build reproducible.
 
-   Slugs naming something that is not a source file in this folder are skipped: links resolving outside the folder, and links to subdirectories, which are child *packets* described in `## Sub-topics` (§3.4.4) rather than sources for this one. A sidecar is never trusted blindly — an entry that does not match a file present now is ignored, so an edited tree cannot make the build fail or reference a missing source.
+   Slugs naming something that is not a source file in this folder are skipped: links resolving outside the folder, and links to subdirectories, which are child *packets* with catalog rows of their own (§3.4.4) rather than sources for this one. A sidecar is never trusted blindly — an entry that does not match a file present now is ignored, so an edited tree cannot make the build fail or reference a missing source.
 
    **When there is no `index.md`** — a folder of flat pages whose own URL was never crawled, or a hand-authored KB folder — the order falls back to lexicographic, exactly as before. The rule adds an ordering signal where one exists; it does not require one.
 
@@ -1830,18 +1927,18 @@ For every folder that classifies as leaf, taxonomy node, or mixed, produce one `
    **Ordering is a preference, never a requirement.** Every stage degrades rather than fails: no sidecar falls back to the index's own links, no links falls back to alphabetical, no `index.md` falls back to alphabetical. A folder always has a deterministic order, so a build is always reproducible; what changes is whether that order is the site's editorial sequence or an artifact of slug spelling.
 2. **Copy all images** at this folder's own level (referenced or not — see §3.4.6) into `F/assets/`. The originals are left in place. Rewrite every image reference in the concatenated content to `assets/<filename>`.
 3. **Compute the folder's summary record** (via LLM per §3.4.4). This is the record that `process()` returns to the parent's DFS call so the parent's catalog section can render an entry for this folder.
-4. **Emit `compiled.md`** with the shape below. The header carries the folder's own metadata; the `## Sub-topics` section carries the rolled-up catalog of the folder's **entire subtree** (§3.4.4); the `## Content` section carries the concatenated source markdown.
+4. **Emit `compiled.md`** with the shape below. The front-matter carries the folder's own metadata; the `## Content` section carries the concatenated source markdown; the root additionally carries the `## Catalog` table. Both sections are wrapped in machine-readable delimiters (D3) so a source document containing a heading called "Content" cannot be mistaken for the section boundary.
+
+   A content-bearing folder, mid-tree:
 
    ```markdown
    <!-- HCAG:COMPILED id=billing -->
    ---
    id: billing
    title: <LLM-generated title for this level>
-   short_description: <LLM-generated one-liner>
-   long_description: <LLM-generated 2–4 sentences>
+   long_description: <LLM-generated 2-4 sentences about THIS folder's content>
    token_size_estimate: <computed on the whole assembled compiled.md + image count>
    content_token_estimate: <## Content + images only — the runtime budgeting figure>
-   catalog_token_estimate: <## Sub-topics only>
    kind: mixed            # leaf | node | mixed
    source_files:
      - overview.md
@@ -1855,45 +1952,7 @@ For every folder that classifies as leaf, taxonomy node, or mixed, produce one `
 
    # <title>
 
-   <short_description>
-
-   ## Sub-topics
-
-   #### Tree
-
-   - `billing.refunds` — Refund Processing
-     - `billing.refunds.chargebacks` — Chargebacks
-   - `billing.invoices` — Invoice Generation
-
-   #### `billing.refunds`
-   - **path**: `refunds/`
-   - **depth**: 1
-   - **parent**: `billing`
-   - **kind**: mixed
-   - **title**: Refund Processing
-   - **short**: How refunds are issued, states, and edge cases.
-   - **long**: Covers the full refund lifecycle…
-   - **tokens**: 3420
-
-   #### `billing.refunds.chargebacks`
-   - **path**: `refunds/chargebacks/`
-   - **depth**: 2
-   - **parent**: `billing.refunds`
-   - **kind**: leaf
-   - **title**: Chargebacks
-   - **short**: Network chargeback codes, evidence packages, and deadlines.
-   - **tokens**: 1960
-
-   #### `billing.invoices`
-   - **path**: `invoices/`
-   - **depth**: 1
-   - **parent**: `billing`
-   - **kind**: leaf
-   - **title**: Invoice Generation
-   - **short**: …
-   - **long**: …
-   - **tokens**: 2810
-
+   <!-- HCAG:CONTENT BEGIN -->
    ## Content
 
    <content of overview.md, image refs rewritten to assets/…>
@@ -1901,45 +1960,69 @@ For every folder that classifies as leaf, taxonomy node, or mixed, produce one `
    ---
 
    <content of glossary.md, image refs rewritten to assets/…>
+   <!-- HCAG:CONTENT END -->
    ```
 
-   Note `billing.refunds.chargebacks` — a **grandchild** — appearing in `billing`'s catalog at `depth: 2`, spliced immediately after its parent, with `long` omitted because it sits below `catalog.long_depth`. The same record appears again in the root's catalog, unchanged in `id` and `parent` but with `depth: 3` and `path: billing/refunds/chargebacks/`.
+   The root, which additionally carries the catalog:
 
-   For a pure leaf (no subfolders), the `## Sub-topics` section is omitted. For a pure taxonomy node (no own `.md`), the `## Content` section is omitted. Frontmatter `kind` reflects the classification.
+   ```markdown
+   <!-- HCAG:COMPILED id=_root -->
+   ---
+   id: _root
+   title: <KB title>
+   token_size_estimate: …
+   content_token_estimate: …
+   catalog_token_estimate: <## Catalog only — the bootstrap injection size>
+   kind: node
+   children:
+     - billing
+     - auth
+   descendants: 12
+   subtree_depth: 3
+   ---
+
+   # <title>
+
+   <!-- HCAG:CATALOG BEGIN -->
+   ## Catalog
+
+   | id | path | depth | title | long |
+   |---|---|---|---|---|
+   | `billing` | `billing/` | 1 | Billing Overview | … |
+   | `billing.refunds` | `billing/refunds/` | 2 | Refund Processing and States | … |
+   | `billing.refunds.chargebacks` | `billing/refunds/chargebacks/` | 3 | Network Chargeback Handling | … |
+   | `auth.sso.saml` | `auth/sso/saml/` | 3 | SAML Configuration | … |
+   <!-- HCAG:CATALOG END -->
+   ```
+
+   Note what is absent. The root above has no `long_description`, because it has no content of its own to describe. `auth` and `auth.sso` have no rows, for the same reason — they are waypoints, and the tree beneath them is still fully legible from the fourth row's `path`. A pure taxonomy node's `compiled.md` is front-matter and a title, nothing more.
+
+   **Table cells are escaped, not truncated.** A `long_description` is prose and will contain `|`; it is escaped as `\|`, and any newline inside it becomes a space. The description is not shortened to fit the column — a table that quietly drops the second half of a description would reintroduce, as a rendering detail, exactly the information loss D3a exists to remove.
 
 4a. **Carry provenance forward.** Read the folder's `.hcag-crawl.json` (§4.5.3) and record each source file's and image's origin URL in front-matter. `preprocess` does not fetch, verify, or rewrite these — it copies what `crawl` observed, so provenance stays a fact about the fetch rather than a claim made at build time. A missing sidecar is not an error: the fields are simply absent, and everything downstream degrades to empty (§6.7.1).
 
 5. **Preserve the original source files.** After assembly, the source `.md` files and the original image files remain untouched at their locations; they are the KB team's authoring surface and the source of truth for future re-runs. `compiled.md` and everything under `assets/` are derived artifacts. On the next `hcag --force`, the sources are re-read and both are regenerated.
-6. **Compute token size estimates** using a configured tokenizer (see §3.6) and store all three in front-matter: `content_token_estimate` (the `## Content` section + image count), `catalog_token_estimate` (the `## Sub-topics` section), and `token_size_estimate` (the whole file + images). The split exists because the runtime budgets against `content_token_estimate` — the catalog section is elided when a non-root packet is served (§2.6) — while `catalog_token_estimate` is what the build reports and what `catalog.max_depth` tuning targets.
-7. **Return the folder's summary *and its subtree index*** to the DFS caller (§3.4.1), so the parent can both render its own entry for this folder and inherit everything this folder indexed.
+6. **Compute token size estimates** using a configured tokenizer (see §3.6) and store them in front-matter: `content_token_estimate` (the `## Content` section + image count) and `token_size_estimate` (the whole file + images), plus `catalog_token_estimate` at the root. The runtime budgets against `content_token_estimate` (§2.5); `catalog_token_estimate` is what the build reports, because it is the size of the system-prompt injection every conversation pays for.
+7. **Return this folder's catalog rows** — its own, if it has content, followed by everything its children returned — to the DFS caller (§3.4.1). The root writes the accumulated list as the KB's one catalog.
 
-### 3.4.4 Catalog section content (subtree roll-up)
+### 3.4.4 Descriptions and the catalog table
 
-The `## Sub-topics` section is what makes a folder's `compiled.md` navigate-able. Its content is the **subtree index** returned by the DFS recursion (§3.4.1) — one entry per descendant folder **at every depth**, not one entry per immediate child. At the root that means one entry per folder in the KB.
+Two things are produced here: the `long_description` of each content-bearing folder, and the one table that indexes them.
 
-**Entry composition.** Every entry carries the same fields regardless of the descendant's classification or depth: `id`, `path`, `depth`, `parent`, `kind`, `title`, `short`, `tokens`, and `long` when within `catalog.long_depth`. Entries are emitted in DFS pre-order — each folder immediately followed by its own subtree, siblings alphabetical — so the flat list reads as an outline and `depth`/`parent` reconstruct the tree exactly.
+**A folder is described from its own content and nothing else.** The summarizer's entire input is the folder's concatenated `## Content`. Not its children's descriptions, not its parent's, not its siblings'. A folder with no content of its own is not summarized at all — no LLM call is made, no description is written, and it gets no row (D3a).
 
-**Re-parenting on the way up.** When a folder inherits its child's subtree index, each inherited record is rebased against the new catalog owner: `depth += 1`, `path` gains the child's folder name as a prefix, and `parent` is left alone (it already names the record's true parent by absolute ID). `id` never changes — it is absolute from the KB root (§3.4.5) — which is what makes an ID copied from the root catalog directly usable in `check_and_load_kb`. `short`, `long`, `title`, `kind`, and `tokens` are copied verbatim from the record the child produced.
+This is the change that section exists to record, so it is worth stating what it removed rather than only what it does now. The previous build fed each folder its **immediate children's `long_description`s** alongside its own content, and re-indexed every subtree at every level. It failed in two directions at once:
 
-**Summaries are still generated once per folder, from one level.** The folder's own `title`, `short_description`, and `long_description` — the fields every ancestor's catalog entry for this folder will reuse — are **LLM-generated** from the concatenation of:
+- **Summaries of summaries lost the thing that routes.** Compression iterated with depth: a branch about *"SAML assertion mapping, certificate rotation, and IdP metadata exchange"* reached the root as *"authentication settings"*. Detail discarded at one level could not be recovered at the next, and the descriptions nearest the root — the ones an agent reads first — were the most degraded in the file.
+- **A folder with no text got a description anyway.** A pure taxonomy node has nothing to summarize, so the model wrote from child summaries and a folder name, and produced confident specifics about documents it had never seen. Those went into the system prompt, where they read exactly like source material.
 
-- this folder's own content (if any), and
-- the **`long_description`s** of its **immediate** children (if any).
-
-**A folder's description must describe that folder's own content.** The scoping differs by kind, and the difference is load-bearing:
-
-- **`leaf` / `mixed`** — describe what *this* folder's `## Content` says. Children's descriptions are supplied as context, so the summarizer can tell what kind of branch it is looking at, but their **specifics must not be borrowed**. If the folder's own content *defines* a rule, threshold, or definition, the description says so, because that is what callers route on — but a rule the content merely **invokes** is not defined here (see "aboutness, not coverage" below).
-- **`node`** — a waypoint with no content of its own, so its children are all there is to describe. Summarize across them; the result must characterize the whole branch rather than its first or largest child.
-
-**Why a parent must not advertise its children's contents.** Before the subtree roll-up (D3a), it had to: a one-level catalog was the only way an agent could guess what lay below, so a parent's description doubled as a table of contents. After D3a every descendant has its own entry in the same catalog, so that duplication buys nothing — and it costs precision. A parent's entry that names its children's particulars matches questions its own `## Content` cannot answer, and it is often the *stronger* lexical match, because particulars are what queries contain.
-
-Observed on a real KB: an `…employment-pass.eligibility` folder whose description absorbed a child's *"sector-specific salary benchmark tables"* pulled the agent to that child — whose description named the query's terms *Insurance* and *45+* verbatim — and away from the parent, which held the qualifying-salary floor that actually decided the question and which the child does not contain. The catalog was describing the branch accurately and routing to it wrongly.
+Removing children from the summarizer's input fixes both by construction, and it also retires a whole class of prompt engineering. The old design needed an explicit rule that *a parent must not advertise its children's contents*, because a parent's entry that names a child's particulars is often the **stronger** lexical match — particulars are what queries contain — so the parent captured questions only the child could answer. Observed on a real KB: an `…employment-pass.eligibility` folder whose description had absorbed a child's *"sector-specific salary benchmark tables"* pulled the agent to that child, which named the query's terms *Insurance* and *45+* verbatim, and away from the parent, which held the qualifying-salary floor that actually decided the question. A summarizer that cannot see its children cannot borrow from them.
 
 #### Aboutness, not coverage
 
-The same failure has a second form, and it does not involve borrowing from a child at all. A folder's own content names topics the folder does not cover: it cites neighbouring rules, defers to definitions held elsewhere, and links out for detail. Those mentions are real text, so a summarizer asked what the folder contains reports them — accurately, and destructively.
+One failure survives the change, because it never involved children. A folder's own content names topics the folder does not cover: it cites neighbouring rules, defers to definitions held elsewhere, and links out for detail. Those mentions are real text in the folder, so a summarizer asked what the folder contains reports them — accurately, and destructively.
 
-Observed on the same KB, after the fix above. `…eligibility.compass-c1-salary-benchmarks` is 47 KB of COMPASS sector benchmark tables. Two bullets in it read *"candidates who do not meet the EP qualifying salary will not be eligible for an EP, regardless of the points they would have scored under C1"* and *"EP candidates earning at least $22,500 are exempted from COMPASS"* — both hyperlinked to the **parent** `eligibility` folder, which is where the qualifying-salary tables live. The generated `short_description` came out as *"Sector-specific salary benchmarks (65th & 90th percentile) by age for COMPASS C1 scoring, **with rules on EP qualifying salary and exemptions**."*
+Observed on the same KB. `…eligibility.compass-c1-salary-benchmarks` is 47 KB of COMPASS sector benchmark tables. Two bullets in it read *"candidates who do not meet the EP qualifying salary will not be eligible for an EP, regardless of the points they would have scored under C1"* and *"EP candidates earning at least $22,500 are exempted from COMPASS"* — both hyperlinked to the **parent** `eligibility` folder, which is where the qualifying-salary tables live. The generated description came out as *"Sector-specific salary benchmarks (65th & 90th percentile) by age for COMPASS C1 scoring, **with rules on EP qualifying salary and exemptions**."*
 
 Every word of that is true. The packet does state rules that mention EP qualifying salary and exemptions. And a question about EP qualifying salary by sector, age and renewal timing then loaded `compass-c1-salary-benchmarks`, `key-facts` and `renew-a-pass` — none of which contains the qualifying-salary table, the age schedule, or the 1 Jan 2027 timing rule — while `eligibility`, which contains all three, was not loaded at all.
 
@@ -1949,40 +2032,46 @@ Every word of that is true. The packet does state rules that mention EP qualifyi
 - A passing mention cannot keep that promise. The reader arrives with the question unanswered and, worse, no signal they are in the wrong place — a pointer reads as an answer that is merely brief.
 - The operative test is therefore not "is this in the text" but **"would someone opening this folder for that topic find the answer here, or only a pointer elsewhere?"** Only the first belongs in the description.
 
-**Cross-references to a parent or sibling are the common case and the most costly.** A child folder naturally cites its parent's subject — that is what makes it a child. Surfacing that citation names precisely the topic that should have routed to the *other* folder, and the two entries then compete, with the child advertising a subject the parent holds. Where a reference is genuinely important context it is phrased as the pointer it is ("notes that the X gate applies, defined under `<folder>`"), so a router can tell direction from possession.
+**Cross-references to a parent or sibling are the common case and the most costly.** A child folder naturally cites its parent's subject — that is what makes it a child. Surfacing that citation names precisely the topic that should have routed to the *other* folder, and the two rows then compete, with the child advertising a subject the parent holds. Where a reference is genuinely important context it is phrased as the pointer it is ("notes that the X gate applies, defined under `<folder>`"), so a router can tell direction from possession.
+
+#### When the whole document is pointers
+
+The rule above assumes a document that mostly holds content and cites a neighbour in passing. A hub page is the other shape: an index that introduces a topic and then lists its sub-topics, each with a line of summary and a link. Every sentence in it is a pointer, so there is no passing reference to exclude — excluding them all would leave nothing.
+
+Observed on the same KB, and it is what routed the incident in §2.7.1 to the wrong folder. `…passes-and-permits.employment-pass` is a `mixed` folder with nine children whose own content is the Employment Pass index page: 24 kB with an outbound link every 530 characters, structured as section titles each followed by a one-line summary. Summarized faithfully, it came out as *"Covers the full lifecycle of Singapore's Employment Pass: what it is … fair-consideration and job-advertising requirements … family passes … appealing a rejected application … cancelling a pass …"*. That description names nine subjects and decides none of them, and it reads like the most complete row in the catalog. An agent asked about a rule belonging to one of those nine goes there and finds a pointer.
+
+**Removing children from the summarizer's input does not help here, which is why this needs its own rule.** D3a's fix stopped a parent borrowing from its children's *descriptions*. A hub's problem is that the children's topics are in the parent's **own text**, so the summarizer is reporting what it was given, accurately, exactly as instructed.
+
+The instruction added: when the supplied content is mostly headings and links, describe what the folder **is** — the starting point for a topic, listing the sub-topics that cover it — and name those sub-topics as what lies elsewhere rather than as subjects this folder covers. Describe whatever small amount it decides on its own, and stop. A hub decides nothing, and its row should make that plain to something choosing where to look.
 
 **Proportion is part of accuracy here.** Two sentences out of 47 KB were given the same billing as the document's entire subject. A description weights what it names by how much of the folder is devoted to it; a passing caveat must not read like a co-equal subject.
 
 **Titles carry lexical signal and are chosen accordingly.** In the same incident `eligibility` was titled *"Employment Pass Eligibility & COMPASS Framework"* — containing neither "salary" nor "renewal" — while its sibling's title read *"COMPASS C1 Salary Benchmarks by Sector"*. The folder holding the answer advertised none of the query's terms and the folder deferring it advertised two. A title leads with what the folder is about, in the words a reader would search for, rather than the section heading it happened to sit under.
 
-For a leaf folder the summary is drawn from the folder's own content alone. For a taxonomy node it is drawn from the children's long descriptions alone. For a mixed folder it is drawn from its own content, with the children as framing only. This bubble-up logic gives every level's summary meaningful prose — the root's `compiled.md` describes the KB in aggregate; a mid-tree folder describes what it itself holds; a leaf describes itself. Crucially, the *summarization* still looks one level down while the *index* rolls up the whole subtree: LLM cost stays at one call per folder, and the roll-up is pure record copying.
+**Length is not trimmed to fit the table.** A `long_description` runs two to four sentences and is written to discriminate, not to be short; the table escapes it rather than shortening it (§3.4.3). Trimming for layout would reimpose, one character at a time, the loss this section removed.
 
-**Bubble up the long description, not the short one.** The input to a parent's summarizer is each child's `long_description` — the multi-sentence one — never its `short_description`. This is the single most consequential prompt-input choice in the build, because summarization is *iterated*: the root's description is a summary of summaries of summaries, and whatever is discarded at one level can never be recovered at the next.
+#### Rendering the table
 
-A `short_description` is a one-line label. Feeding a parent nothing but its children's one-liners means the parent summarizes labels rather than content, and the loss compounds with depth: by the time it reaches the root, a branch that is genuinely about "SAML assertion mapping, certificate rotation, and IdP metadata exchange" has been flattened through two or three lossy hops into "authentication settings". The root description — the first prose the agent reads about the KB — ends up generic exactly where it most needs to discriminate. The `long_description` is the field written to be substantive (§2.2: "used by the LLM when deciding whether to load this folder"), so it is the right thing to summarize from; the parent's summarizer does the compressing, rather than compounding a compression that already happened.
-
-The cost is bounded and paid at build time only. A parent's prompt grows from ~1 line to ~3–4 sentences per immediate child — a fan-out of 10 means a few thousand tokens of input on one call, not an extra call, and the count stays at one LLM call per folder (§3.4.1). Only *immediate* children contribute: the roll-up copies records rather than re-summarizing them, so a parent's prompt scales with its fan-out, never with the size of its subtree. `catalog.long_depth` (§3.6) governs which entries carry a `long` in the **rendered** catalog and has no bearing on this — a child's `long_description` is always available to its parent's summarizer, even when that child's rendered entry will be trimmed to `short` in some ancestor's `## Sub-topics` section.
-
-**Tree outline.** With `catalog.include_tree` on (§3.6, default), the section opens with a `#### Tree` block — the same records rendered as an indented `id — title` outline, nothing else. It costs roughly one short line per descendant and gives the model the shape of the branch before it reads any prose, which is what makes a several-hundred-entry root catalog scannable rather than a wall of records.
+The root renders the accumulated rows (§3.4.1) as a single Markdown table: `id`, `path`, `depth`, `title`, `long`, in DFS pre-order. `id` is fenced in backticks so it can be copied straight into `check_and_load_kb`; `path` likewise. `|` inside a description is escaped and newlines become spaces, so one malformed description cannot break the table for every row after it.
 
 #### Sizing model
 
-A whole-subtree index is the design's main cost, and it is worth stating concretely. Let `N` be the number of folders in the KB and `D` its depth.
+Let `N` be the number of content-bearing folders in the KB — note that this is folders with content, not folders.
 
-- **Per-entry size.** A `short`-only entry (`id`, `path`, `depth`, `parent`, `kind`, `title`, `short`, `tokens`) runs roughly 60–90 tokens. Adding `long` roughly triples it. The tree outline adds ~10 tokens per entry.
-- **Root catalog.** ≈ `N × 75` tokens for the entries, plus `N × 10` for the outline, plus the `long` surcharge on the entries within `long_depth`. A 200-folder KB with `long_depth = 1` and 8 top-level branches lands around 18–20k tokens — a large but entirely ordinary system prompt, paid once and then served from prompt cache (§2.12).
-- **Total on disk.** Because every ancestor re-indexes its descendants, catalog text across the whole KB is ≈ `N × D × 75` tokens rather than `N × 75`. This is disk and build cost, not context cost: the runtime elides `## Sub-topics` on every non-root load (§2.6), so no agent ever pays for the duplication.
-- **Build cost is unchanged.** One LLM call per folder, exactly as before. The roll-up adds only string assembly.
+- **Per-row size.** A row is `id`, `path`, `depth`, `title` and a two-to-four-sentence `long`: roughly 70-110 tokens, dominated by the description. The old block form spent the same on the description plus eight labelled lines of scaffolding around it.
+- **Root catalog.** ≈ `N × 90` tokens. A 200-folder KB whose folders are mostly content lands around 18k tokens; the same KB crawled from a site, where more than half the folders are path waypoints, lands nearer 8k — those folders now cost nothing at all.
+- **Total on disk.** ≈ `N × 90` tokens, once. The previous design paid `N × D` because every ancestor re-indexed its descendants.
+- **Build cost.** One LLM call per content-bearing folder, down from one per folder.
 
-Three knobs bound the context cost when a KB is unusually large or deep (all in §3.6):
+There is one knob rather than four, in §3.6:
 
 | Knob | Effect |
 |---|---|
-| `catalog.long_depth` (default `1`) | Depth at and above which entries carry `long`. Lower it to `0` on very wide KBs to make the root index `short`-only. |
-| `catalog.max_depth` (default unlimited) | Caps roll-up depth. At `max_depth = 2` the root indexes two levels and the agent falls back to loading a node to see deeper — recovering the old one-level behavior as a degraded mode for KBs too large to index whole. |
-| `catalog.include_tree` (default `true`) | Emits the `#### Tree` outline. |
+| `catalog.warn_tokens` (default `40000`) | WARN at build time if the root catalog exceeds this. Advisory — what counts as too large depends on the runtime's context window. |
 
-`hcag` logs `catalog_token_estimate` for the root at INFO on every run (§3.9), so a KB that is outgrowing its budget is visible at build time rather than at the first agent turn.
+`catalog.long_depth`, `catalog.max_depth`, `catalog.include_tree` and `catalog.strip_subtopics_on_load` are **gone**. The first two traded description quality for size, which is the trade this revision refuses to make — a truncated catalog routes badly and says nothing about it. The third rendered a tree outline that the table's DFS order and `path` column now provide for free. The fourth configured an elision the runtime no longer performs (§2.6).
+
+`hcag` logs the root's `catalog_token_estimate` at INFO on every run (§3.9), so a KB outgrowing its budget is visible at build time rather than at the first agent turn.
 
 ### 3.4.5 Packet ID scheme
 
@@ -1997,7 +2086,7 @@ Because there is now only one artifact per folder, the historical collision betw
 
 **Rationale:** Human-readable, stable as long as folder names are stable, computable without any state. Changing folder names is a deliberate ID-change operation.
 
-IDs being **absolute from the KB root** is also what makes the catalog roll-up (D3a) work cleanly: a record's `id` is byte-identical in every ancestor's catalog, so the ID the agent reads in the root's whole-KB index is exactly the ID `check_and_load_kb` resolves — no rebasing, no path arithmetic at either end. Only `depth` and the relative `path` are rewritten as a record climbs.
+IDs being **absolute from the KB root** is what lets the catalog be assembled by concatenation (D3a): a row is created once, at the folder it describes, with its final `id` and `path` already correct, and it travels up the recursion unchanged. The ID the agent reads in the catalog is byte-identical to the one `check_and_load_kb` resolves — no rebasing, no path arithmetic at either end. It is also why the table needs no `parent` column: a parent id is the key minus its last segment.
 
 ### 3.4.6 Asset policy
 
@@ -2011,7 +2100,7 @@ IDs being **absolute from the KB root** is also what makes the catalog roll-up (
 Default: **skip folders that already contain a generated `compiled.md`** (identified by the `<!-- HCAG:COMPILED -->` marker). This protects re-runs from clobbering hand-edits.
 
 - `--force` regenerates unconditionally.
-- `--only <subpath>` restricts preprocessing to a subtree — useful for iterating on one branch. Ancestors above the subpath are still re-emitted at the end of the run so their catalog sections pick up the changed summaries; the DFS traversal handles this naturally. With whole-subtree roll-up this re-emission is **mandatory, not an optimization**: a change anywhere in a branch alters the catalog of every ancestor up to and including the root, so `--only` re-renders (though does not re-summarize, and does not re-call the LLM for) the full ancestor chain. Skipping it would leave the root index stale and the agent unable to see the edited leaf.
+- `--only <subpath>` restricts preprocessing to a subtree — useful for iterating on one branch. The **root** is still re-emitted at the end of the run, because a change anywhere alters one or more catalog rows and the root holds the only copy of them. Re-emission is a re-render, not a re-summarize: rows for folders outside the subpath are read from their existing front-matter and no LLM call is made for them. Skipping it would leave the catalog stale and the agent unable to see the edited folder. Intermediate ancestors need no re-emission at all now that they carry no index of their own.
 - Folders outside `--only` that are *not* ancestors of the subpath are untouched: their existing `compiled.md` front-matter supplies their summary records — `long_description` included, which is what a re-summarized ancestor needs as input (§3.4.4) — so the ancestor chain re-inherits them without re-reading their sources or re-calling the LLM for them.
 
 If a `compiled.md` file exists without the HCAG marker, the tool errors — it will not overwrite what it did not create.
@@ -2024,15 +2113,15 @@ If a `compiled.md` file exists without the HCAG marker, the tool errors — it w
 | Folder with no `.md` and no subfolders | WARN, skip. The folder is omitted from every ancestor's catalog — an empty folder is not a loadable packet. |
 | LLM unreachable or misconfigured | **ERROR at startup, before the traversal begins and before a single file is written** — the preflight probe (§3.4.9) fails, the command exits non-zero, and the KB is left exactly as it was found. |
 | LLM becomes unavailable mid-run (auth revoked, endpoint down, quota exhausted) | **Abort the run** after the configured retries (§3.4.9). Artifacts already written stay on disk and are valid; the run does not continue writing placeholder summaries into the rest of the tree. Re-running resumes (§3.4.9, *What a partial tree looks like*). |
-| LLM call fails for one folder for a folder-specific reason (unparseable response, content filter) | Retried per §3.4.9. If it still fails, **abort** by default — a placeholder summary would silently degrade every ancestor above it (§3.4.4), which is exactly the failure this policy exists to prevent. With `--allow-partial`, degrade instead: ERROR for that folder, DFS continues, its summary falls back to `title = <folder-name>, short = "(summary unavailable)"` so ancestors still render an entry and the subtree stays reachable, and the final exit is non-zero. |
-| Root `catalog_token_estimate` exceeds `catalog.warn_tokens` | WARN naming the figure and the deepest/widest contributing branches, with the `catalog.long_depth` / `catalog.max_depth` knobs as the remedy (§3.4.4). Build still succeeds — the threshold is advisory, since what counts as too large depends on the runtime's context window. |
+| LLM call fails for one folder for a folder-specific reason (unparseable response, content filter) | Retried per §3.4.9. If it still fails, **abort** by default. With `--allow-partial`, degrade instead: ERROR for that folder, DFS continues, and its row falls back to `title = <folder-name>`, `long = "(description unavailable)"` so the folder still appears in the catalog and stays loadable, with a non-zero final exit. The fallback text is deliberately not plausible prose — a row that reads like a description is one an agent will route on. |
+| Root `catalog_token_estimate` exceeds `catalog.warn_tokens` | WARN naming the figure and the folders contributing most to it. Build still succeeds — the threshold is advisory, since what counts as too large depends on the runtime's context window. There is no knob that shrinks the catalog, by design (§3.4.4): the remedy is a KB with fewer or larger content folders, not an index that describes them less well. |
 | Image referenced by MD but not found | WARN, leave the (broken) reference in `compiled.md`. |
 | Existing `compiled.md` without HCAG marker | ERROR — refuses to clobber hand-written content. |
 | Cycle detected via symlink | ERROR at startup — DFS won't recurse into it. |
 
 ### 3.4.9 LLM preflight and failure policy
 
-Every folder in the tree needs an LLM call (§3.4.4). A build that discovers the LLM is unusable only once it is halfway up the tree has already written artifacts, burned tokens, and — worse — produced a `compiled.md` set that *looks* complete. This section specifies fail-closed behavior at both ends: a preflight before the walk starts, and abort-not-degrade once it is running.
+Every folder with content of its own needs an LLM call (§3.4.4). A build that discovers the LLM is unusable only once it is halfway up the tree has already written artifacts, burned tokens, and — worse — produced a `compiled.md` set that *looks* complete. This section specifies fail-closed behavior at both ends: a preflight before the walk starts, and abort-not-degrade once it is running.
 
 **Preflight, before the traversal.** `hcag` issues one probe call to the configured provider **before scanning the tree and before writing anything**. It is deliberately a real `generate_folder_metadata`-shaped request against the configured `model` and `endpoint`, not a credentials-present check or a `/models` ping, so that it exercises the same path the build will: env-var resolution, provider dispatch, model-id validity, endpoint reachability, auth, and JSON-parseability of the reply. A probe that returns a well-formed object is the only evidence that the build's per-folder calls will work.
 
@@ -2053,21 +2142,23 @@ Preflight is on by default and controlled by `llm.preflight` (§3.6). Turning it
 
 **Mid-run: abort, don't degrade.** Once the walk starts, a failing call is retried up to `llm.max_retries` with exponential backoff (retrying is worth it for the transient classes — 429s, 5xx, connection resets). After retries are exhausted, the default is to **abort the whole run**, not to substitute a placeholder and carry on.
 
-This is a deliberate reversal of the older "placeholder and continue" default, and the reason is §3.4.4: a parent summarizes from its children's `long_description`s. A placeholder is not a locally-scoped blemish on one catalog entry — it is an *input* to the next summary up, and to the one above that. One failed leaf silently degrades the prose of every ancestor on its path to the root, and the resulting KB carries no marker distinguishing "this branch is genuinely thin" from "this branch failed to summarize". Since the root description is the first thing the agent reads, that failure is both invisible and maximally placed. Exiting non-zero at the end was the old signal, but it competes with a full tree of plausible-looking artifacts already on disk; aborting at the point of failure does not.
+This is a deliberate reversal of the older "placeholder and continue" default. The original reason was compounding: a parent summarized from its children's descriptions, so one failed leaf silently degraded the prose of every ancestor above it. **That reason is gone** — §3.4.4 no longer feeds any description into any other, so a failure is now confined to the folder it happened in.
+
+The default stays `abort` on a narrower argument. A folder whose description failed is a folder the agent routes past: the catalog is the only way it learns that folder exists, and a row saying nothing is functionally an absent row. One such folder in a KB of two hundred is invisible in every aggregate — the build succeeds, the catalog looks full, and the one document that answers a question is the one nobody can find. Exiting non-zero at the end was the old signal, but it competes with a full tree of plausible-looking artifacts already on disk; aborting at the point of failure does not. `--allow-partial` exists for the operator who has weighed that and wants the rest of the KB anyway.
 
 `--allow-partial` restores the degrade-and-continue behavior for operators who want a best-effort tree from a flaky provider. It is opt-in precisely because its output is indistinguishable from a good build by inspection alone.
 
 **What a partial tree looks like.** Because the traversal is DFS post-order, an abort leaves a tree where completed subtrees have correct `compiled.md` files and everything above the failure point is stale or absent. That state is safe and resumable rather than corrupt:
 
 - The default overwrite policy (§3.4.7) skips folders that already have a generated `compiled.md`, so a plain re-run resumes at the failure without re-summarizing — and without re-spending — what already succeeded.
-- Ancestors are re-emitted from the summary records in their children's existing front-matter (§3.4.7), so the roll-up completes correctly on the resumed pass.
+- The root catalog is re-rendered from the descriptions in each folder's existing front-matter (§3.4.7), so a resumed pass produces a complete index without re-summarizing what already succeeded.
 - The runtime refuses to bootstrap against a root `compiled.md` whose catalog is missing or empty (§2.8), so an aborted build cannot quietly become a half-indexed KB at query time.
 
 **Symmetry with the runtime.** This mirrors §2.8's startup rule for the agent: a missing root `compiled.md` is a startup failure, not a degraded mode. Both tools fail closed on the input they cannot function without, and both fail at startup rather than partway through serving.
 
 ## 3.5 Aggregation (folded into `preprocess`)
 
-The prior design had a separate `hcag aggregate` subcommand that ran after `preprocess` to merge per-level `catalog.md` intermediates into a root `catalog.md`. With the DFS-based single-artifact design, aggregation happens implicitly on the recursion's return path: each folder's summary **and its assembled subtree index** bubble up to its parent (§3.4.1), the parent re-parents and splices them into its own index, and the root folder's `compiled.md` — the final write of the traversal — carries the complete KB catalog. This is the aggregate step, absorbed into the traversal it always logically belonged to. No separate command exists in the current CLI.
+The prior design had a separate `hcag aggregate` subcommand that ran after `preprocess` to merge per-level `catalog.md` intermediates into a root `catalog.md`. With the DFS-based single-artifact design, aggregation happens on the recursion's return path: each folder hands its rows up to its parent (§3.4.1), and the root folder's `compiled.md` — the final write of the traversal — renders the accumulated list as the KB's one catalog. This is the aggregate step, absorbed into the traversal it always logically belonged to. No separate command exists in the current CLI.
 
 Callers migrating from the old pipeline should replace the former `hcag preprocess raw_kb && hcag aggregate raw_kb` with a single `hcag raw_kb` — both subcommands are gone. The runtime memory module (§2.7) now reads `<root>/compiled.md` at bootstrap and injects its catalog section into the system prompt — there is no separate root catalog file.
 
@@ -2104,16 +2195,13 @@ root_id = "_root"                 # id to use for the root folder if it needs a 
                                   # `[compiled]` wins when both are set)
 
 [catalog]
-# Controls the `## Sub-topics` subtree roll-up (D3a, §3.4.4).
-max_depth   = 0                   # 0 = unlimited: index the whole subtree at every level.
-                                  # N > 0 caps roll-up to N levels below each folder.
-long_depth  = 1                   # include `long` on entries at this depth or shallower;
-                                  # deeper entries carry `short` only. 0 = never include `long`.
-include_tree = true               # emit the compact `#### Tree` outline at the top of the section
-warn_tokens = 40000               # WARN at build time if the ROOT catalog exceeds this (§3.4.8)
-strip_subtopics_on_load = true    # runtime: elide `## Sub-topics` when serving a non-root
-                                  # packet, since the root index is already in the system
-                                  # prompt (§2.6). Read by the memory module, not the CLI.
+# The `## Catalog` table in the root's compiled.md (D3a, §3.4.4).
+warn_tokens = 40000               # WARN at build time if the root catalog exceeds this (§3.4.8)
+
+# There is deliberately nothing else here. `long_depth`, `max_depth` and
+# `include_tree` each bought size by degrading the index, which is the trade
+# this design refuses; `strip_subtopics_on_load` configured an elision the
+# runtime no longer performs, because only the root has a catalog section.
 
 [log]
 file_path = "./hcag-build.log"
@@ -2127,12 +2215,12 @@ level     = "INFO"
 ### `compiled.md` (per folder — leaf, taxonomy node, mixed, and root alike)
 
 - HTML comment marker: `<!-- HCAG:COMPILED id=<dotted-id> -->`
-- YAML front-matter: `id`, `title`, `short_description`, `long_description`, `token_size_estimate`, `content_token_estimate`, `catalog_token_estimate`, `kind` (`leaf` | `node` | `mixed`), `source_files` (in reading order per §3.4.3; empty for a pure taxonomy node), `source_urls` and `image_urls` (crawl provenance, §4.5.3; absent when unknown), `children` (immediate only; empty for a pure leaf), `descendants`, `subtree_depth`.
+- YAML front-matter: `id`, `title`, `long_description` (absent for a pure taxonomy node), `token_size_estimate`, `content_token_estimate`, `catalog_token_estimate` (root only), `kind` (`leaf` | `node` | `mixed`), `source_files` (in reading order per §3.4.3; empty for a pure taxonomy node), `source_urls` and `image_urls` (crawl provenance, §4.5.3; absent when unknown), `children` (immediate only; empty for a pure leaf), `descendants`, `subtree_depth`.
 - Body:
-  - `# <title>` heading and `<short_description>` preamble.
-  - `## Sub-topics` — the rolled-up subtree index: an optional `#### Tree` outline followed by one `#### <id>` block per descendant **at every depth**, in DFS pre-order, each with `path`, `depth`, `parent`, `kind`, `title`, `short`, `tokens`, and `long` within `catalog.long_depth`. Omitted for pure leaves.
+  - `# <title>` heading.
+  - `## Catalog` — **root only**, wrapped in `<!-- HCAG:CATALOG BEGIN/END -->`: one table with columns `id`, `path`, `depth`, `title`, `long`, one row per content-bearing folder, in DFS pre-order.
   - `## Content` — concatenated source markdown in reading order (§3.4.3), with image refs rewritten to `assets/<name>`. Omitted for pure taxonomy nodes.
-- **The root folder's `compiled.md` is the file the runtime memory module's `get_catalog` returns** (§2.7). Its `## Sub-topics` section is the complete index of the KB — every branch, node, and leaf — so the agent can resolve any document in one `check_and_load_kb` call (§2.3.2) without walking the tree. Non-root folders' `compiled.md` files are loaded for their `## Content`; their (redundant) `## Sub-topics` sections are elided at load time (§2.6).
+- **The root folder's `compiled.md` is the file the runtime memory module's `get_catalog` returns** (§2.7). Its `## Catalog` section indexes every content-bearing folder in the KB, so the agent can resolve any document in one `check_and_load_kb` call (§2.3.2) without walking the tree. Non-root folders' `compiled.md` files are loaded for their `## Content` and carry no index of their own.
 
 ## 3.8 End-to-End Workflow
 
@@ -2150,7 +2238,7 @@ level     = "INFO"
    # resumes at the failure without re-spending what already succeeded.
 
 3. Point the runtime memory module at raw_kb/ (now normalized).
-   The agent's get_catalog serves raw_kb/compiled.md, whose ## Sub-topics
+   The agent's get_catalog serves raw_kb/compiled.md, whose ## Catalog
    section indexes EVERY folder in the tree at every depth. check_and_load_kb
    then pulls any leaf's content directly by ID -- no level-by-level descent.
 ```
@@ -2162,8 +2250,8 @@ level     = "INFO"
 $ vim raw_kb/billing/refunds/refund_policy.md   # edit sources and re-run
 $ hcag raw_kb/ --only billing/refunds/ --force
 # The DFS walk regenerates billing/refunds/compiled.md and then re-emits
-# every ancestor's compiled.md — billing/ and the root — so their rolled-up
-# `## Sub-topics` indexes pick up the changed record. Required, not optional:
+# the root's compiled.md, so the one `## Catalog` table picks up the changed
+# row. Required, not optional:
 # the root catalog contains an entry for every folder, so any leaf edit
 # invalidates the root index. No separate aggregate step needed.
 ```
@@ -2188,7 +2276,7 @@ The CLI also honors the `OTEL_EXPORTER_OTLP_ENDPOINT` env var: if set, build spa
 
 ## 3.11 Sequence Diagram
 
-One DFS post-order pass over a two-level tree (root with two children, one of them itself a mixed folder with a leaf child). The pass opens with the LLM preflight (§3.4.9): the build needs an LLM call at every folder, so it proves the LLM works before scanning the tree or writing a byte. Note how every `_process_folder` call returns **a `FolderSummary` plus that folder's assembled subtree index** to its caller — that's the return channel the parent uses to render its `## Sub-topics` section, and it's what makes both a separate `aggregate` step unnecessary (§3.5) and the root catalog complete (D3a). Watch the index grow as the recursion unwinds: `billing/` returns one entry, and the root ends up with three.
+One DFS post-order pass over a two-level tree (root with two children, one of them itself a mixed folder with a leaf child). The pass opens with the LLM preflight (§3.4.9): the build needs an LLM call at every folder that has content, so it proves the LLM works before scanning the tree or writing a byte. Note what each `_process_folder` call returns — a flat list of catalog rows, its own first if it has content, then its children's — and note where the LLM is *not* called: `auth/` is a pure waypoint, so it costs nothing and contributes no row (D3a). The root renders the accumulated list as the KB's one catalog.
 
 ```mermaid
 sequenceDiagram
@@ -2207,42 +2295,36 @@ sequenceDiagram
         LLM-->>CLI: well-formed JSON
     end
     CLI->>FS: scan ./raw_kb
-    Note over CLI: DFS: recurse into children first<br/>a call that fails after retries aborts the run<br/>rather than writing a placeholder summary
+    Note over CLI: DFS: recurse into children first<br/>a call that fails after retries aborts the run<br/>rather than writing a placeholder description
 
     Note over CLI,FS: — descend into billing/refunds (leaf) —
     CLI->>FS: scan billing/refunds<br/>(policy.md, states.md, edges.md, state_machine.png)
-    CLI->>FS: read each source .md in lex order
+    CLI->>FS: read each source .md in reading order
     FS-->>CLI: markdown bodies
     CLI->>CLI: rewrite image refs to assets/basename,<br/>concatenate bodies into own_content<br/>(each preceded by an HTML source marker)
     CLI->>FS: copy state_machine.png → billing/refunds/assets/
-    CLI->>LLM: generate_folder_metadata(own_content, children_longs=[])
-    LLM-->>CLI: {title, short, long}
-    CLI->>FS: write billing/refunds/compiled.md<br/>(front-matter · # title · short · ## Content = own_content)<br/>no ## Sub-topics - a leaf indexes nothing
-    Note right of CLI: return FolderSummary(billing.refunds)<br/>subtree index = empty
+    CLI->>LLM: generate_folder_metadata(own_content)<br/>own content only - no children, no siblings
+    LLM-->>CLI: {title, long}
+    CLI->>FS: write billing/refunds/compiled.md<br/>(front-matter · # title · delimited ## Content)
+    Note right of CLI: return [row(billing.refunds, depth 2)]
 
     Note over CLI,FS: — descend into billing (mixed folder) —
     CLI->>FS: scan billing (overview.md + glossary.md + billing_ecosystem.png)
     CLI->>FS: read + concat billing's own .md into own_content,<br/>copy images into billing/assets/
-    CLI->>LLM: generate_folder_metadata(own_content,<br/>children_longs=[long of billing.refunds])
-    LLM-->>CLI: {title, short, long}
-    CLI->>CLI: subtree index = entry(billing.refunds, depth 1)<br/>+ rebase(refunds subtree, depth +1) = empty
-    CLI->>FS: write billing/compiled.md<br/>(## Sub-topics = whole subtree index + ## Content from own_content)
-    Note right of CLI: return FolderSummary(billing)<br/>subtree index = [billing.refunds]
+    CLI->>LLM: generate_folder_metadata(own_content)<br/>being a parent changes nothing about the input
+    LLM-->>CLI: {title, long}
+    CLI->>FS: write billing/compiled.md<br/>(delimited ## Content only - no index of its own)
+    Note right of CLI: return [row(billing, d1), row(billing.refunds, d2)]
 
     Note over CLI,FS: — descend into auth (pure taxonomy node) —
     CLI->>FS: scan auth
-    Note over CLI: (auth's own children processed similarly)
-    CLI->>LLM: generate_folder_metadata(own_content="",<br/>children_longs=[...])
-    LLM-->>CLI: {title, short, long}
-    CLI->>FS: write auth/compiled.md (## Sub-topics only, no ## Content)
-    Note right of CLI: return FolderSummary(auth)<br/>subtree index = [auth.sso]
+    Note over CLI: no own content → no LLM call, no description, no row<br/>(this is what used to be hallucinated)
+    CLI->>FS: write auth/compiled.md (front-matter only)
+    Note right of CLI: return [row(auth.sso, d2)] - auth itself contributes nothing
 
     Note over CLI,FS: — back at the root —
-    CLI->>LLM: generate_folder_metadata(root own_content,<br/>children_longs=[longs of billing and auth])
-    LLM-->>CLI: {title, short, long}
-    CLI->>CLI: roll up: entry(billing d1) + rebase(billing subtree to d2)<br/>+ entry(auth d1) + rebase(auth subtree to d2)
-    Note over CLI: root index = billing, billing.refunds,<br/>auth, auth.sso - every folder in the KB
-    CLI->>FS: write ./raw_kb/compiled.md<br/>(## Sub-topics = COMPLETE KB index, all depths)
+    CLI->>CLI: rows = billing, billing.refunds, auth.sso<br/>already in DFS pre-order, nothing to rebase
+    CLI->>FS: write ./raw_kb/compiled.md<br/>(delimited ## Catalog = one table, every content folder)
     CLI->>CLI: check root catalog_token_estimate vs catalog.warn_tokens
     CLI-->>U: preprocess complete<br/>(N folders indexed, root catalog ~X tokens)
 ```
@@ -2274,6 +2356,7 @@ $ crawl --depth <N> <seed_url> [<seed_url> ...]
 - `--no-extract` — disable main-content extraction entirely. Every page is converted whole-DOM and written verbatim, chrome included. Use it to inspect raw output, or on sites the extractor mishandles.
 - `--min-extract-chars <N>` — extraction results shorter than `N` characters are treated as a failed extraction and the page falls back (§4.4.1). Default `200`. Set to `0` to accept any non-empty extraction.
 - `--min-image-bytes <N>` — skip images whose fetched byte size is below `N` (§4.4.3). Default `10240` (10 KB). Set to `0` to keep every image regardless of size.
+- `--request-delay-ms <N>` — milliseconds to wait between requests to the same host (§4.3.5). Default `5000`. `0` disables the wait and is appropriate only for a host the operator runs.
 
 Output is written under `./kb/` in the current working directory (§4.5).
 
@@ -2319,6 +2402,33 @@ The prefix is the right tool for the wrong question here. `/-/media/…` is a *s
 **Where they land.** An off-prefix asset is written into the folder of the page that cited it (§4.5), *not* mirrored at its own URL path. Mirroring `/-/media/mom/documents/compass/c1-salary-benchmarks.pdf` would create `kb/www.mom.gov.sg/-/media/mom/documents/compass/…` — a parallel tree, disconnected from the taxonomy, whose folders `hcag` would turn into packets about nothing. A CMS media root is not an information architecture and must not be allowed to manufacture one. The asset has no taxonomy of its own; it inherits the topic of the page that cites it, and belongs in that page's packet.
 
 With deduplication, the **first citer wins**: the asset is written into the folder of the first page that referenced it, and later citers keep the link as a remote URL. This trades a little locality for not duplicating a 5 MB PDF into twenty packets; the alternative is defensible, and if whole-packet self-containment turns out to matter more than size, this is the knob to revisit.
+
+### 4.3.5 Request pacing
+
+`crawl` waits `--request-delay-ms` milliseconds between HTTP requests to the same host. The default is `5000` — at most one request every five seconds.
+
+**A delay is not a nicety here.** A crawler is the only client that asks a site for every page it has, one after another, as fast as the link graph and the network allow, and the person running it is almost never the person operating the site. A depth-3 crawl of a public site is thousands of candidate URLs; issued back to back, that traffic is indistinguishable at the server from a denial-of-service attempt and is frequently treated as one. The good outcome is being rate-limited or blocked. The bad one is degrading a service other people are in the middle of using — and for the government and public-sector sites this tool is pointed at, those people are trying to apply for something. `crawl` has no way to measure how much headroom a site has, so it assumes none.
+
+**The knob is a wait, not a rate.** The same policy could be written as 0.2 requests per second, and nobody chooses that number on purpose. An operator deciding whether they are being rude thinks in *how long to leave between hits*, so that is what the flag takes. Milliseconds, because that unit stays an integer across the whole useful range: `200` for a local fixture server, `5000` for someone else's production site.
+
+**Measured per host, from the end of the previous request.** Two properties, each deliberate:
+
+- **Per host.** Politeness is owed to a server, not to the run. Two seeds on two different sites do not queue behind each other, and an asset host named in `--asset-hosts` (§4.3.4) gets its own budget rather than spending the page host's.
+- **From the end of the previous request, not its start.** A host taking six seconds to answer is a host under load, and that is the moment to give it more room rather than less. Anchoring the clock at the previous request's *start* would count the site's own slowness as part of the courtesy interval and fire the next request the instant the slow one returned — backing off least exactly when it should back off most. The consequence is that the rate to a host is *at most* one request per `--request-delay-ms`, and lower when the host is struggling. That asymmetry is the point.
+
+**Every request waits, not just page fetches.** Asset fetches (§4.3.4), each hop of a redirect chain, and every retry after a failure take their turn in the same per-host queue. Retries matter most: a failing request is the least safe moment to hurry, and retrying on error without pacing is the standard way a crawler turns a struggling server into an unreachable one. A four-hop redirect is four requests and four waits.
+
+**A `Retry-After` header wins when it asks for longer.** A `429` or `503` carrying `Retry-After` is the server stating its own limit, and a limiter that ignores an explicit request to slow down is not a limiter. The wait before the next request to that host becomes the larger of the header's value and `--request-delay-ms`, both forms the RFC allows are accepted, and a malformed value is ignored rather than treated as a reason to stall. It is `WARN`-logged with both numbers (§4.7), so a crawl that has been asked to back off says so rather than absorbing it silently.
+
+A `429` or `503` is also the one status worth **retrying**, precisely because the wait between attempts is now enforced: dropping the URL on the first one loses a page from the KB for what is usually a moment's throttling, and the retry cannot pile on because the host's next slot has already been pushed out. The existing retry cap bounds it — a host that keeps refusing runs out of attempts and the URL is dropped like any other non-2xx.
+
+**A long wait is announced.** An honoured `Retry-After` of several minutes is indistinguishable from a hang if nothing says so, so a wait more than twice the configured delay prints a line on the console naming the host and the wait. The ordinary per-request delay stays silent: a crawl that narrated every five-second pause would drown in its own politeness.
+
+**`0` disables the wait, and says so.** Crawling a local fixture server, a staging mirror, or a site the operator runs themselves is a real case where politeness has no one to protect, so the escape hatch exists. It is logged once at `WARN` at startup rather than accepted silently, because this is the one setting whose misuse is paid for by somebody else. A negative value is a startup `ERROR`.
+
+**What the default costs.** The 35-page `mom.gov.sg` crawl used throughout Part 4 fetches 35 pages, 17 PDFs and 3 images — 55 requests, so a little over four and a half minutes of it is waiting. That is the right trade. A KB is crawled once per revision and rebuilt rarely (§4.6), nothing downstream is waiting on it, and the cost of being too slow is a coffee while the cost of being too fast is borne by a third party who never agreed to it. Operators who own the site can lower it knowingly; everyone else should leave it alone or raise it. The end-of-run log summary reports how much of the wall-clock went to waiting (§4.7), so the trade is visible rather than assumed.
+
+**If concurrency is ever added, the limiter stays here.** `crawl` fetches one URL at a time (§4.9), so the wait is a sleep before each request. Should parallel fetching arrive, the pacing must remain per host *and* shared across workers — a per-worker delay with four workers is four times the request rate, which is precisely the failure this section exists to prevent.
 
 ## 4.4 Document Types
 
@@ -2552,7 +2662,7 @@ That is the machine-readable record. The human-readable one — live progress wh
 **Levels.**
 
 - `INFO`:
-  - Crawl start line with the resolved seed list, `--depth`, the output root, and the extraction settings (`extract_favor`, `min_extract_chars`, `no_extract`).
+  - Crawl start line with the resolved seed list, `--depth`, the output root, the extraction settings (`extract_favor`, `min_extract_chars`, `no_extract`), and `request_delay_ms` (§4.3.5) — how hard a run leaned on a site is not something to reconstruct from timestamps afterwards.
   - One line per fetched document: URL, depth, content type, byte size, elapsed fetch time, and the output Markdown path.
   - `crawl.extract.ok` per successfully extracted HTML page: `url`, `html_bytes`, `markdown_chars`, `retained_pct` (extracted Markdown chars ÷ the DOM's total visible-text chars — cheap to compute, no second conversion), `links`, `images`, `tables`, `elapsed_ms`. `retained_pct` is the field to scan when judging whether an extractor setting is too aggressive for a site — and `crawl.extract.low_retention` below scans it for you.
   - One line per extracted image: source document URL, remote image URL, and the local file path written under `./kb/`.
@@ -2564,9 +2674,10 @@ That is the machine-readable record. The human-readable one — live progress wh
   - `crawl.layout.collapsed` per leaf directory collapsed in the finalize pass (§4.5.2): the directory removed, the resulting Markdown path, and the number of images renamed with it.
   - `crawl.layout.link_order` per sidecar written (§4.5.3): the folder, its `source_url`, how many child slugs were recorded, and how many linked slugs were dropped because nothing was written for them. A branch folder whose recorded order is empty is the signal that extraction ate the hub's link list *and* the full-DOM order found no in-folder children — worth a look before trusting the resulting packet order.
   - `crawl.layout.invariant_violated` at `ERROR` if the finalize pass leaves any `X/` + `X.md` pair (§4.5). It is the postcondition of the pass and cannot legitimately fail; if it does, the tree is mis-shaped in exactly the way this layout exists to prevent, and the operator needs to know before `hcag` builds packets on top of it.
-  - Crawl end summary: totals for pages fetched, pages extracted vs. pages fallen back, pages written, `dirs_collapsed`, images extracted, images skipped for size, links skipped (out-of-scope / already-visited), wall-clock elapsed, and log-level counts.
+  - Crawl end summary: totals for pages fetched, pages extracted vs. pages fallen back, pages written, `dirs_collapsed`, images extracted, images skipped for size, links skipped (out-of-scope / already-visited), wall-clock elapsed, `throttle_wait_ms` (total time spent waiting between requests, §4.3.5), and log-level counts. Wall-clock next to throttle wait is what separates "the site is slow" from "we are being polite" without any arithmetic.
 - `DEBUG`:
   - HTTP request/response headers, redirect chains, and retry attempts.
+  - `crawl.fetch.throttled` per paced request: `host`, `waited_ms`, and the configured `delay_ms`. At `DEBUG` because on a default run it fires for every request but the first to each host and says nothing surprising; it earns its place when a crawl is slower than the delay alone explains, which the two numbers side by side answer immediately.
   - Extraction internals per page: the resolved trafilatura option set, whether a title was synthesized, and the per-feature counts (headings, tables, code blocks, in-body links, images) in the extracted Markdown.
   - PDF-extraction internals (page count, image count).
   - For each page, the full list of `<a href>` values discovered, each tagged with its disposition: `queued`, `skipped:out-of-scope`, `skipped:visited`, or `skipped:depth-cap`.
@@ -2575,6 +2686,8 @@ That is the machine-readable record. The human-readable one — live progress wh
   - `crawl.extract.low_retention` when extraction *succeeded* but kept less than 25% of the page's visible text: `url`, `retained_pct`, `threshold_pct`, `markdown_chars`, `text_chars`. This catches the failure mode that `min_extract_chars` structurally cannot. That floor only rejects a near-empty result; a **partial** extraction clears it easily and is then indistinguishable from a good one — the `mom.gov.sg` case in §4.4.1 passed at 10.5k characters while missing the page's principal tables. Retention is the only cheap signal that separates "this page really is mostly chrome" from "the extractor ate the article", so a low ratio is surfaced rather than left as a number in the INFO line. It is advisory — a genuinely nav-heavy page can sit low legitimately — which is why it is a `WARN` and not a fallback trigger.
 
     **The threshold is calibrated, not chosen.** `retained_pct`'s denominator is the whole DOM's text, chrome included, so on a nav-heavy site a *perfect* extraction still scores 40-50% and an intuitive threshold is useless: on a 35-page `mom.gov.sg` crawl, 55% flagged 15 pages of which 11 had lost nothing. Checking each flagged page against its real main-content container gives 3 caught / 0 false alarms at 25%, against 4 / 11 at 55%. 25% is the knee, and precision is the property that matters for a warning meant to be acted on rather than filtered out. Re-calibrate against a hand-checked sample before trusting the default on a very differently-shaped corpus.
+  - `crawl.pacing.disabled` once at startup when `--request-delay-ms 0` was passed (§4.3.5): the run will fetch as fast as the network allows. Not an error — it is legitimate against a host the operator runs — but not something to accept in silence either, since the cost of a mistake here is paid by the site.
+  - `crawl.fetch.retry_after` when a `429` or `503` asked for a longer wait than the configured delay (§4.3.5): `host`, `url`, `status`, `retry_after_ms`, `applied_ms`. The server has explicitly said the crawl is too fast for it, which is worth surfacing even though it is handled.
   - Fetch returned a non-2xx status for an in-scope URL (URL is dropped, siblings continue).
   - Fetched content type is neither HTML nor PDF (URL is dropped).
   - `crawl.extract.fallback` — extraction produced no usable main content for a page: `url`, `reason ∈ {no_output, too_short}`, `chars`, `min_extract_chars`. The page still lands on disk via the whole-DOM path, chrome included (§4.4.1 stage 3). A run with many of these is the signal to re-run with `--extract-favor recall`, or to accept that the site is JS-rendered (§4.8).
@@ -2655,6 +2768,7 @@ The report is derived from the same counters as the `crawl.done` log record, so 
 - **Corpus-level content analysis.** No cross-page comparison of any kind: no repeated-block voting, no shingling, no near-duplicate suppression. Every page is decided from its own markup, which is what keeps the tool single-pass, order-independent, resumable in principle, and correct on a one-page crawl.
 - **Local link rewriting.** In-body links are preserved as absolute source URLs. Rewriting cross-page links to relative `./kb/…/*.md` paths is not attempted — the mapping is only valid for the subset of the web that this crawl happened to capture. This applies to PDFs pulled in under §4.3.4 as well: the citing page keeps the remote URL in its prose, and the converted PDF lands beside it as a separate source file in the same packet.
 - **Auth-gated content.** Login flows, cookies, and custom headers beyond a plain fetch are out of scope.
+- **`robots.txt` and crawl permission.** `--request-delay-ms` (§4.3.5) bounds how *hard* a crawl hits a site; it says nothing about whether the site wanted to be crawled at all. `crawl` does not fetch or honour `robots.txt`, does not read `Crawl-delay`, and does not check a sitemap. Deciding a crawl is permitted remains the operator's, and pointing the tool at a site is asserting it.
 - **Non-HTML, non-PDF assets.** Videos, archives, and other binary formats are neither followed as links nor mirrored into `./kb/` — the asset exemption in §4.3.4 widens *where* a PDF or image may come from, not *what kinds* of file are collected.
 - **Unbounded off-site fetching.** §4.3.4 lifts the path-prefix restriction for assets, not the host restriction. An asset on a third-party host is fetched only when the operator names that host with `--asset-hosts`; following a citation off-domain by default is a different risk class from mirroring a site.
 - **Incremental re-crawl.** Each invocation fetches every in-scope URL once; change detection and freshness re-crawling are not provided.
@@ -2662,7 +2776,7 @@ The report is derived from the same counters as the `crawl.done` log record, so 
 
 ## 4.9 Sequence Diagram
 
-A single prefix-scoped BFS pass. Every popped URL runs three skip decisions (visited-dedup, depth-cap, out-of-scope) before a fetch. Each HTML page then runs the DOM pre-pass (harvest links, rewrite `<img src>` to local names) and reading-mode extraction, and is written before the loop moves on — extracted if extraction succeeded, whole-DOM verbatim if it did not. Nothing is buffered across pages and there is no post-BFS phase; when the queue drains, the crawl is done.
+A single prefix-scoped BFS pass, one request at a time. Every popped URL runs three skip decisions (visited-dedup, depth-cap, out-of-scope) and then waits out the per-host delay (§4.3.5) before a fetch. Each HTML page then runs the DOM pre-pass (harvest links, rewrite `<img src>` to local names) and reading-mode extraction, and is written before the loop moves on — extracted if extraction succeeded, whole-DOM verbatim if it did not. Nothing is buffered across pages and there is no post-BFS phase; when the queue drains, the crawl is done.
 
 ```mermaid
 sequenceDiagram
@@ -2690,6 +2804,7 @@ sequenceDiagram
             Note over CLI: skip — out-of-scope
         else
             CLI->>V: mark visited
+            CLI->>CLI: wait out request_delay_ms<br/>since the last request to this host (§4.3.5)
             CLI->>HTTP: GET url
             HTTP->>Site: request
             Site-->>HTTP: response
@@ -2929,7 +3044,7 @@ Session startup runs to completion before the browser is allowed to send audio. 
 
 The voice agent accepts an ordered list of packet IDs — `initial_packet_ids` — via config (§5.8) or CLI (§5.9). Before opening the room to input:
 
-1. Instantiate `AgentRuntime` with the standard bootstrap (§2.7): read the root `compiled.md`'s `## Sub-topics` section (the complete KB index, all depths — D3a), inject into the system prompt.
+1. Instantiate `AgentRuntime` with the standard bootstrap (§2.7): read the root `compiled.md`'s `## Catalog` section (the whole-KB index — D3a), inject into the system prompt.
 2. For each ID in `initial_packet_ids`, call `memory_module.check_and_load_kb(requested=[id], active=<current>)` and apply the returned delta exactly as an in-turn call would. This produces a byte-identical sequence of tool-result blocks in history — the same shape a normal turn would create — so the cache-alignment rules (§2.12) apply unchanged.
 3. If the union of initial packets exceeds `MAX_ACTIVE_TOKENS`, startup fails with an explicit error (`errors[].reason = "BudgetExceeded"`). Voice sessions do not silently drop preloads — the operator misconfigured the initial set.
 4. Unknown packet IDs are logged as `voice.startup.unknown_packet` WARN entries and skipped; startup continues with the remainder. Rationale: an outdated deploy config should not brick the room.
@@ -3236,7 +3351,7 @@ The tool is a **question / expected-answer generator only**. It does not run the
 - Every folder (leaf, taxonomy node, mixed, and root) contains a `compiled.md` with HCAG front-matter (id, title, descriptions, `kind`, token estimate) and — when applicable — a `## Content` section carrying the folder's own source markdown.
 - Images referenced by a folder live in that folder's `assets/` subdirectory.
 - `source_urls` and `image_urls` in front-matter give each source file's and image's origin (§3.4.3). `evalgen` reads them for the `source` column (§6.7.1) and never fetches them — an eval set is generated offline against the KB as it stands.
-- The root `compiled.md` — produced by `hcag` (§3) — is always available. Since the roll-up (D3a) makes its `## Sub-topics` section the index of the **entire** KB, with `depth` and `parent` on every entry, the full taxonomy tree is readable from that one file; `evalgen` uses taxonomic adjacency to bias cross-packet pairing (§6.4.4).
+- The root `compiled.md` — produced by `hcag` (§3) — is always available. Its `## Catalog` table indexes every content-bearing folder in the KB with an `id`, `path` and `depth` on every row (D3a), so the taxonomy is readable from that one file; `evalgen` uses taxonomic adjacency to bias cross-packet pairing (§6.4.4). Folders absent from the table hold no content and are nothing to generate a question from, so the table and the set of eligible packets are the same set.
 
 `evalgen` reads folders as-is; it does not modify the KB. Source `.md` files outside `compiled.md` and images outside `assets/` are ignored — the tool operates only on the artifacts the runtime actually serves.
 
@@ -3428,6 +3543,18 @@ The generated question must therefore be one the persona would plausibly bring t
 
 **Typical is not vague.** The failure at the opposite end is a question so true to life that it cannot be scored: real users leave out their age, their sector, and their pass type, and a question missing those has no single correct answer to hold a reference against. The item must still be answerable from the sampled content alone, so the generated question supplies whatever detail the answer turns on, phrased the way the asker would supply it — *"our candidate is 30 and joining the trading desk"*, not *"for a candidate aged 30 in the financial services sector"*. Realism lives in the framing and the situation, never in withholding what makes the answer determinate. Testing how the agent handles genuinely under-specified questions is a different mechanism with a different home: `evalrun`'s clarification loop (§7.4.2), where a transcript exists to resolve them in.
 
+**Name the rule, not the scheme it sits in.** The under-specification that actually gets past the generator is not a missing age or sector. It is a missing *frame*: the question names a framework and the answer is about one mechanism inside it.
+
+Observed. A generated item asked *"we're bringing in an integrated circuit engineer for our semiconductor fab … does the candidate need to satisfy both the semiconductor firm verification and the degree requirement, or is one sufficient?"*, framed as **"the requirements for this role under COMPASS"**. The expected answer is about the additional criteria for the **Shortage Occupation List bonus**, and the question never says so. As worded it is also answerable from the C1 qualifying-salary rule or the C2 qualification rule, which live in other packets.
+
+**The generator cannot see this, for the same reason §3.4.4's summarizer could not.** The frame was in its context. It was reading a section headed *"what additional requirements must my candidate meet to obtain the SOL bonus points"*, so "under COMPASS" felt unambiguous while writing it. Hidden context makes an incomplete artifact look complete to its author.
+
+**And it is worse than an item that is merely vague, because it penalizes a correct agent.** An agent that answers about the qualifying salary has answered the question that was asked, and scores zero. The item then measures whether the agent guessed the same sub-rule the sampler happened to draw, and a score drop on it says nothing about retrieval or about knowledge.
+
+The rule follows: **when the answer lives in one mechanism inside a larger scheme, the question names that mechanism, in the asker's words.** "Under COMPASS" is a container; "the bonus points for shortage occupations" is the rule. This is §6.4.6's typicality rule biting harder rather than a new constraint pulling against it — a real HR officer chasing the shortage-occupation bonus *says so*, because they know what they want. The defective question is unrealistic as well as ambiguous: nobody asks about "requirements under COMPASS" while silently meaning one bonus criterion.
+
+The frame is usually available locally. For the paragraph-grounded kinds the enclosing section heading states it, and in this case it stated it exactly.
+
 **The persona is a role, not a source of fact.** Anything factual in a persona description — a salary figure, a deadline, a nationality rule — is ignored by the generator, which is instructed to read the description for intent, vocabulary, and the population of questions the role asks, and for nothing else. Grounding comes from the sampled content and nowhere else. Without this rule a persona file drifts stale in exactly the way §6.7.1 describes for expected answers, except invisibly, poisoning every row generated under it rather than one. The existing grounding check (§6.9) is the enforcement: an expected answer asserting something absent from the supplied content fails validation whatever it was that suggested it.
 
 **A persona may narrow the question. It may not narrow the answer.** This is the sharpest interaction with §6.4.0 and the one most likely to go wrong. Asked in character, *"our candidate is 30 and joining our trading desk — what do we need to pay to clear the EP bar?"* is a better eval item than the neutral phrasing, and its natural answer is a single number. A single number is precisely the reference answer §6.4.0 was written against. So the expected answer states the applicable value **and** the conditions that select it, **and** what changes when a condition differs: the financial-services figure for that age, the fact that sector and age are what select it, the non-financial-services figure alongside, and the date from which a different table applies. The narrowed question plus the conditioned answer is a strictly better test than either half — it asks the agent to apply the rule to a case, and it still catches an agent that recites one cell of a table as though it were the whole rule.
@@ -3472,10 +3599,31 @@ Broadly, for each kind, `evalgen`:
 3. Sends the selected content — packet markdown plus any required images for `hard-2` — to the configured LLM (§6.8) with a fixed per-kind prompt template, into which the shared completeness standard (§6.4.0) and the rendered persona framing (§6.4.6) are injected. The prompt instructs the model to produce one `question` and one `expected_answer` grounded strictly in the supplied content, asked as the persona would ask it. On a persona-free run the framing renders empty and the prompt is what it was.
 4. Validates the LLM's response against per-kind constraints (e.g., `complex` must cite at least three paragraphs; `hard-2` must reference at least one image) and, on a persona run, against the typicality rule of §6.4.6 — a question that cites the source, asks for an enumeration, or bundles unrelated facts is rejected here. On validation failure, the item is retried up to a configurable cap (default 2); persistent failures are dropped with a `WARN`.
 5. Retries against a fresh sample when the model reports that the content supports nothing the persona would ask (§6.4.6), drawing on the same retry cap. The persona is held fixed across those retries — swapping it to salvage the sample would quietly rewrite the allocation of §6.5.1.
-6. Assigns a stable `question_id` of the form `<prefix>-<zero-padded-index>` (e.g., `q-0001`) in generation order.
-7. Appends the row to the output CSV with the `actual_answer`, `score`, and `remark` columns left empty (§6.7).
+6. Checks that the question determines its own answer (§6.6.1), regenerating it when it does not.
+7. Assigns a stable `question_id` of the form `<prefix>-<zero-padded-index>` (e.g., `q-0001`) in generation order.
+8. Appends the row to the output CSV with the `actual_answer`, `score`, and `remark` columns left empty (§6.7).
 
 Kinds are generated in the fixed order `simple → medium → complex → hard-1 → hard-2`, so `question_id`s cluster by kind — useful when diff-ing eval runs. Personas interleave within a kind rather than clustering, so a truncated or partially-failed run still covers the whole roster.
+
+### 6.6.1 The determinacy check — route the question through the catalog
+
+Steps 3 to 5 all look at the question beside the content it was generated from, which is exactly the vantage point that cannot see a missing frame (§6.4.6): from there, "under COMPASS" reads as unambiguous because the SOL section is on screen. This check changes the vantage point.
+
+**The question is sent to a model with the root catalog and nothing else** — every content folder's id, path and description (§2.2.1), and no packet text at all. The model is asked which rows could contain the answer to the question *as worded*. Three outcomes:
+
+- **Only the grounding packet.** The question determines its answer. Keep it.
+- **The grounding packet is absent.** The question is mis-framed: it points somewhere other than the content it was built from, and scoring an agent against that content would penalize it for going where the question sent it. Regenerate.
+- **The grounding packet plus others.** The question is under-specified. As worded it has more than one correct answer, and an agent that picks one of the others has answered the question that was asked. Regenerate.
+
+For `hard-1` the designated pair counts as one answer, since needing both packets is the item's definition (§6.4.4).
+
+**Determinacy, not ease — the distinction the check lives or dies by.** It would be easy to slide this into "keep only the questions a router finds obvious", and that would blunt the eval precisely where it is meant to bite: a `hard-1` item exists to detect a router that fails to find a second packet, and pre-filtering to easy finds would remove the failures it was built to catch. So the check asks how many packets could bear the answer, never how hard the right one is to spot. A question whose answer sits in one hard-to-find packet is a good item. A question whose answer sits in three is not an item at all.
+
+**A separate call with a separate context, deliberately.** The check needs the catalog; the generator must not have it. A generator holding descriptions of every other folder would write questions and answers that borrow from packets it never read, which is the failure D3a removed from the build and there is no reason to reintroduce it here. The two contexts stay disjoint: the generator sees content and no catalog, the checker sees the catalog and no content.
+
+**Cost.** One extra call per item, against a prompt of the catalog plus one question — far smaller than the generation call, which carries packet markdown and sometimes an image. `generation.determinacy_check = false` (§6.8) turns it off for a run that cannot afford it, and the run then says so on stderr, because an eval set built without it looks identical to one built with it.
+
+**What it cannot catch.** A question that is under-specified *within* one packet — two rules in the same folder, one question that could be about either — routes to exactly one row and passes. The catalog's granularity is the folder, so the check's granularity is too.
 
 ## 6.7 Output CSV Schema
 
@@ -3495,7 +3643,7 @@ Kinds are generated in the fixed order `simple → medium → complex → hard-1
 
 CSV formatting rules:
 
-- UTF-8, LF line endings, RFC 4180 quoting.
+- **UTF-8 with a byte-order mark**, LF line endings, RFC 4180 quoting.
 - Header row is always present.
 - The final three columns (`actual_answer`, `score`, `remark`) are always emitted as empty fields — never omitted, so downstream tools can open the file with a fixed 9-column schema.
 - **Columns are addressed by header name, never by position.** `persona` sits after `kind` because that is where it reads, and putting it there moves every column behind it. The header row is always present precisely so that costs nothing; a reader that indexes by position will break on this change and would have broken on the next one.
@@ -3510,6 +3658,10 @@ q-0021,hard-2,hr-professional,"We're hiring a 45-year-old for our trading desk �
 ```
 
 The `expected_answer` cells are elided here for width. In a real file each is several sentences long, because §6.4.0 requires the whole rule and §6.4.6 requires the conditions that select the value the question narrowed to. The first two rows are the pair §6.4.6 describes: one fact, one packet, two roles, wholly different words.
+
+**The mark is there for the human reviewer.** §6.7.1 exists because a generated question needs a human pass before it becomes a regression baseline, and the tool people open a `.csv` with is a spreadsheet. Excel for Mac, handed a plain UTF-8 file with nothing identifying it, falls back to the legacy system encoding — and the reference answers are model-written prose, thick with em dashes and smart quotes, every one of which then arrives as `‚Äî` or `‚Äô`. The file is not corrupt and no amount of reading it in Python will show the problem, which is what makes it expensive: the person who sees it is the reviewer, and what they conclude is that the eval set is broken.
+
+Three bytes at the front settle it, and nothing downstream notices. Every reader in this system already decodes with `utf-8-sig` — it had to, since a spreadsheet writes the same mark back on save (§7.6) — so the mark survives a round trip through Excel in both directions.
 
 ### 6.7.1 The `source` column
 
@@ -3554,6 +3706,9 @@ persona_framing = "prompts/eval_persona.md"   # wraps each kind's prompt with th
 
 [generation]
 max_retries_per_item = 2          # retry cap on validation failure (and on persona/content mismatch)
+determinacy_check    = true       # route each question through the catalog to confirm it
+                                  # determines a single packet (§6.6.1). One extra small
+                                  # call per item; off is announced on stderr
 paragraph_min_chars  = 120        # ignore too-short "paragraphs" for medium/complex/hard-1
 cross_packet_bias    = "taxonomy" # taxonomy | uniform — pair selection for hard-1
 
@@ -3593,6 +3748,7 @@ Local model support mirrors `hcag` (§3.6): `provider = "ollama"` or `"llamacpp"
 | A kind prompt lacks the `$persona_framing` slot | ERROR at startup via the registry check (§2.15.5) — the alternative is generating a full CSV with the personas silently discarded. |
 | A persona's `topics` prefixes match no packet | WARN once per persona; sampling for that persona falls back to the whole KB (§6.4.6). |
 | Persona cannot be reconciled with the sampled content past `max_retries_per_item` | WARN, item dropped (`reason=persona_content_mismatch`); run continues. |
+| Question still fails the determinacy check past `max_retries_per_item` | WARN, item dropped (`reason=underspecified_question`), naming the other packets the catalog said could answer it (§6.6.1). |
 | Question keeps failing the typicality rule past `max_retries_per_item` | WARN, item dropped (`reason=exam_framing`); run continues (§6.4.6). |
 
 If any `ERROR`-level event fires, `evalgen` exits with a non-zero status. `WARN`-level shortfalls do not affect exit status but are surfaced in the end-of-run summary.
@@ -3694,7 +3850,9 @@ The tool is symmetric with `evalgen` in scope: `evalgen` is a **generator only**
 | `score`           | no  | **populated** — integer `0`–`3` per the rubric (§7.5) |
 | `remark`          | no  | **populated** — one-sentence judge justification |
 
-The first six columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last three columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption.
+The first six columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last three columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption, and `--from` (§7.3.2) resumes by position instead.
+
+**The input may be a scored output.** Reading a completed CSV back in is how a resumed run inherits what the interrupted one achieved: the last three columns are input to `--from` and `--skip-completed`, and output to everything else. Nothing distinguishes a file `evalgen` wrote from one `evalrun` wrote except whether those columns are populated.
 
 ## 7.3 Invocation
 
@@ -3714,6 +3872,7 @@ $ evalrun <input.csv> --backend-url <url> --out <output.csv> --report <report.ht
 | `--session-scope <mode>` | no | `per-question` (default, fresh `session_id` per question) or `per-run` (share one `session_id` across all questions). Fresh sessions isolate scoring; shared sessions stress the multi-turn memory path. |
 | `--kinds <list>` | no | Comma-separated subset of question kinds to run (e.g. `--kinds simple,hard-2`). Default: all five. |
 | `--personas <list>` | no | Comma-separated subset of persona ids to run (e.g. `--personas hr-professional`). Default: every persona present in the input, persona-free rows included. |
+| `--from <question_id>` | no | Resume: re-run this row and every row after it, inheriting every earlier row's result from the input file (§7.3.2). |
 | `--skip-completed` | no | Skip input rows whose `score` column is already populated. Off by default so re-runs re-score deterministically. |
 | `--seed <int>` | no | Seed for the judge LLM's sampling and any tie-breaking in the clarification generator. Fixed seed → reproducible scoring. |
 | `--config <path>` | no | Path to `evalrun.toml` (§7.9). Defaults to `./evalrun.toml` if present. |
@@ -3750,6 +3909,32 @@ The preflight matters more here than in `evalgen`, because of *when* the eval LL
 Both roles are probed because they are separately configured and commonly separately keyed — a cheap classifier against one provider, a strong judge against another. Every preflight failure is labelled with the role that failed, the credential check included: with two models configured, "which one" is the entire question the message has to answer.
 
 Preflight is per-model and defaults to on; `preflight = false` under either `[classifier.llm]` or `[judge.llm]` skips that one.
+
+### 7.3.2 Resuming a run — `--from`
+
+`--from <question_id>` splits the input in two. Rows **before** that id are inherited: their `actual_answer`, `score` and `remark` are copied from the input file untouched, and the backend and judge are never called for them. Rows **from** that id onward are executed as if the run were fresh, overwriting whatever those columns held.
+
+**What it is for.** A long run dies partway — the backend runs out of quota, a deploy restarts it, a network partition opens. What is left on disk is a file whose first *N* rows are real results and whose remainder is a wall of `[backend_error]`. Re-running the whole thing pays for the first *N* again, and against an LLM judge it also re-rolls them: rows that already passed may come back scored differently, so a re-run is not a resumption but a fresh measurement with the old one discarded.
+
+**Position, not content — which is why it is not `--skip-completed`.** The two answer different questions and both belong.
+
+- `--skip-completed` is **content-addressed**: it skips any row that already carries a score. It is right when the interruption left a clean boundary, and it needs no argument.
+- `--from` is **position-addressed**: it re-runs everything at or after a row, whatever those rows look like. It is right when the damage is not visible in the columns — a backend that degraded before it failed outright and returned plausible answers that scored, a judge swapped mid-file, a deploy at a known point in the run. `--skip-completed` preserves exactly those rows, because they look finished.
+
+**File order is the authority.** "Before" means earlier in the input file, not lower by id sort. Ids are strings and a merged eval set (`evalgen --id-prefix`, §6.3) may not sort in execution order, while the CSV's row order is the order `evalrun` executes and preserves (§7.7). The split is at the first row whose `question_id` matches.
+
+**With `--from`, nothing is ever dropped from the output.** The other filters subset a run: `--kinds` and `--personas` narrow which rows execute *and* which rows the output CSV contains. That composition is wrong for a resume, where the point is to end up holding the complete eval set. So when `--from` is given, the output carries every input row, and the filters narrow only which of the rows at or after the split are re-run; everything else is inherited. A resumed run's output is a whole file, ready to be resumed again.
+
+**An id that is not in the file is a startup error**, naming it. Silently starting from row one would re-run the whole set and cost the thing the flag exists to save.
+
+**Inheriting rows that were never run is a `WARN`, not an error.** If rows before the split carry no score, the output has holes: the operator asked to start at row 40 of a file whose first 39 never executed. That is a legitimate thing to want — a deliberate slice — so the run continues, names the count, and reports inherited, executed and empty separately in the end-of-run summary (§7.11).
+
+**A resumed output mixes two measurements, and that has to be said out loud.** The inherited rows were scored by whatever judge ran earlier, against whatever KB and agent revision was deployed then. The current run may use a different judge — §7.3.1 exists because a scored CSV carries no record of which one — and it is certainly running against a backend that has at minimum been restarted. So:
+
+- The **report** (§7.8) states the inherited count in its run summary and marks inherited rows in the row table. A page whose headline pass rate is computed across two runs has to say so on the page, not in a log the reader does not have.
+- The **CSV is not marked.** Its nine columns are a contract with `evalgen` (§6.7) and with every eval set already committed, and a tenth column recording a transient property of one run is not worth breaking that for. The consequence is stated rather than hidden: a scored CSV alone cannot tell you it was assembled from two runs, which is one more reason to keep the report beside it.
+
+**A resumed run is a repair, not a baseline.** Where the two halves used different judges or different agent revisions, the honest move is to re-run the set whole once the cause is fixed, and to treat the resumed file as what got the numbers back rather than as the measurement of record.
 
 ## 7.4 Execution Loop
 
@@ -3881,8 +4066,9 @@ The promptfoo integration is an implementation detail — the CLI surface, input
 Row-level rules:
 
 - **Row order is preserved.** Even under `--concurrency > 1`, rows are emitted in input order so `diff` on two run outputs is meaningful.
-- **Same encoding as `evalgen`.** UTF-8, LF line endings, RFC 4180 quoting, header row always present.
-- **Never partial.** `evalrun` writes the output CSV atomically at the end of the run (temp file + rename). A crash mid-run leaves the previous output untouched; use `--skip-completed` on a fresh output for incremental resumption.
+- **Same encoding as `evalgen`.** UTF-8 with a byte-order mark (§6.7), LF line endings, RFC 4180 quoting, header row always present. Preserving the mark here is what carries the property through a round trip: an eval set that survives generation only to lose its punctuation at scoring time is no better off, and the scored CSV is the one a reviewer opens most.
+- **Never partial.** `evalrun` writes the output CSV atomically at the end of the run (temp file + rename). A crash mid-run leaves the previous output untouched, which is what makes the interrupted run's file worth resuming from: it is the last complete write, not a half-written one. Recover it with `--from` (§7.3.2) or `--skip-completed`.
+- **A resumed run writes the whole input back.** With `--from`, inherited rows are emitted in their original positions with their original `actual_answer`, `score` and `remark`, so the output is a complete eval set rather than the slice that was re-run (§7.3.2).
 - **Score column is integer or empty.** Never a string, never a float. Empty means the judge failed for that row (§7.5); `remark` explains why.
 
 Example (header + three rows, one of each outcome shape):
@@ -3900,7 +4086,8 @@ q-0021,hard-2,hr-professional,"Is the salary bar higher for our trading desk tha
 
 `evalrun` emits an HTML report to `--report` generated by promptfoo's report renderer, extended with per-kind summary panels. The report includes:
 
-- **Run summary.** Total questions, per-kind counts, overall pass rate (fraction scoring `≥ 2`), mean and median score, wall-clock elapsed, backend URL, seed, model IDs (chatbot + judge).
+- **Run summary.** Total questions, per-kind counts, overall pass rate (fraction scoring `≥ 2`), mean and median score, wall-clock elapsed, backend URL, seed, model IDs (chatbot + judge). When the run resumed from `--from`, it also states how many rows were **inherited** rather than executed, because every headline figure on the page is then computed across two runs made at different times, possibly by different judges (§7.3.2).
+- **Inherited rows are marked** in the row-level table and excluded from nothing: they count toward every figure, which is exactly why they are labelled. A reader comparing two reports needs to see that half of one was measured a day earlier.
 - **Per-kind breakdown.** One panel each for `simple`, `medium`, `complex`, `hard-1`, `hard-2` showing count, mean score, score histogram (0/1/2/3 bars), and pass rate. Enables at-a-glance drift detection — a `hard-1` regression tells you retrieval selection broke; a `hard-2` regression tells you multimodal loading broke, mirroring the signal design in §6.4.
 - **Per-persona breakdown.** The same panel shape as the per-kind one, keyed on `persona` (§6.7.2), shown only when the input carries personas. This is the view the roster was built for: an overall pass rate that looks healthy while one role's rows sit a point lower says the agent handles the vocabulary of the KB's authors and not that of half its users — a phrasing and retrieval problem, not a knowledge gap, and invisible in every other panel on the page. Rows with an empty `persona` are grouped under a single *unattributed* entry rather than dropped.
 - **Persona × kind grid** when both axes are populated: mean score per cell. It separates the two readings of a weak persona — low across every kind means that role's phrasing is not being retrieved against, low only on `complex` and `hard-1` means that role simply asks harder questions.
@@ -3986,6 +4173,8 @@ Local model support mirrors `evalgen` (§6.8): `provider = "ollama"` or `"llamac
 | Judge LLM returns malformed structured output past `retries` | Row's `score` left empty, `remark = [judge_failed] <reason>`; run continues. |
 | Clarifier fails past retries | Loop terminates as if `max_turns` reached; row scored per §7.4.3. |
 | `--kinds` filter matches zero rows | ERROR at startup — nothing to run. |
+| `--from <id>` names a `question_id` not in the input | ERROR at startup, naming it. Starting from row one instead would re-run the whole set and cost exactly what the flag exists to save (§7.3.2). |
+| `--from` inherits rows that carry no score | WARN naming the count — the output has holes. Legitimate for a deliberate slice, so the run continues and the summary reports inherited, executed and empty separately. |
 | `--out` or `--report` path not writable | ERROR at startup — fail fast rather than partial write. |
 | `--baseline` file schema mismatch | ERROR at startup — the report can't render a comparison. |
 
@@ -3995,9 +4184,9 @@ If any `ERROR`-level event fires, `evalrun` exits with a non-zero status. Per-ro
 
 `evalrun` writes a JSON-lines log to the path in `[log]` config (default `./evalrun.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), `crawl` (§4.7), and `evalgen` (§6.10):
 
-- `INFO`: run start (input path, row count, per-kind counts, backend URL, resolved model IDs, concurrency, seed), per-row summary (`question_id`, `kind`, turn count, wall-clock elapsed, chatbot tokens, judge tokens, final `score`), run end summary (per-kind mean scores and pass rates, wall-clock elapsed).
+- `INFO`: run start (input path, row count, per-kind counts, backend URL, resolved model IDs, concurrency, seed, and — when resuming — the `--from` id with the inherited and executed counts it resolves to), per-row summary (`question_id`, `kind`, turn count, wall-clock elapsed, chatbot tokens, judge tokens, final `score`), run end summary (per-kind mean scores and pass rates, inherited / executed / empty counts, wall-clock elapsed).
 - `DEBUG`: full multi-turn transcripts per row, full judge prompt + response, classifier decisions, clarifier prompts + responses.
-- `WARN`: backend errors, backend timeouts, judge malformed outputs, clarifier failures, `[max_turns_exceeded]` rows, rows filtered out by `--skip-completed`.
+- `WARN`: backend errors, backend timeouts, judge malformed outputs, clarifier failures, `[max_turns_exceeded]` rows, rows filtered out by `--skip-completed`, and — on a resumed run — inherited rows that carry no score (§7.3.2).
 - `ERROR`: startup failures — unreadable input, unwritable output, unreachable backend, empty kind filter.
 
 If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`eval.run`, `eval.row`, `eval.chat_turn`, `eval.judge`, `eval.clarify`) are exported — symmetric with §2.11, §3.9, §4.7, and §6.10.
@@ -4110,7 +4299,7 @@ The tool is a **one-shot indexer**. It does not serve queries, does not stand up
 
 Two exclusion rules govern what gets indexed:
 
-1. **Skip `compiled.md` files.** These are HCAG-assembled artifacts (§3.4.3) that concatenate a folder's own source markdown with a rolled-up catalog of its whole subtree into a single file. Indexing them alongside the underlying source would double-count every fact and skew retrieval scores. Root `compiled.md` and every folder's `compiled.md` (§3.7) are skipped for the same reason.
+1. **Skip `compiled.md` files.** These are HCAG-assembled artifacts (§3.4.3): a folder's own source markdown concatenated into one file, plus, at the root, the KB catalog. Indexing them alongside the underlying source would double-count every fact and skew retrieval scores — and at the root it would index a table of LLM-written descriptions as though it were source text. Root `compiled.md` and every folder's `compiled.md` (§3.7) are skipped for the same reason.
 2. **Skip anything inside an HCAG `assets/` folder.** Per §2.1 and §3.4.6, an `assets/` directory sits alongside a `compiled.md` — it is HCAG's home for the images that folder's content section references. Those images are already indirectly indexed via the folder's `compiled.md` body; letting `rag` re-index them would again double-count.
 
 Everything else under `<kb_root>` is a candidate for indexing — the raw `.md`, `.txt`, and `.pdf` files a taxonomy owner authored, plus any images that live **outside** an HCAG `assets/` folder (loose reference material, source screenshots, diagrams the taxonomy author has not yet folded into a packet). Files whose extension is unknown are skipped with a `DEBUG` log line.
@@ -4586,7 +4775,7 @@ The other agent's config is not touched. Running both agents side by side requir
 
 ### 9.5.1 Sequence diagram — HCAG agent path
 
-Companion to the RAG-agent turn diagram in §9.3.5. When `hcag-server` is started with `--agent hcag`, the same `POST /chat` route dispatches into `AgentRuntime.run_turn` (Part 2). On the first request per `session_id` the runtime is created and bootstrapped, injecting the root `compiled.md`'s `## Sub-topics` into the system prompt; subsequent turns reuse the same runtime and its LRU-ordered active packet set. The inner tool loop (`check_and_load_kb`, packet loading, LLM re-invocation) is documented in §2.10.1–4 and elided here so the diagram stays focused on the routing.
+Companion to the RAG-agent turn diagram in §9.3.5. When `hcag-server` is started with `--agent hcag`, the same `POST /chat` route dispatches into `AgentRuntime.run_turn` (Part 2). On the first request per `session_id` the runtime is created and bootstrapped, injecting the root `compiled.md`'s `## Catalog` into the system prompt; subsequent turns reuse the same runtime and its LRU-ordered active packet set. The inner tool loop (`check_and_load_kb`, packet loading, LLM re-invocation) is documented in §2.10.1–4 and elided here so the diagram stays focused on the routing.
 
 ```mermaid
 sequenceDiagram
@@ -4605,7 +4794,7 @@ sequenceDiagram
         Reg-->>S: (none)
         S->>R: AgentRuntime(cfg=agent.toml).bootstrap()
         R->>M: get_catalog
-        M->>KB: read root compiled.md (## Sub-topics section)
+        M->>KB: read root compiled.md (## Catalog section)
         KB-->>M: catalog contents
         M-->>R: complete KB index (all depths)
         R->>L: init system prompt with catalog

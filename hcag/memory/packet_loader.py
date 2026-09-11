@@ -1,16 +1,19 @@
 """Assemble ``Packet`` objects from storage bytes per §2.6.
 
-The runtime ships the body of ``compiled.md`` — front-matter and marker line
-stripped — followed by every image under ``assets/``. A short text header
-precedes each packet so the LLM can identify what it is looking at from
-context alone.
+The runtime ships a folder's ``## Content`` section followed by every image
+under ``assets/``. A short text header precedes each packet so the LLM can
+identify what it is looking at from context alone.
+
+Nothing has to be elided on the way out. Under the subtree roll-up every packet
+carried its own index and this module stripped it before serving; now only the
+root has a catalog section and the root is not served as a packet (D3a).
 """
 
 from __future__ import annotations
 
 from pathlib import PurePosixPath
 
-from ..compiled_io import strip_compiled_frontmatter, strip_subtopics_section
+from ..compiled_io import extract_content_section, strip_compiled_frontmatter
 from ..models import CatalogEntry, ImageBlock, Packet, TextBlock
 
 
@@ -33,26 +36,23 @@ def assemble_packet(
     entry: CatalogEntry,
     compiled_raw: str,
     assets: list[tuple[str, bytes]],
-    *,
-    strip_subtopics: bool = False,
 ) -> Packet:
     """Build the content blocks for one loaded folder.
 
-    When ``strip_subtopics`` is set the folder's ``## Sub-topics`` section is
-    dropped (§2.6): because catalogs roll up the whole subtree (D3a), that
-    section is a verbatim subset of the root catalog already sitting in the
-    agent's system prompt, so shipping it again would duplicate that text
-    inside the active set for no navigational gain. What remains is the
-    ``## Content`` the packet exists to deliver.
+    The header names the packet and nothing more. It used to carry a one-line
+    summary; a generated description sitting immediately above the source it
+    describes is something a model can quote in preference to the text itself,
+    and the agent already holds every folder's description in the catalog.
+
+    A pure taxonomy node has no ``## Content``, so it loads as a header and
+    nothing else — the expected shape for a folder that holds no knowledge.
     """
     header = (
         f"--- packet: {entry.id or '_root'} ---\n"
         f"Title: {entry.title}\n"
-        f"Short: {entry.short_description}\n"
+        f"Kind: {entry.kind}\n"
     )
-    body = strip_compiled_frontmatter(compiled_raw)
-    if strip_subtopics:
-        body = strip_subtopics_section(body)
+    body = extract_content_section(strip_compiled_frontmatter(compiled_raw))
     blocks: list[TextBlock | ImageBlock] = [
         TextBlock(text=header),
         TextBlock(text=body),

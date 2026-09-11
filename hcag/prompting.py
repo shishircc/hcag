@@ -209,6 +209,15 @@ REGISTRY: list[PromptSpec] = [
         description="tool result for a load call merged into a sibling (§2.4)",
     ),
     PromptSpec(
+        "agent.grounding_nudge",
+        description="in-band note when an answer is withheld for having no packet loaded (§2.7.2)",
+    ),
+    PromptSpec(
+        "agent.grounding_figures",
+        frozenset({"figures"}),
+        "in-band note when an answer states figures no loaded packet contains (§2.7.2)",
+    ),
+    PromptSpec(
         "agent.batch_reminder",
         frozenset({"calls"}),
         "in-band nudge after a second load call in one turn (§2.7.1)",
@@ -225,11 +234,9 @@ REGISTRY: list[PromptSpec] = [
     PromptSpec("voice.system", frozenset({"catalog"}), "voice system prompt (§5.8)"),
     PromptSpec(
         "preprocess.folder_metadata",
-        frozenset({"sections", "scope"}),
-        "build-time folder summary (§3.4.4)",
+        frozenset({"sections"}),
+        "build-time folder summary, from the folder's own content alone (§3.4.4)",
     ),
-    PromptSpec("preprocess.scope_own", description="leaf/mixed scoping clause (§3.4.4)"),
-    PromptSpec("preprocess.scope_branch", description="node scoping clause (§3.4.4)"),
     PromptSpec(
         "evalgen.answer_rules",
         description="completeness standard shared by every question kind (§6.4)",

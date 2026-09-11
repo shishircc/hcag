@@ -18,7 +18,6 @@ ROOT = """<!-- HCAG:COMPILED id=_root -->
 ---
 id: ''
 title: Root
-short_description: KB root
 long_description: KB root
 token_size_estimate: 10
 kind: node
@@ -28,27 +27,14 @@ children: [billing]
 
 # Root
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-#### `billing`
-- **path**: `billing/`
-- **depth**: 1
-- **parent**: `_root`
-- **kind**: leaf
-- **title**: Billing
-- **short**: money movement
-- **long**: money movement
-- **tokens**: 50
-
-#### `auth`
-- **path**: `auth/`
-- **depth**: 1
-- **parent**: `_root`
-- **kind**: leaf
-- **title**: Auth
-- **short**: sign-in
-- **long**: sign-in
-- **tokens**: 50
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `billing` | `billing/` | 1 | Billing | money movement |
+| `auth` | `auth/` | 1 | Auth | sign-in |
+<!-- HCAG:CATALOG END -->
 """
 
 

@@ -18,6 +18,7 @@ from ..logger import build_logger
 from .console import Console
 from .core import crawl
 from .html_conv import DEFAULT_MIN_EXTRACT_CHARS, FAVOR_CHOICES
+from .pacing import DEFAULT_REQUEST_DELAY_MS
 
 
 def _cli(
@@ -84,6 +85,15 @@ def _cli(
             "that cited it; use this for a CDN or media subdomain."
         ),
     ),
+    request_delay_ms: int = typer.Option(
+        DEFAULT_REQUEST_DELAY_MS,
+        "--request-delay-ms",
+        help=(
+            "Milliseconds to wait between requests to the same host (§4.3.5). "
+            "Default 5000. 0 disables the wait and is appropriate only for a "
+            "host you run yourself."
+        ),
+    ),
     quiet: bool = typer.Option(
         False,
         "--quiet",
@@ -129,6 +139,7 @@ def _cli(
         min_extract_chars=min_extract_chars,
         min_image_bytes=min_image_bytes,
         asset_hosts=tuple(h.strip() for h in asset_hosts.split(",") if h.strip()),
+        request_delay_ms=request_delay_ms,
         console=Console(quiet=quiet, report_limit=report_limit),
     )
 
@@ -137,6 +148,8 @@ def _cli(
         f"({stats.pages_extracted} extracted, {stats.pages_fallback} fallback), "
         f"{stats.images_extracted} image(s), "
         f"{stats.warnings} warning(s), {stats.errors} error(s). "
+        f"Elapsed {stats.elapsed_ms / 1000:.0f}s, of which "
+        f"{stats.throttle_wait_ms / 1000:.0f}s waiting between requests. "
         f"Log: {log_file}"
     )
     if stats.errors > 0:

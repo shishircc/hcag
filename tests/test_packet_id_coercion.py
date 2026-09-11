@@ -70,7 +70,6 @@ ROOT = """<!-- HCAG:COMPILED id=_root -->
 ---
 id: ''
 title: Root
-short_description: KB root
 long_description: KB root
 token_size_estimate: 10
 kind: node
@@ -80,24 +79,19 @@ children: [employment-pass]
 
 # Root
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-#### `employment-pass`
-- **path**: `employment-pass/`
-- **depth**: 1
-- **parent**: `_root`
-- **kind**: leaf
-- **title**: Employment Pass
-- **short**: card replacement
-- **long**: card replacement
-- **tokens**: 50
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `employment-pass` | `employment-pass/` | 1 | Employment Pass | card replacement |
+<!-- HCAG:CATALOG END -->
 """
 
 LEAF = """<!-- HCAG:COMPILED id=employment-pass -->
 ---
 id: employment-pass
 title: Employment Pass
-short_description: s
 long_description: l
 token_size_estimate: 50
 kind: leaf
@@ -108,7 +102,6 @@ children: []
 # Employment Pass
 
 ## Content
-
 <!-- source: x.md -->
 Replacement fee is $65.40.
 """

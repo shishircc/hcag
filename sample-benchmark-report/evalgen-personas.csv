@@ -1,0 +1,3 @@
+"persona_id","persona_name","persona_description"
+"workpass_candidate","candidate for workpass","this person is applying for workpass or is evaluating a workpass or has some transaction for workpass for which he or she needs help. this person could also be trying to get help on renewal or cancellation or consideration betwen different passes and processes"
+"workpass_human_resource","human resource person at a company","this person applies for workpass for a company's prospective hires. the person is more well informed and deals with more complex problems when applying for work passes or dealing with other transactions related to it like renwal, cancellation, etc"

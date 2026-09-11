@@ -77,6 +77,23 @@ class Console:
             return
         print(f"[{self._n:>4}] d{depth} {kind:<5} {url}", file=sys.stderr, flush=True)
 
+    def waiting(self, host: str, wait_ms: int) -> None:
+        """Announce an unusually long pace wait (§4.3.5).
+
+        The ordinary per-request delay is silent — saying "waiting 5s" before
+        every line would drown the crawl in its own politeness. A wait several
+        times longer than that is almost always a `Retry-After`: the server has
+        asked for room, the wait is honoured in full, and an unexplained pause
+        of minutes is indistinguishable from a hang unless it says so.
+        """
+        if self.quiet:
+            return
+        print(
+            f"       ~  wait   {wait_ms / 1000:.0f}s — {host} asked to be left alone",
+            file=sys.stderr,
+            flush=True,
+        )
+
     def failed(self, url: str, detail: str) -> None:
         """Failures print immediately rather than waiting for the report — a run
         that is failing every fetch should be obvious in the first seconds."""

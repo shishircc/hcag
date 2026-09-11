@@ -137,6 +137,11 @@ def read_csv(path: Path) -> ReadResult:
 def write_csv(path: Path, rows: Iterable[EvalRow]) -> int:
     """Write rows atomically (temp file + rename) so a crash mid-run doesn't
     truncate the previous output. Returns the number of rows written.
+
+    Same encoding as `evalgen` writes (§6.7): UTF-8 with a byte-order mark, so
+    a scored CSV opens correctly on a double-click. Preserving it here is what
+    keeps the property through a round trip — an eval set that survives
+    generation only to lose its em dashes at scoring time is no better off.
     """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -148,7 +153,7 @@ def write_csv(path: Path, rows: Iterable[EvalRow]) -> int:
     )
     n = 0
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="") as f:
+        with os.fdopen(fd, "w", encoding="utf-8-sig", newline="") as f:
             writer = csv.writer(f, lineterminator="\n", quoting=csv.QUOTE_MINIMAL)
             writer.writerow(COLUMNS)
             for row in rows:

@@ -37,34 +37,36 @@ ContentBlock = TextBlock | ImageBlock
 
 @dataclass
 class CatalogEntry:
-    """Metadata for one folder, as it appears in a `## Sub-topics` index (§2.2).
+    """Metadata for one folder the memory module knows about (§2.2.1).
 
-    Since catalogs roll up the whole subtree (D3a), the root catalog yields one
-    of these per folder in the KB — `depth`/`parent` reconstruct the tree, and
-    `kind` tells the agent whether the entry holds content or is a pure
-    taxonomy waypoint.
+    The root catalog yields one of these per **content-bearing** folder in the
+    KB. It carries one field the model-facing table does not — the budgeting
+    figure — because the module evicts and the model does not; a token count in
+    the table would be a column of noise across several hundred rows.
+
+    There is no `parent`: an id is a dotted path (§3.4.5), so a parent is the
+    id minus its last segment.
     """
 
     id: str
     path: str
     title: str
-    short_description: str
     long_description: str
-    token_size_estimate: int
+    token_size_estimate: int = 0
     depth: int = 1
-    parent: str = ""
     kind: str = "leaf"
-    #: `## Content` + images only. `None` for KBs built before the split, where
-    #: the total is the only figure available.
+    #: `## Content` + images only — read from the folder's front-matter, not
+    #: from the catalog table. `None` until resolved.
     content_token_estimate: int | None = None
 
     @property
-    def budget_tokens(self) -> int:
-        """The figure the active-set budget is enforced against (§2.5).
+    def parent_id(self) -> str:
+        """The enclosing folder's id, derived rather than stored."""
+        return self.id.rpartition(".")[0]
 
-        The `## Sub-topics` section is elided when a non-root packet is served
-        (§2.6), so it never occupies budget.
-        """
+    @property
+    def budget_tokens(self) -> int:
+        """The figure the active-set budget is enforced against (§2.5)."""
         if self.content_token_estimate is None:
             return self.token_size_estimate
         return self.content_token_estimate
@@ -85,9 +87,17 @@ class Catalog:
         return {e.id for e in self.entries}
 
     def children_of(self, packet_id: str) -> list[CatalogEntry]:
-        """Immediate children of `packet_id` — the tree is reconstructible from
-        the flat index because every entry names its `parent` (§2.2)."""
-        return [e for e in self.entries if e.parent == packet_id]
+        """Immediate children of `packet_id`.
+
+        Derived from ids rather than a stored `parent` field: an id is a dotted
+        path (§3.4.5), so the tree is reconstructible from the keys alone and
+        the table needs no column to say twice what the id already says.
+
+        Note that a *content* child of a waypoint is not an immediate child by
+        this measure — `auth.sso.saml` under a rowless `auth.sso` — because the
+        catalog indexes knowledge, not directories (D3a).
+        """
+        return [e for e in self.entries if e.parent_id == packet_id]
 
     def root_children(self) -> list[CatalogEntry]:
         """The top-level branches.

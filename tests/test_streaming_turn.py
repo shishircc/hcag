@@ -22,7 +22,6 @@ ROOT = """<!-- HCAG:COMPILED id=_root -->
 ---
 id: ''
 title: R
-short_description: r
 long_description: r
 token_size_estimate: 10
 kind: node
@@ -32,24 +31,19 @@ children: [billing]
 
 # R
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-#### `billing`
-- **path**: `billing/`
-- **depth**: 1
-- **parent**: `_root`
-- **kind**: leaf
-- **title**: Billing
-- **short**: money
-- **long**: money
-- **tokens**: 50
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `billing` | `billing/` | 1 | Billing | money |
+<!-- HCAG:CATALOG END -->
 """
 
 LEAF = """<!-- HCAG:COMPILED id=billing -->
 ---
 id: billing
 title: Billing
-short_description: money
 long_description: money
 token_size_estimate: 50
 kind: leaf
@@ -60,7 +54,6 @@ children: []
 # Billing
 
 ## Content
-
 <!-- source: x.md -->
 Refunds settle in 5 business days.
 """
@@ -185,10 +178,18 @@ def test_both_paths_produce_identical_history(runtime) -> None:
 
 def test_a_non_streaming_binding_still_streams(runtime) -> None:
     """§2.14: a provider that cannot stream surfaces its answer as one delta,
-    so the contract holds everywhere rather than being a caller's problem."""
+    so the contract holds everywhere rather than being a caller's problem.
+
+    Asserted on the deltas rather than the whole sequence: this stub answers
+    without loading, so the turn also carries the grounding round-trip of
+    §2.7.2, which is not what this test is about.
+    """
     events = list(runtime(_NonStreamingLLM()).run_turn_stream("q"))
-    assert [e.kind for e in events] == ["assistant.start", "assistant.delta", "assistant.final"]
-    assert events[1].data["text"] == ANSWER
+    deltas = [e for e in events if e.kind == "assistant.delta"]
+    assert len(deltas) == 1
+    assert deltas[0].data["text"] == ANSWER
+    assert events[0].kind == "assistant.start"
+    assert events[-1].kind == "assistant.final"
 
 
 def test_stream_or_buffer_passes_a_streamer_through() -> None:

@@ -2,13 +2,19 @@
 
 Every folder in a normalized KB — leaf, taxonomy node, mixed, and root alike —
 has exactly one ``compiled.md``. Its front-matter carries the folder's own
-summary metadata, and its body optionally contains a ``## Sub-topics`` section
-and/or a ``## Content`` section (concatenated source markdown for this level).
+metadata and its body carries a delimited ``## Content`` section holding that
+folder's own source markdown. The **root's** additionally carries the KB's one
+``## Catalog`` table (D3a).
 
-The ``## Sub-topics`` section is a **subtree index, not a child listing**
-(D3a): it holds one record per descendant folder at *every* depth beneath the
-catalog owner, in DFS pre-order. At the root that is every folder in the KB,
-which is what lets the agent resolve any document in one hop (§2.7).
+Two things are deliberate here and were not true of the design this replaces:
+
+- **The catalog lives only at the root.** There is no per-folder subtree index
+  to roll up, re-parent, or elide at load time. One index, in one place, that
+  cannot disagree with itself.
+- **Sections are delimited, not merely headed.** Locating a section by scanning
+  for its ``##`` heading works until a crawled source document contains a
+  heading called "Content" — and crawled corpora do. The consequence of that
+  mis-parse is silent: content read as catalog, or a truncated packet.
 """
 
 from __future__ import annotations
@@ -23,15 +29,18 @@ import frontmatter
 
 HCAG_COMPILED_MARKER = "<!-- HCAG:COMPILED"
 
+CATALOG_BEGIN = "<!-- HCAG:CATALOG BEGIN -->"
+CATALOG_END = "<!-- HCAG:CATALOG END -->"
+CONTENT_BEGIN = "<!-- HCAG:CONTENT BEGIN -->"
+CONTENT_END = "<!-- HCAG:CONTENT END -->"
+
 FolderKind = Literal["leaf", "node", "mixed"]
 
-#: Rendered in place of an empty root id so `parent` fields stay readable.
-#: A KB that sets `[compiled] root_id = "_root"` produces the same string, which
-#: is the point: `_root` names the root in `parent` fields either way. Parsing
-#: leaves it alone rather than guessing it back to "" — that guess would discard
-#: a deliberately configured root id. Use `Catalog.root_children()` when you want
-#: the top level without caring which of the two a KB uses.
+#: Rendered in place of an empty root id so ids stay readable in a table cell.
+#: A KB that sets `[compiled] root_id = "_root"` produces the same string.
 ROOT_DISPLAY_ID = "_root"
+
+CATALOG_COLUMNS = ["id", "path", "depth", "title", "long"]
 
 
 @dataclass
@@ -40,7 +49,6 @@ class CompiledFrontMatter:
 
     id: str
     title: str
-    short_description: str
     long_description: str
     token_size_estimate: int
     kind: FolderKind
@@ -51,37 +59,32 @@ class CompiledFrontMatter:
     # is unknown — a hand-authored file, or a KB crawled before provenance.
     source_urls: list[str] = field(default_factory=list)
     image_urls: dict[str, str] = field(default_factory=dict)
-    # Subtree roll-up metadata (D3a).
-    descendants: int = 0            # entries in this folder's ## Sub-topics section
+    descendants: int = 0            # folders in this subtree, excluding self
     subtree_depth: int = 0          # depth of the deepest descendant, relative to here
     content_token_estimate: int = 0  # ## Content + images — the runtime budgeting figure
-    catalog_token_estimate: int = 0  # ## Sub-topics section alone
+    catalog_token_estimate: int = 0  # ## Catalog table — root only, 0 elsewhere
 
 
 @dataclass
 class CatalogRecord:
-    """One entry inside a ``## Sub-topics`` section (§2.2).
+    """One row of the root's ``## Catalog`` table (§2.2.1).
 
-    ``path`` is relative to the folder that *owns* the catalog, so a record is
-    a self-contained locator. ``id`` and ``parent`` are absolute dotted paths
-    from the KB root and therefore invariant as the record is rolled up
-    (§3.4.4) — which is why an id read from the root catalog can be handed
-    straight to ``check_and_load_kb``.
+    ``id`` and ``path`` are absolute from the KB root, so a row is created once
+    — at the folder it describes, with its final coordinates — and travels up
+    the recursion unchanged (§3.4.1). An id read from the catalog is the id
+    ``check_and_load_kb`` resolves.
+
+    There is deliberately no ``parent`` (an id minus its last segment), no
+    ``kind`` (every row is a loadable, content-bearing folder) and no token
+    count (the memory module budgets from front-matter, and a number the model
+    cannot act on is noise in several hundred rows).
     """
 
     id: str
     path: str
+    depth: int
     title: str
-    short: str
     long: str = ""
-    tokens: int = 0
-    depth: int = 1
-    parent: str = ""
-    kind: FolderKind = "leaf"
-
-
-#: Back-compat alias — records used to describe only immediate children.
-ChildEntry = CatalogRecord
 
 
 def is_hcag_generated(path: Path) -> bool:
@@ -105,71 +108,58 @@ def _as_dir(path: str) -> str:
     return f"{path}/" if path else ""
 
 
-def render_subtopics_section(
-    records: list[CatalogRecord],
-    *,
-    include_tree: bool = True,
-) -> str:
-    """Render a ``## Sub-topics`` section (header included) from subtree records.
+def _cell(text: str) -> str:
+    """Make prose safe for a table cell without shortening it.
 
-    ``records`` must already be in DFS pre-order and already trimmed for
-    ``catalog.max_depth`` / ``catalog.long_depth`` — this function renders
-    exactly what it is given so that the CLI's token estimate and the bytes on
-    disk cannot drift apart.
+    A `long_description` is prose and will contain `|`; a newline inside a cell
+    would end the row. Both are neutralized. What is *not* done is truncation:
+    a table that quietly dropped the second half of a description would
+    reintroduce, as a rendering detail, the information loss D3a removed.
     """
+    return " ".join(str(text).split()).replace("|", r"\|")
+
+
+def render_catalog_table(records: list[CatalogRecord]) -> str:
+    """Render the ``## Catalog`` section (header and delimiters included)."""
     if not records:
         return ""
-
-    parts: list[str] = ["## Sub-topics", ""]
-
-    if include_tree:
-        parts.append("#### Tree")
-        parts.append("")
-        for r in records:
-            indent = "  " * max(0, r.depth - 1)
-            parts.append(f"{indent}- `{r.id}` — {r.title}")
-        parts.append("")
-
+    lines = [
+        CATALOG_BEGIN,
+        "## Catalog",
+        "",
+        "| " + " | ".join(CATALOG_COLUMNS) + " |",
+        "|" + "---|" * len(CATALOG_COLUMNS),
+    ]
     for r in records:
-        parts.append(f"#### `{r.id}`")
-        parts.append(f"- **path**: `{_as_dir(r.path)}`")
-        parts.append(f"- **depth**: {r.depth}")
-        parts.append(f"- **parent**: `{_display_id(r.parent)}`")
-        parts.append(f"- **kind**: {r.kind}")
-        parts.append(f"- **title**: {r.title}")
-        parts.append(f"- **short**: {r.short}")
-        if r.long:
-            parts.append(f"- **long**: {r.long}")
-        parts.append(f"- **tokens**: {r.tokens}")
-        parts.append("")
-
-    return "\n".join(parts).rstrip() + "\n"
+        lines.append(
+            f"| `{_display_id(r.id)}` | `{_as_dir(r.path)}` | {r.depth} "
+            f"| {_cell(r.title)} | {_cell(r.long)} |"
+        )
+    lines.append(CATALOG_END)
+    return "\n".join(lines) + "\n"
 
 
 def _render_body(
     fm: CompiledFrontMatter,
-    subtopics: list[CatalogRecord],
     own_sections: list[tuple[str, str]],
-    *,
-    include_tree: bool = True,
+    catalog: list[CatalogRecord] | None,
 ) -> str:
     parts: list[str] = [f"# {fm.title}", ""]
-    if fm.short_description:
-        parts.append(fm.short_description.strip())
-        parts.append("")
 
-    section = render_subtopics_section(subtopics, include_tree=include_tree)
-    if section:
-        parts.append(section.rstrip())
+    table = render_catalog_table(catalog or [])
+    if table:
+        parts.append(table.rstrip())
         parts.append("")
 
     if own_sections:
+        parts.append(CONTENT_BEGIN)
         parts.append("## Content")
         parts.append("")
         for name, content in own_sections:
             parts.append(f"<!-- source: {name} -->")
             parts.append(content.strip())
             parts.append("")
+        parts.append(CONTENT_END)
 
     return "\n".join(parts).rstrip() + "\n"
 
@@ -177,31 +167,38 @@ def _render_body(
 def write_compiled_md(
     dest: Path,
     fm: CompiledFrontMatter,
-    subtopics: list[CatalogRecord],
     own_sections: list[tuple[str, str]],
     *,
-    include_tree: bool = True,
+    catalog: list[CatalogRecord] | None = None,
 ) -> None:
-    """Write ``compiled.md`` with marker + front-matter + body sections."""
+    """Write ``compiled.md``: marker, front-matter, then delimited sections.
+
+    ``catalog`` is passed only for the root (D3a); every other folder writes
+    its own content and nothing else.
+    """
     marker = f"{HCAG_COMPILED_MARKER} id={_display_id(fm.id)} -->"
+    metadata = {
+        "id": fm.id,
+        "title": fm.title,
+        "token_size_estimate": fm.token_size_estimate,
+        "content_token_estimate": fm.content_token_estimate,
+        "kind": fm.kind,
+        "source_files": fm.source_files,
+        "source_urls": fm.source_urls,
+        "image_urls": fm.image_urls,
+        "children": fm.children,
+        "descendants": fm.descendants,
+        "subtree_depth": fm.subtree_depth,
+    }
+    # Absent rather than empty where the field has no meaning: a pure taxonomy
+    # node has no content to describe, and only the root has a catalog.
+    if fm.long_description:
+        metadata["long_description"] = fm.long_description
+    if fm.catalog_token_estimate:
+        metadata["catalog_token_estimate"] = fm.catalog_token_estimate
+
     post = frontmatter.Post(
-        content=_render_body(fm, subtopics, own_sections, include_tree=include_tree),
-        **{
-            "id": fm.id,
-            "title": fm.title,
-            "short_description": fm.short_description,
-            "long_description": fm.long_description,
-            "token_size_estimate": fm.token_size_estimate,
-            "content_token_estimate": fm.content_token_estimate,
-            "catalog_token_estimate": fm.catalog_token_estimate,
-            "kind": fm.kind,
-            "source_files": fm.source_files,
-            "source_urls": fm.source_urls,
-            "image_urls": fm.image_urls,
-            "children": fm.children,
-            "descendants": fm.descendants,
-            "subtree_depth": fm.subtree_depth,
-        },
+        content=_render_body(fm, own_sections, catalog), **metadata
     )
     text = marker + "\n" + frontmatter.dumps(post) + "\n"
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -237,8 +234,7 @@ def _frontmatter_to_model(m: dict) -> CompiledFrontMatter:
     return CompiledFrontMatter(
         id=str(m.get("id", "")),
         title=str(m.get("title", "")),
-        short_description=str(m.get("short_description", "")),
-        long_description=str(m.get("long_description", "")),
+        long_description=str(m.get("long_description", "") or ""),
         token_size_estimate=total,
         kind=kind,  # type: ignore[arg-type]
         source_files=list(m.get("source_files", []) or []),
@@ -247,8 +243,6 @@ def _frontmatter_to_model(m: dict) -> CompiledFrontMatter:
         children=list(m.get("children", []) or []),
         descendants=int(m.get("descendants", 0) or 0),
         subtree_depth=int(m.get("subtree_depth", 0) or 0),
-        # KBs built before the roll-up carry neither split estimate; falling
-        # back to the total keeps them loadable and budgeted (conservatively).
         content_token_estimate=int(m.get("content_token_estimate", total) or 0),
         catalog_token_estimate=int(m.get("catalog_token_estimate", 0) or 0),
     )
@@ -262,106 +256,135 @@ def read_compiled_frontmatter(path: Path) -> CompiledFrontMatter | None:
     return _frontmatter_to_model(post.metadata)
 
 
-_SUBTOPICS_HEADER_RE = re.compile(r"^##\s+Sub-topics\s*$", re.MULTILINE)
+_CATALOG_HEADER_RE = re.compile(r"^##\s+Catalog\s*$", re.MULTILINE)
 _CONTENT_HEADER_RE = re.compile(r"^##\s+Content\s*$", re.MULTILINE)
-# `###` is the pre-roll-up heading level; both are accepted so older KBs parse.
-_ENTRY_HEADER_RE = re.compile(r"^#{3,4}\s+`([^`]+)`\s*$", re.MULTILINE)
-_FIELD_RE = re.compile(
-    r"^-\s*\*\*(?P<key>[^*]+)\*\*\s*:\s*(?P<value>.+?)\s*$",
-    re.MULTILINE,
-)
+_ROW_RE = re.compile(r"^\|(?P<cells>.*)\|\s*$")
+_SEPARATOR_RE = re.compile(r"^\|[\s:|-]+\|$")
+#: Cells are separated by pipes the renderer did not escape. Splitting on every
+#: pipe would tear a description containing one into extra columns and shift
+#: every field after it — which is exactly what `_cell` escapes to prevent.
+_CELL_SPLIT_RE = re.compile(r"(?<!\\)\|")
 
 
-def extract_subtopics_section(body: str) -> str:
-    """Return just the raw text of the ``## Sub-topics`` section, or ``""``."""
-    m = _SUBTOPICS_HEADER_RE.search(body)
+def _between(body: str, begin: str, end: str) -> str | None:
+    """Text between two markers, or None when they are absent or unbalanced.
+
+    An unterminated section — a BEGIN with no END — reads as absent rather than
+    as "everything to end of file", because a truncated write is exactly how it
+    happens and reading past the end would serve half a file as though it were
+    whole.
+    """
+    i = body.find(begin)
+    if i < 0:
+        return None
+    j = body.find(end, i + len(begin))
+    if j < 0:
+        return None
+    return body[i + len(begin) : j].strip()
+
+
+def _section(body: str, begin: str, end: str, heading: re.Pattern[str]) -> str:
+    """Extract a delimited section, falling back to its heading.
+
+    The fallback is for artifacts written before the markers existed. It is the
+    ambiguous read the markers were introduced to end, and it applies only to
+    files that already had it.
+    """
+    marked = _between(body, begin, end)
+    if marked is not None:
+        return re.sub(heading, "", marked, count=1).strip()
+    m = heading.search(body)
     if not m:
         return ""
     start = m.end()
-    end_match = _CONTENT_HEADER_RE.search(body, start)
-    end = end_match.start() if end_match else len(body)
-    return body[start:end].strip()
+    nxt = re.search(r"^##\s+\S", body[start:], re.MULTILINE)
+    stop = start + nxt.start() if nxt else len(body)
+    return body[start:stop].strip()
 
 
-def strip_subtopics_section(body: str) -> str:
-    """Return ``body`` with its ``## Sub-topics`` section removed (§2.6).
+def extract_catalog_section(body: str) -> str:
+    """Raw text of the ``## Catalog`` section, or ``""`` (root only)."""
+    return _section(body, CATALOG_BEGIN, CATALOG_END, _CATALOG_HEADER_RE)
 
-    Used when serving a non-root packet: its subtree index is a verbatim
-    subset of the root catalog already sitting in the agent's system prompt,
-    so re-shipping it would duplicate that text inside the active set.
+
+def extract_content_section(body: str) -> str:
+    """Raw text of the ``## Content`` section, or ``""``.
+
+    This is what a loaded packet ships (§2.6). Nothing has to be elided: only
+    the root carries a catalog, and the root is not served as a packet.
     """
-    m = _SUBTOPICS_HEADER_RE.search(body)
-    if not m:
-        return body
-    end_match = _CONTENT_HEADER_RE.search(body, m.end())
-    end = end_match.start() if end_match else len(body)
-    return (body[: m.start()].rstrip() + "\n\n" + body[end:].lstrip()).strip() + "\n"
+    return _section(body, CONTENT_BEGIN, CONTENT_END, _CONTENT_HEADER_RE)
 
 
-def _clean_field(value: str) -> str:
-    return value.strip().strip("`").strip()
+def _uncell(text: str) -> str:
+    return text.strip().replace(r"\|", "|")
 
 
-def parse_subtopics(body: str) -> list[CatalogRecord]:
-    """Parse the ``## Sub-topics`` section of a compiled.md body into records.
+def parse_catalog_table(body: str) -> list[CatalogRecord]:
+    """Parse the ``## Catalog`` table into records, in the order written.
 
-    Records written before the subtree roll-up carry no ``depth``/``parent``/
-    ``kind``; they default to ``1`` / ``""`` / ``leaf``, which is exactly what
-    a one-level child listing meant.
+    Rows whose columns do not line up are skipped rather than guessed at: a
+    half-parsed row becomes a packet id the agent cannot load.
     """
-    section = extract_subtopics_section(body)
+    section = extract_catalog_section(body)
     if not section:
         return []
+
     records: list[CatalogRecord] = []
-    matches = list(_ENTRY_HEADER_RE.finditer(section))
-    for i, m in enumerate(matches):
-        rid = m.group(1)
-        start = m.end()
-        end = matches[i + 1].start() if i + 1 < len(matches) else len(section)
-        block = section[start:end]
-        fields: dict[str, str] = {}
-        for fmatch in _FIELD_RE.finditer(block):
-            fields[fmatch.group("key").strip().lower()] = fmatch.group("value").strip()
+    seen_header = False
+    for line in section.splitlines():
+        line = line.strip()
+        if not line.startswith("|"):
+            continue
+        if _SEPARATOR_RE.match(line):
+            continue
+        m = _ROW_RE.match(line)
+        if not m:
+            continue
+        cells = [c.strip() for c in _CELL_SPLIT_RE.split(m.group("cells"))]
+        if not seen_header:
+            # The first row is the header; everything after it is data.
+            seen_header = True
+            if [c.lower() for c in cells[: len(CATALOG_COLUMNS)]] == CATALOG_COLUMNS:
+                continue
+        if len(cells) < 4:
+            continue
+        rid = _uncell(cells[0]).strip("`")
+        if rid == ROOT_DISPLAY_ID:
+            rid = ""
         try:
-            tokens = int(fields.get("tokens", "0") or "0")
+            depth = int(_uncell(cells[2]))
         except ValueError:
-            tokens = 0
-        try:
-            depth = int(fields.get("depth", "1") or "1")
-        except ValueError:
-            depth = 1
-        kind = _clean_field(fields.get("kind", "leaf"))
-        if kind not in ("leaf", "node", "mixed"):
-            kind = "leaf"
-        parent = _clean_field(fields.get("parent", ""))
+            continue
         records.append(
             CatalogRecord(
                 id=rid,
-                path=fields.get("path", "").strip("`/ ").rstrip("/"),
-                title=fields.get("title", rid),
-                short=fields.get("short", ""),
-                long=fields.get("long", ""),
-                tokens=tokens,
+                path=_uncell(cells[1]).strip("`/ "),
                 depth=depth,
-                parent=parent,
-                kind=kind,  # type: ignore[arg-type]
+                title=_uncell(cells[3]),
+                long=_uncell(cells[4]) if len(cells) > 4 else "",
             )
         )
     return records
 
 
 def parse_compiled(raw: str) -> tuple[CompiledFrontMatter, list[CatalogRecord], str]:
-    """Parse compiled.md *text* into front-matter + subtree index + body.
+    """Parse compiled.md *text* into front-matter + catalog rows + body.
 
     The string-level entry point, for callers (the memory module) that get
-    bytes from a ``KBStorage`` rather than a path.
+    bytes from a ``KBStorage`` rather than a path. Catalog rows are empty for
+    every folder but the root.
     """
     post = frontmatter.loads(_strip_marker(raw))
-    return _frontmatter_to_model(post.metadata), parse_subtopics(post.content), post.content
+    return (
+        _frontmatter_to_model(post.metadata),
+        parse_catalog_table(post.content),
+        post.content,
+    )
 
 
 def read_compiled(path: Path) -> tuple[CompiledFrontMatter, list[CatalogRecord], str] | None:
-    """Load front-matter + parsed subtree index + raw body text (marker stripped).
+    """Load front-matter + parsed catalog rows + raw body text (marker stripped).
 
     Returns ``None`` if ``path`` doesn't exist.
     """
@@ -371,20 +394,24 @@ def read_compiled(path: Path) -> tuple[CompiledFrontMatter, list[CatalogRecord],
 
 
 __all__ = [
+    "CATALOG_BEGIN",
+    "CATALOG_COLUMNS",
+    "CATALOG_END",
+    "CONTENT_BEGIN",
+    "CONTENT_END",
     "HCAG_COMPILED_MARKER",
     "ROOT_DISPLAY_ID",
     "CatalogRecord",
-    "ChildEntry",
     "CompiledFrontMatter",
     "FolderKind",
-    "extract_subtopics_section",
+    "extract_catalog_section",
+    "extract_content_section",
     "is_hcag_generated",
+    "parse_catalog_table",
     "parse_compiled",
-    "parse_subtopics",
     "read_compiled",
     "read_compiled_frontmatter",
-    "render_subtopics_section",
+    "render_catalog_table",
     "strip_compiled_frontmatter",
-    "strip_subtopics_section",
     "write_compiled_md",
 ]

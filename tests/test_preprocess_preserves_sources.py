@@ -14,10 +14,9 @@ from hcag.logger import build_logger
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"\x00" * 32
 
 
-def _fake_metadata(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
+def _fake_metadata(cfg, *, own_content="", **kw):  # noqa: ARG001
     return FolderMetadata(
         title="Test Folder",
-        short_description="Short",
         long_description="Long description here.",
     )
 
@@ -50,9 +49,9 @@ def test_source_md_files_are_preserved_after_compiled_write(tmp_path: Path) -> N
         result = _process_folder(tmp_path, tmp_path, cfg, logger, force=False)
 
     assert result is not None
-    assert result.summary.kind == "leaf"
-    # A leaf indexes nothing, so it bubbles an empty subtree up to its parent.
-    assert result.subtree == []
+    # A leaf hands up exactly one row: its own.
+    assert [r.id for r in result.rows] == [result.id]
+    assert result.folders == 1
 
     # Original .md still there
     assert src.is_file()

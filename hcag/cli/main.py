@@ -43,7 +43,7 @@ def preprocess(
         "--only",
         help=(
             "Preprocess only this subtree, then re-emit its ancestors up to the "
-            "root so their ## Sub-topics sections pick up the changed child summary."
+            "root so the one ## Catalog table picks up the changed row."
         ),
     ),
     allow_partial: bool = typer.Option(

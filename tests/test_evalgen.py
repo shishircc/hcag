@@ -59,7 +59,6 @@ def _write_packet(folder: Path, packet_id: str, source_texts: list[tuple[str, st
     fm = CompiledFrontMatter(
         id=packet_id,
         title=f"Title for {packet_id}",
-        short_description=f"Short for {packet_id}",
         long_description=f"Long description for {packet_id}.",
         token_size_estimate=1000,
         kind="leaf",
@@ -67,7 +66,7 @@ def _write_packet(folder: Path, packet_id: str, source_texts: list[tuple[str, st
         children=[],
     )
     body_sections = [(name, content) for name, content in source_texts]
-    write_compiled_md(folder / "compiled.md", fm, subtopics=[], own_sections=body_sections)
+    write_compiled_md(folder / "compiled.md", fm, body_sections)
     if with_image:
         assets = folder / "assets"
         assets.mkdir(exist_ok=True)
@@ -131,7 +130,7 @@ def test_csv_writer_schema_and_empty_columns(tmp_path: Path) -> None:
     n = write_csv(out, items)
     assert n == 3
 
-    with out.open(encoding="utf-8", newline="") as f:
+    with out.open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
     assert rows[0] == COLUMNS
     # `persona` is empty on a persona-free run — a supported mode, not a
@@ -200,7 +199,7 @@ def test_run_evalgen_end_to_end_with_stub(tmp_path: Path) -> None:
     assert stats.total_written == 10
     assert stats.generated == {"simple": 2, "medium": 2, "complex": 2, "hard-1": 2, "hard-2": 2}
 
-    with out.open(encoding="utf-8", newline="") as f:
+    with out.open(encoding="utf-8-sig", newline="") as f:
         rows = list(csv.reader(f))
     assert rows[0] == COLUMNS
     assert len(rows) == 11  # 1 header + 10 rows

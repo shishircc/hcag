@@ -12,7 +12,6 @@ ROOT_COMPILED = """<!-- HCAG:COMPILED id=_root -->
 ---
 id: ""
 title: Root
-short_description: KB root
 long_description: The top-level branches of the KB.
 token_size_estimate: 50
 kind: node
@@ -26,28 +25,20 @@ children:
 
 KB root
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-### `billing.refunds`
-- **path**: `billing/refunds`
-- **title**: Refund Processing
-- **short**: How refunds are issued.
-- **long**: Full lifecycle of refund processing.
-- **tokens**: 100
-
-### `billing.invoices`
-- **path**: `billing/invoices`
-- **title**: Invoicing
-- **short**: How invoices work.
-- **long**: Invoice generation and states.
-- **tokens**: 100
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `billing.refunds` | `billing/refunds/` | 2 | Refund Processing | Full lifecycle of refund processing. |
+| `billing.invoices` | `billing/invoices/` | 2 | Invoicing | Invoice generation and states. |
+<!-- HCAG:CATALOG END -->
 """
 
 REFUNDS_COMPILED = """<!-- HCAG:COMPILED id=billing.refunds -->
 ---
 id: billing.refunds
 title: Refund Processing
-short_description: How refunds are issued.
 long_description: Full lifecycle of refund processing.
 token_size_estimate: 100
 kind: leaf
@@ -59,7 +50,6 @@ children: []
 # Refund Processing
 
 ## Content
-
 <!-- source: refunds.md -->
 Refunds work like this.
 """
@@ -68,7 +58,6 @@ INVOICES_COMPILED = """<!-- HCAG:COMPILED id=billing.invoices -->
 ---
 id: billing.invoices
 title: Invoicing
-short_description: How invoices work.
 long_description: Invoice generation and states.
 token_size_estimate: 100
 kind: leaf
@@ -80,7 +69,6 @@ children: []
 # Invoicing
 
 ## Content
-
 <!-- source: invoices.md -->
 Invoices work like this.
 """
@@ -110,8 +98,8 @@ def test_get_catalog_parses_top_level_subtopics(tmp_path: Path) -> None:
     assert entry is not None
     assert entry.path == "billing/refunds"
     assert entry.token_size_estimate == 100
-    # The injected catalog text is the root's `## Sub-topics` section verbatim.
-    assert "## Sub-topics" in catalog.raw_markdown
+    # The injected catalog text is the root's `## Catalog` table verbatim.
+    assert "## Catalog" in catalog.raw_markdown
     assert "billing.refunds" in catalog.raw_markdown
 
 
@@ -163,7 +151,6 @@ def test_drill_down_resolves_lazily(tmp_path: Path) -> None:
 ---
 id: ""
 title: R
-short_description: root
 long_description: root
 token_size_estimate: 10
 kind: node
@@ -173,14 +160,13 @@ children: [a]
 
 # R
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-### `a`
-- **path**: `a`
-- **title**: A
-- **short**: branch A
-- **long**: branch A
-- **tokens**: 20
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `a` | `a/` | 1 | A | branch A |
+<!-- HCAG:CATALOG END -->
 """,
         encoding="utf-8",
     )
@@ -191,7 +177,6 @@ children: [a]
 ---
 id: a
 title: A
-short_description: branch A
 long_description: branch A
 token_size_estimate: 20
 kind: node
@@ -201,14 +186,13 @@ children: [a.deep]
 
 # A
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-### `a.deep`
-- **path**: `deep`
-- **title**: Deep
-- **short**: deepest
-- **long**: deepest content
-- **tokens**: 30
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `a.deep` | `deep/` | 2 | Deep | deepest content |
+<!-- HCAG:CATALOG END -->
 """,
         encoding="utf-8",
     )
@@ -219,7 +203,6 @@ children: [a.deep]
 ---
 id: a.deep
 title: Deep
-short_description: deepest
 long_description: deepest content
 token_size_estimate: 30
 kind: leaf
@@ -230,7 +213,6 @@ children: []
 # Deep
 
 ## Content
-
 <!-- source: d.md -->
 Deep content.
 """,

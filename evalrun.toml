@@ -55,10 +55,10 @@ preflight   = true
 # ------------------------------------------------------------------------------
 [judge.llm]
 provider    = "anthropic"
-model       = "claude-opus-4-6"
+model       = "claude-opus-4-5"
 api_key_env = "ANTHROPIC_API_KEY"
-temperature = 0.0
 preflight   = true
+temperature = 0.0
 
 # On malformed structured output, retry up to N times before leaving score empty.
 [judge]

@@ -158,26 +158,18 @@ class CompiledConfig(BaseModel):
 
 
 class CatalogConfig(BaseModel):
-    """Controls the `## Sub-topics` subtree roll-up (D3a, §3.4.4, §3.6).
+    """The `## Catalog` table in the root's compiled.md (D3a, §3.4.4, §3.6).
 
-    The first four knobs are build-time (read by `hcag preprocess`);
-    `strip_subtopics_on_load` is runtime (read by the memory module).
+    Deliberately one knob. `long_depth` and `max_depth` bought index size by
+    describing folders less well, which is the trade this design refuses — a
+    truncated catalog routes badly and says nothing about it. `include_tree`
+    rendered an outline the table's DFS order and `path` column now give for
+    free. `strip_subtopics_on_load` configured an elision the runtime no longer
+    performs, because only the root has a catalog section at all.
     """
 
-    max_depth: int = 0
-    """Cap roll-up to this many levels below each folder. 0 = unlimited."""
-
-    long_depth: int = 1
-    """Include `long` on entries at this depth or shallower. 0 = never."""
-
-    include_tree: bool = True
-    """Emit the compact `#### Tree` outline at the top of the section."""
-
     warn_tokens: int = 40000
-    """WARN at build time if the ROOT catalog exceeds this (§3.4.8)."""
-
-    strip_subtopics_on_load: bool = True
-    """Elide `## Sub-topics` when serving a non-root packet (§2.6)."""
+    """WARN at build time if the root catalog exceeds this (§3.4.8)."""
 
 
 class AgentConfig(BaseModel):

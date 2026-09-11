@@ -1,15 +1,14 @@
 """Memory module — per-call stateless, sole KB accessor (§2, D4a, D7).
 
-Bootstrap reads the root ``compiled.md`` and returns its ``## Sub-topics``
-section as the catalog injected into the system prompt. Because catalogs roll
-up the whole subtree (D3a), that section is the **complete index of every
-folder in the KB at every depth** — so the agent resolves a question straight
-to a leaf id in one hop instead of descending the tree one
-``check_and_load_kb`` at a time (§2.7).
+Bootstrap reads the root ``compiled.md`` and returns its ``## Catalog`` table
+as the catalog injected into the system prompt. One table, one row per
+content-bearing folder in the KB, so the agent resolves a question straight to
+a packet id in one hop instead of descending the tree one ``check_and_load_kb``
+at a time (§2.7).
 
-Loading a non-root packet therefore ships only its ``## Content``: its own
-``## Sub-topics`` section is a verbatim subset of the catalog already in the
-system prompt (§2.6).
+Loading a packet ships its ``## Content`` section. Nothing has to be elided:
+only the root has a catalog section, and the root is not served as a packet
+(§2.6, D3a).
 """
 
 from __future__ import annotations
@@ -19,10 +18,8 @@ from typing import Protocol
 
 from ..compiled_io import (
     CatalogRecord,
-    extract_subtopics_section,
+    extract_catalog_section,
     parse_compiled,
-    parse_subtopics,
-    strip_compiled_frontmatter,
 )
 from ..logger import HcagLogger
 from ..prompting import PromptLibrary, load_prompts
@@ -52,48 +49,39 @@ def _id_to_relpath(packet_id: str) -> str:
     """Dotted packet ID to POSIX-relative KB path (§3.4.5).
 
     Lossy when a folder name itself contains a dot (`www.mom.gov.sg`), which is
-    why it is only the last-resort guess in `_candidate_paths`. On a KB built
-    with the subtree roll-up it is never reached: the root catalog carries an
-    explicit `path` for every folder, so nothing has to be derived from ids.
+    why it is only the last-resort guess in `_candidate_paths`. On a KB the
+    build produced it is never reached for a content folder: the catalog
+    carries an explicit `path` on every row. It *is* reached for a pure
+    taxonomy node, which has no row (D3a) and which nothing normally loads.
     """
     return packet_id.replace(".", "/")
 
 
-def _record_to_catalog_entry(record: CatalogRecord, owner_relpath: str) -> CatalogEntry:
-    """Turn a catalog record into a KB-absolute entry.
+def _record_to_catalog_entry(record: CatalogRecord) -> CatalogEntry:
+    """Turn a catalog row into an entry.
 
-    A record's ``path`` is relative to the folder that owns the catalog, so it
-    is stitched onto that owner's own KB-relative path. For the root (owner
-    path ``""``) the record's path is already KB-absolute.
+    A row's ``id`` and ``path`` are already KB-absolute (§3.4.1), so there is
+    nothing to stitch. ``content_token_estimate`` is left unset here and filled
+    from the folder's own front-matter (§2.2.1) — the table carries no token
+    count, because the module budgets and the model does not.
     """
-    record_path = record.path.strip("/")
-    if owner_relpath and record_path:
-        combined = f"{owner_relpath}/{record_path}"
-    else:
-        combined = owner_relpath or record_path
     return CatalogEntry(
         id=record.id,
-        path=combined.strip("/"),
+        path=record.path.strip("/"),
         title=record.title,
-        short_description=record.short,
         long_description=record.long,
-        token_size_estimate=record.tokens,
         depth=record.depth,
-        parent=record.parent,
-        kind=record.kind,
-        # Catalog entries carry the descendant's content-only estimate (§2.2).
-        content_token_estimate=record.tokens,
     )
 
 
 def _render_catalog_for_prompt(section: str) -> str:
-    """Wrap the root's ``## Sub-topics`` section for system-prompt injection.
+    """Wrap the root's ``## Catalog`` table for system-prompt injection.
 
     The section is emitted verbatim rather than re-rendered: it is already
-    exactly the shape §2.2 documents, and passing the bytes straight through
+    exactly the shape §2.2.1 documents, and passing the bytes straight through
     means the build tool's output and what the LLM sees cannot drift apart.
     """
-    return "# Knowledge Catalog\n\n## Sub-topics\n\n" + section.strip() + "\n"
+    return "# Knowledge Catalog\n\n## Catalog\n\n" + section.strip() + "\n"
 
 
 # --- FileSystemMemoryModule -------------------------------------------------
@@ -115,7 +103,6 @@ class FileSystemMemoryModule:
         eviction: EvictionPolicy | None = None,
         logger: HcagLogger | None = None,
         tracer=None,
-        strip_subtopics_on_load: bool = True,
         prompts: "PromptLibrary | None" = None,
     ) -> None:
         self.storage = storage
@@ -123,12 +110,11 @@ class FileSystemMemoryModule:
         self.eviction = eviction or LRUEvictionPolicy()
         self.logger = logger
         self.tracer = tracer
-        self.strip_subtopics_on_load = strip_subtopics_on_load
         # Model-facing text, so a file rather than a literal (D11).
         self.prompts = prompts or load_prompts()
         self._catalog: Catalog | None = None
-        # Populated wholesale from the root catalog; only grows further for
-        # KBs built with `catalog.max_depth` set, or by an older build.
+        # Populated wholesale from the root catalog. It grows only for ids the
+        # catalog does not name — a pure taxonomy node, which has no row.
         self._index: dict[str, _ResolvedFolder] = {}
         # Load order of the active set — the sequence packets were FIRST
         # loaded in, which is the sequence their blocks sit in the
@@ -142,9 +128,10 @@ class FileSystemMemoryModule:
         if self._catalog is None:
             raw = self.storage.read_compiled("")  # root
             _fm, records, body = parse_compiled(raw)
-            section = extract_subtopics_section(body)
-            entries = [_record_to_catalog_entry(r, owner_relpath="") for r in records]
+            section = extract_catalog_section(body)
+            entries = [_record_to_catalog_entry(r) for r in records]
             for e in entries:
+                self._hydrate(e)
                 self._index[e.id] = _ResolvedFolder(entry=e, path=e.path)
             self._catalog = Catalog(
                 entries=entries, raw_markdown=_render_catalog_for_prompt(section)
@@ -154,21 +141,52 @@ class FileSystemMemoryModule:
                     "catalog.loaded",
                     entries=len(entries),
                     max_depth=max((e.depth for e in entries), default=0),
-                    leaves=sum(1 for e in entries if e.kind in ("leaf", "mixed")),
                     bytes=len(raw),
                 )
         return self._catalog
+
+    def _hydrate(self, entry: CatalogEntry) -> None:
+        """Fill in what the catalog table deliberately does not carry (§2.2.1).
+
+        One pass at bootstrap, reading each folder's front-matter for its
+        `content_token_estimate` and `kind`. The budget is enforced *before* a
+        packet is loaded (§2.5), so this figure has to be known up front — but
+        it is a number the model cannot act on, so it stays out of the table
+        rather than costing a column across several hundred rows.
+
+        A row whose folder cannot be read keeps a zero estimate rather than
+        failing the bootstrap: one unreadable folder should cost that folder,
+        not the whole conversation.
+        """
+        try:
+            fm, _rows, _body = parse_compiled(self.storage.read_compiled(entry.path))
+        except Exception:  # noqa: BLE001 - storage/IO/parse, all non-fatal here
+            if self.logger:
+                self.logger.warn("catalog.entry.unreadable", id=entry.id, path=entry.path)
+            return
+        entry.content_token_estimate = fm.content_token_estimate
+        entry.token_size_estimate = fm.token_size_estimate
+        entry.kind = fm.kind
 
     # ---- Packet-index population ----------------------------------------
 
     def _candidate_paths(self, packet_id: str) -> list[str]:
         """KB-relative paths to try for an id the index does not name.
 
-        Preferred: hang the unknown tail off the longest ancestor whose path we
-        already know — that survives folder names containing dots, which pure
-        id arithmetic cannot. Falls back to the naive dotted-to-slash mapping.
+        Three sources, best first. Each is a guess; `_resolve` confirms the one
+        it picks by reading the folder's own id back (§3.4.5), so a wrong guess
+        costs a small read rather than serving the wrong packet.
+
+        1. **Hang the unknown tail off the longest known ancestor.** Survives
+           folder names containing dots, which pure id arithmetic cannot.
+        2. **Trim a known descendant's path.** This is what resolves a pure
+           taxonomy node: it has no catalog row (D3a), so nothing above it is
+           known, but everything below it is.
+        3. The naive dotted-to-slash mapping, which is right only when no
+           folder name contains a dot.
         """
         candidates: list[str] = []
+
         best: tuple[str, str] | None = None
         for known_id, rf in self._index.items():
             if known_id and packet_id.startswith(known_id + "."):
@@ -177,59 +195,71 @@ class FileSystemMemoryModule:
         if best is not None:
             tail = packet_id[len(best[0]) + 1 :].replace(".", "/")
             candidates.append("/".join(p for p in (best[1], tail) if p))
+
+        prefix = packet_id + "."
+        for known_id, rf in self._index.items():
+            if not known_id.startswith(prefix):
+                continue
+            depth_below = len(known_id[len(prefix) :].split("."))
+            parts = rf.path.split("/")
+            # A dotted segment below the ancestor is one folder, so the counts
+            # line up unless a *descendant* folder name has a dot in it — which
+            # is why the caller verifies rather than trusting this.
+            for drop in range(depth_below, 0, -1):
+                if len(parts) > drop:
+                    candidates.append("/".join(parts[:-drop]))
+
         candidates.append(_id_to_relpath(packet_id))
-        return list(dict.fromkeys(candidates))
+        return list(dict.fromkeys(c for c in candidates if c)) or [""]
 
     def _resolve(self, packet_id: str) -> CatalogEntry | None:
         """Return the metadata for ``packet_id``.
 
-        The root catalog normally names every folder, so this is a dict hit.
-        The fallback — reading the folder's own ``compiled.md`` front-matter —
-        exists for KBs whose roll-up was capped by ``catalog.max_depth`` and
-        for artifacts written before the roll-up existed. Returns ``None`` on
+        The catalog names every content-bearing folder, so this is normally a
+        dict hit. The fallback — reading the folder's own ``compiled.md``
+        front-matter — is what serves a pure taxonomy node, which has no row
+        (D3a) and which loads as a header and nothing else. Returns ``None`` on
         any I/O failure; the caller turns that into a ``LoadError``.
         """
         hit = self._index.get(packet_id)
         if hit is not None:
             return hit.entry
-        relpath = next(
-            (p for p in self._candidate_paths(packet_id) if self.storage.has_compiled(p)),
-            None,
-        )
-        if relpath is None:
+
+        found: tuple[str, object] | None = None
+        for relpath in self._candidate_paths(packet_id):
+            if not self.storage.has_compiled(relpath):
+                continue
+            try:
+                candidate_fm, _r, _b = parse_compiled(self.storage.read_compiled(relpath))
+            except Exception:  # noqa: BLE001
+                continue
+            # Confirm rather than assume: several ancestors of a guessed path
+            # have a compiled.md, and serving the wrong one silently answers
+            # from the wrong folder.
+            if candidate_fm.id == packet_id:
+                found = (relpath, candidate_fm)
+                break
+        if found is None:
             return None
-        try:
-            raw = self.storage.read_compiled(relpath)
-        except Exception:
-            return None
-        fm, records, _body = parse_compiled(raw)
+        relpath, fm = found
         entry = CatalogEntry(
             id=fm.id or packet_id,
             path=relpath,
             title=fm.title or packet_id,
-            short_description=fm.short_description,
             long_description=fm.long_description,
             token_size_estimate=fm.token_size_estimate,
             kind=fm.kind,
             content_token_estimate=fm.content_token_estimate,
         )
         self._index[entry.id] = _ResolvedFolder(entry=entry, path=relpath)
-        # Index whatever this folder's own catalog names, so a capped root
-        # catalog still lets the agent reach the level below.
-        self._index_records(records, relpath)
         return entry
-
-    def _index_records(self, records: list[CatalogRecord], owner_relpath: str) -> None:
-        for r in records:
-            entry = _record_to_catalog_entry(r, owner_relpath=owner_relpath)
-            self._index.setdefault(entry.id, _ResolvedFolder(entry=entry, path=entry.path))
 
     def _catalog_view(self) -> Catalog:
         """A Catalog reflecting every id resolved so far.
 
         The eviction policy consults ``Catalog.get(id)`` and ``Catalog.ids()``;
-        those need to see every id currently in play, which is the root index
-        plus anything resolved past a depth cap.
+        those need to see every id currently in play, which is the catalog plus
+        any waypoint the agent has resolved by id.
         """
         entries = [rf.entry for rf in self._index.values()]
         base = self._catalog.raw_markdown if self._catalog else ""
@@ -372,18 +402,7 @@ class FileSystemMemoryModule:
                         errors.append(
                             LoadError(packet_id=pid, reason=f"asset_read_failed: {ap}: {e}")
                         )
-                is_root = hit.path == ""
-                loaded.append(
-                    assemble_packet(
-                        entry,
-                        raw,
-                        assets,
-                        strip_subtopics=self.strip_subtopics_on_load and not is_root,
-                    )
-                )
-                # If the root roll-up was capped, this folder's own catalog is
-                # the only place its descendants are named — index them.
-                self._index_records(parse_subtopics(strip_compiled_frontmatter(raw)), hit.path)
+                loaded.append(assemble_packet(entry, raw, assets))
             except Exception as e:  # noqa: BLE001
                 errors.append(LoadError(packet_id=pid, reason=f"packet_read_failed: {e}"))
 

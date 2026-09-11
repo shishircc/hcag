@@ -35,6 +35,66 @@ def _write(path: Path, body: str, *, bom: bool) -> Path:
     return path
 
 
+def test_the_writers_emit_the_mark(tmp_path: Path) -> None:
+    """An eval set is read by people before it is read by anything else, and the
+    tool they open a `.csv` with is a spreadsheet. Without the mark, Excel for
+    Mac falls back to the legacy system encoding and every em dash in a
+    model-written answer arrives as `‚Äî`."""
+    from hcag.evalgen.csv_writer import write_csv as write_generated
+    from hcag.evalgen.generators import GeneratedItem
+    from hcag.eval.csv_io import EvalRow, write_csv as write_scored
+
+    generated = tmp_path / "eval.csv"
+    write_generated(
+        generated,
+        [("q-0001", GeneratedItem("simple", "How long — roughly?", "Five days.", ["p.a"]))],
+    )
+    assert generated.read_bytes().startswith(b"\xef\xbb\xbf")
+
+    scored = tmp_path / "scored.csv"
+    write_scored(scored, [EvalRow("q-0001", "simple", "Q — ?", "A — B")])
+    assert scored.read_bytes().startswith(b"\xef\xbb\xbf")
+
+
+def test_the_mark_appears_once_and_the_em_dash_survives(tmp_path: Path) -> None:
+    """The mark is a prefix, not a per-line escape, and it changes nothing about
+    how the content itself is encoded."""
+    from hcag.eval.csv_io import EvalRow, read_csv, write_csv
+
+    out = tmp_path / "scored.csv"
+    write_csv(out, [EvalRow("q-0001", "simple", "Q?", "Cancel within one week — no later.")])
+
+    raw = out.read_bytes()
+    assert raw.count(b"\xef\xbb\xbf") == 1
+    assert raw.count("—".encode("utf-8")) == 1
+    # And the file still reads back as itself.
+    assert read_csv(out).rows[0].expected_answer.endswith("one week — no later.")
+
+
+def test_a_generated_eval_set_round_trips_through_scoring(tmp_path: Path) -> None:
+    """`evalgen` writes the mark and `evalrun` preserves it — an eval set that
+    survives generation only to lose its em dashes at scoring time is no better
+    off."""
+    from hcag.evalgen.csv_writer import write_csv as write_generated
+    from hcag.evalgen.generators import GeneratedItem
+    from hcag.eval.csv_io import read_csv, write_csv as write_scored
+
+    src = tmp_path / "eval.csv"
+    write_generated(
+        src,
+        [("q-0001", GeneratedItem("simple", "Q — ?", "A — B", ["p.a"], [], "hr"))],
+    )
+
+    rows = read_csv(src).rows
+    assert rows[0].question_id == "q-0001"   # not "\ufeffq-0001"
+    assert rows[0].persona == "hr"
+
+    out = tmp_path / "scored.csv"
+    write_scored(out, rows)
+    assert out.read_bytes().startswith(b"\xef\xbb\xbf")
+    assert read_csv(out).rows[0].expected_answer == "A — B"
+
+
 def test_a_bom_does_not_hide_the_first_column(tmp_path: Path) -> None:
     p = _write(tmp_path / "validation.csv", HEADER + ROWS, bom=True)
 

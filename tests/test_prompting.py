@@ -184,6 +184,7 @@ def test_the_whole_registry_loads_and_renders() -> None:
         "content": "X", "packet_id": "p", "paragraph": "P", "paragraphs": "PS",
         "packet_a_id": "a", "packet_b_id": "b", "paragraphs_a": "A", "paragraphs_b": "B",
         "answer_rules": "RULES", "persona_framing": "FRAMING", "calls": 2,
+        "figures": "2, 5600",
         "persona_name": "HR professional", "persona_description": "Files work passes.",
         "question": "Q", "reply": "R", "expected_answer": "EA",
         "actual_answer": "AA", "transcript": "T", "last_reply": "LR",

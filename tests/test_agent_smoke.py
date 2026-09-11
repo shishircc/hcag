@@ -18,7 +18,6 @@ ROOT_COMPILED = """<!-- HCAG:COMPILED id=_root -->
 ---
 id: ""
 title: Root Knowledge Base
-short_description: Top-level branches
 long_description: Root node.
 token_size_estimate: 50
 kind: node
@@ -31,21 +30,19 @@ children:
 
 Top-level branches
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-### `billing.refunds`
-- **path**: `billing/refunds`
-- **title**: Refund Processing
-- **short**: How refunds are issued.
-- **long**: Full lifecycle of refund processing.
-- **tokens**: 100
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `billing.refunds` | `billing/refunds/` | 2 | Refund Processing | Full lifecycle of refund processing. |
+<!-- HCAG:CATALOG END -->
 """
 
 LEAF_COMPILED = """<!-- HCAG:COMPILED id=billing.refunds -->
 ---
 id: billing.refunds
 title: Refund Processing
-short_description: How refunds are issued.
 long_description: Full lifecycle of refund processing.
 token_size_estimate: 100
 kind: leaf
@@ -57,7 +54,6 @@ children: []
 # Refund Processing
 
 ## Content
-
 <!-- source: refunds.md -->
 Refunds work like this.
 """

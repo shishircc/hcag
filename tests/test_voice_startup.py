@@ -16,7 +16,6 @@ ROOT_COMPILED = """<!-- HCAG:COMPILED id=_root -->
 ---
 id: ""
 title: Root
-short_description: KB root
 long_description: KB root
 token_size_estimate: 50
 kind: node
@@ -30,21 +29,14 @@ children:
 
 KB root
 
-## Sub-topics
+<!-- HCAG:CATALOG BEGIN -->
+## Catalog
 
-### `billing.refunds`
-- **path**: `billing/refunds`
-- **title**: Refund Processing
-- **short**: How refunds are issued.
-- **long**: Full lifecycle.
-- **tokens**: 100
-
-### `billing.invoices`
-- **path**: `billing/invoices`
-- **title**: Invoices
-- **short**: How invoices work.
-- **long**: Invoice generation.
-- **tokens**: 100
+| id | path | depth | title | long |
+|---|---|---|---|---|
+| `billing.refunds` | `billing/refunds/` | 2 | Refund Processing | Full lifecycle. |
+| `billing.invoices` | `billing/invoices/` | 2 | Invoices | Invoice generation. |
+<!-- HCAG:CATALOG END -->
 """
 
 

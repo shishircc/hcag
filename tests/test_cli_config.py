@@ -52,8 +52,9 @@ def test_sample_config_parses() -> None:
 
 
 def test_root_id_reaches_the_generated_artifacts(tmp_path: Path) -> None:
-    """Whatever `root_id` resolves to is what lands in the root's front-matter,
-    its HCAG marker, and the `parent` of every top-level catalog record."""
+    """Whatever `root_id` resolves to is what lands in the root's front-matter
+    and its HCAG marker. It is deliberately absent from the catalog: a row's id
+    is absolute and a parent is derived from it (D3a)."""
     from unittest.mock import patch
 
     from hcag.cli.metadata_llm import FolderMetadata
@@ -61,8 +62,8 @@ def test_root_id_reaches_the_generated_artifacts(tmp_path: Path) -> None:
     from hcag.compiled_io import read_compiled
     from hcag.logger import build_logger
 
-    def _fake(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
-        return FolderMetadata(title="T", short_description="s", long_description="l")
+    def _fake(cfg, *, own_content="", **kw):  # noqa: ARG001
+        return FolderMetadata(title="T", long_description="l")
 
     kb = tmp_path / "kb"
     (kb / "billing").mkdir(parents=True)
@@ -80,8 +81,9 @@ def test_root_id_reaches_the_generated_artifacts(tmp_path: Path) -> None:
         "<!-- HCAG:COMPILED id=_root -->"
     )
     # A configured `_root` survives the write/parse round trip rather than
-    # being mistaken for "the root has no id".
-    assert records[0].parent == "_root"
+    # being mistaken for "the root has no id" — and the rows beneath it carry
+    # ids that stand on their own, with no root prefix to strip.
+    assert [r.id for r in records] == ["billing"]
 
 
 def test_top_level_branches_found_regardless_of_root_id(tmp_path: Path) -> None:
@@ -94,12 +96,15 @@ def test_top_level_branches_found_regardless_of_root_id(tmp_path: Path) -> None:
     from hcag.logger import build_logger
     from hcag.memory import FileSystemMemoryModule, LocalFsStorage, TokenBudget
 
-    def _fake(cfg, *, own_content="", children_longs=None, **kw):  # noqa: ARG001
-        return FolderMetadata(title="T", short_description="s", long_description="l")
+    def _fake(cfg, *, own_content="", **kw):  # noqa: ARG001
+        return FolderMetadata(title="T", long_description="l")
 
     for i, toml in enumerate(['[compiled]\nroot_id = "_root"\n', "", 'root_id = "kb"\n']):
         kb = tmp_path / f"kb{i}"
         (kb / "billing" / "refunds").mkdir(parents=True)
+        # `billing` needs content of its own to earn a row: a pure waypoint has
+        # none and is absent from the catalog by design (D3a).
+        (kb / "billing" / "b.md").write_text("# B\nbody\n", encoding="utf-8")
         (kb / "billing" / "refunds" / "x.md").write_text("# R\nbody\n", encoding="utf-8")
 
         cfg = _cfg(tmp_path, toml)
