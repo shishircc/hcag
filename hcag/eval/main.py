@@ -14,6 +14,7 @@ import typer
 from ..logger import build_logger
 from .config import EvalConfig, apply_cli_overrides, load_eval_config
 from .csv_io import VALID_KINDS
+from .row_select import IdSelection, IdSelectionError, parse_ids
 from .runner import ResolvedRun, RunError, run_eval
 
 
@@ -48,6 +49,17 @@ def _parse_personas(value: str | None) -> set[str] | None:
         return None
     ids = {p.strip() for p in value.split(",") if p.strip()}
     return ids or None
+
+
+def _parse_ids(value: str | None) -> IdSelection | None:
+    """Parse `--ids` (§7.3.3). Whether the ids exist is checked against the
+    input file in the runner — here only the syntax of the list is known."""
+    if value is None:
+        return None
+    try:
+        return parse_ids(value)
+    except IdSelectionError as e:
+        raise typer.BadParameter(str(e)) from e
 
 
 @app.command()
@@ -103,6 +115,16 @@ def run(
         "--personas",
         help="Comma-separated subset of persona ids to run. Default: every persona in the input.",
     ),
+    ids: str = typer.Option(
+        None,
+        "--ids",
+        help=(
+            "Run only these rows: comma-separated question_ids and inclusive "
+            "`start..end` spans (e.g. q-0007,q-0021..q-0024). Every other input row "
+            "is inherited from the input file, so the output CSV is still the whole "
+            "eval set. Not combinable with --kinds / --personas / --skip-completed."
+        ),
+    ),
     skip_completed: bool = typer.Option(
         False,
         "--skip-completed",
@@ -143,6 +165,7 @@ def run(
 
     parsed_kinds = _parse_kinds(kinds)
     parsed_personas = _parse_personas(personas)
+    parsed_ids = _parse_ids(ids)
 
     cfg = load_eval_config(config) if config.exists() else EvalConfig()
     cfg = apply_cli_overrides(
@@ -184,6 +207,7 @@ def run(
         kinds=parsed_kinds,
         personas=parsed_personas,
         skip_completed=skip_completed,
+        ids=parsed_ids,
         quiet=quiet,
     )
 

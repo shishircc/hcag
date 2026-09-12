@@ -165,6 +165,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [7.3 Invocation](#73-invocation)
     - [7.3.1 Startup — config visibility and LLM preflight](#731-startup--config-visibility-and-llm-preflight)
     - [7.3.2 Resuming a run — `--from`](#732-resuming-a-run----from)
+    - [7.3.3 Re-running named rows — `--ids`](#733-re-running-named-rows----ids)
   - [7.4 Execution Loop](#74-execution-loop)
     - [7.4.1 Single-turn exchange](#741-single-turn-exchange)
     - [7.4.2 Multi-turn clarification](#742-multi-turn-clarification)
@@ -788,6 +789,8 @@ The agent is instructed to:
 
 **The agent answers as a support officer, not as a retrieval system.** Grounding decides what it may rely on; the persona decides what it sounds like, and the two are separate rules in `agent/system.md`. The officer states what is true as fact, in its own words, and never narrates its own working. A user should experience a colleague who knows the policy.
 
+**The role is stated first and stated as identity, not as instruction.** The prompt opens by saying who the agent is, and then says what it is not — not an AI assistant, a chatbot, a model or a search tool — because the default persona of the underlying model is all four, and a role given as a one-line preamble loses to it under pressure. It also disowns the vocabulary that gives the machine away: for the length of a conversation the agent has no knowledge base, no context, no sources and no training. It has the guidance it works with, the way any officer does. The one exception is honesty about what it is when a user asks directly, which nothing here overrides.
+
 **The rule is stated as a test, not as a list of banned phrases**, because a list is read as a definition. It shipped as six examples — "based on the knowledge base", "the documents state", "according to my sources", and so on — and every one of them named an artifact or a channel. A reply then opened *"Based on the information I have, I need to give you both good and challenging news about your candidate's situation"*, which names no artifact, and the trailing "or any variant" was left carrying the whole rule alone. This is the same failure as "route" below: the enumeration became the category, and the intended one was wider.
 
 The test now stated is **whether the words are about the agent rather than about the asker's situation** — what it consulted, what it holds, how sure it is, what it is about to do. Three families are named under it, and the second and third were the ones getting through:
@@ -795,6 +798,9 @@ The test now stated is **whether the words are about the agent rather than about
 - **Where it came from.** The original list. Naming the knowledge base, the documents, the sources, the loading.
 - **What it holds, or how sure it is.** "Based on the information I have", "as far as I know", "the guidance I have access to". These name no system and are banned all the same: the agent's own state of knowledge is not a fact about the asker's case.
 - **What the reply is about to do.** "I need to give you both good and challenging news", "let me explain", "here's what you need to know". This family was not covered at all — the rule banned narrating the *source* and nothing banned narrating the *answer*. A preamble announcing the reply is not the reply.
+- **What it is about to go and check.** "Let me verify that", "I should confirm this before answering". Checking is something the agent does, not something it says. An officer who needs the file goes to the file; they do not narrate the walk to the cabinet.
+
+**The correction turn needed its own rule, because that is where the persona breaks hardest.** Observed: *"You're right — I need to check my answer against the loaded content."* Every rule above already forbids that sentence, and the model produced it anyway, because being challenged puts it back into the register of an assistant being debugged: concede, apologise, announce the re-check. The persona rules were all written for the turn where it answers a question, and none for the turn where a user pushes back. The prompt now handles it explicitly — go and get it right, then give the corrected answer as a fact in one sentence, owning the error in a word where that helps the user trust the correction, and never turning it into a discussion of method. They asked about their pass, not about how the agent works.
 
 **The rule was also stated twice, and the second statement was weaker.** A later `STYLE` paragraph repeated it in looser words forty-five lines further down. Two versions of one rule that differ in strength is a hazard of its own: the weaker one is satisfiable on its own terms, and in a long prompt the later text is the one in view. It is deleted; its only distinct clause, that the catalog is internal, was already in `GROUNDING`.
 
@@ -3850,9 +3856,9 @@ The tool is symmetric with `evalgen` in scope: `evalgen` is a **generator only**
 | `score`           | no  | **populated** — integer `0`–`3` per the rubric (§7.5) |
 | `remark`          | no  | **populated** — one-sentence judge justification |
 
-The first six columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last three columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption, and `--from` (§7.3.2) resumes by position instead.
+The first six columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last three columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption, `--from` (§7.3.2) resumes by position instead, and `--ids` (§7.3.3) re-runs a named handful and inherits the rest.
 
-**The input may be a scored output.** Reading a completed CSV back in is how a resumed run inherits what the interrupted one achieved: the last three columns are input to `--from` and `--skip-completed`, and output to everything else. Nothing distinguishes a file `evalgen` wrote from one `evalrun` wrote except whether those columns are populated.
+**The input may be a scored output.** Reading a completed CSV back in is how a resumed run inherits what the interrupted one achieved: the last three columns are input to `--from`, `--ids` and `--skip-completed`, and output to everything else. Nothing distinguishes a file `evalgen` wrote from one `evalrun` wrote except whether those columns are populated.
 
 ## 7.3 Invocation
 
@@ -3872,6 +3878,7 @@ $ evalrun <input.csv> --backend-url <url> --out <output.csv> --report <report.ht
 | `--session-scope <mode>` | no | `per-question` (default, fresh `session_id` per question) or `per-run` (share one `session_id` across all questions). Fresh sessions isolate scoring; shared sessions stress the multi-turn memory path. |
 | `--kinds <list>` | no | Comma-separated subset of question kinds to run (e.g. `--kinds simple,hard-2`). Default: all five. |
 | `--personas <list>` | no | Comma-separated subset of persona ids to run (e.g. `--personas hr-professional`). Default: every persona present in the input, persona-free rows included. |
+| `--ids <list>` | no | Run only the named rows: a comma-separated list of `question_id`s and inclusive `a..b` spans, e.g. `--ids q-0007,q-0021..q-0024`. Every other input row is inherited from the input file (§7.3.3). |
 | `--from <question_id>` | no | Resume: re-run this row and every row after it, inheriting every earlier row's result from the input file (§7.3.2). |
 | `--skip-completed` | no | Skip input rows whose `score` column is already populated. Off by default so re-runs re-score deterministically. |
 | `--seed <int>` | no | Seed for the judge LLM's sampling and any tie-breaking in the clarification generator. Fixed seed → reproducible scoring. |
@@ -3935,6 +3942,43 @@ Preflight is per-model and defaults to on; `preflight = false` under either `[cl
 - The **CSV is not marked.** Its nine columns are a contract with `evalgen` (§6.7) and with every eval set already committed, and a tenth column recording a transient property of one run is not worth breaking that for. The consequence is stated rather than hidden: a scored CSV alone cannot tell you it was assembled from two runs, which is one more reason to keep the report beside it.
 
 **A resumed run is a repair, not a baseline.** Where the two halves used different judges or different agent revisions, the honest move is to re-run the set whole once the cause is fixed, and to treat the resumed file as what got the numbers back rather than as the measurement of record.
+
+### 7.3.3 Re-running named rows — `--ids`
+
+`--ids <list>` names the rows to execute. Everything else in the input file is inherited exactly as `--from` inherits the rows before its split: `actual_answer`, `score` and `remark` are copied over untouched, and neither the backend nor the judge is called for them. The output CSV therefore holds the complete eval set, and the HTML report is regenerated across all of it, with the named rows marked as executed and the remainder marked inherited (§7.8).
+
+The list accepts single ids and inclusive spans, comma-separated: `--ids q-0007,q-0021..q-0024,q-0090`. A span is resolved by **file position** — `a..b` is row `a`, row `b`, and every row between them in the input — for the same reason `--from` splits by position (§7.3.2): ids are strings, a merged eval set may not sort in execution order, and the CSV's row order is the order `evalrun` runs and preserves. A span whose end sits earlier in the file than its start is a startup error rather than an empty selection, since one of the two ids is almost certainly wrong.
+
+**What it is for.** The unit of iteration on an eval set is rarely the whole file. A prompt change is made to fix the four rows that scored a 1; a KB page is corrected and two questions about it should be re-asked; a single row's remark looks wrong and the reviewer wants to see whether it reproduces. In every one of those cases the whole-file re-run costs minutes and judge tokens to reproduce results nobody is questioning, and — because the judge samples — it also re-rolls them, so an unrelated row can move a point and muddy the very comparison the change was made for. `--ids` is the flag that keeps a targeted change's before-and-after readable.
+
+**Three ways to subset a re-run, and they answer different questions.** All three belong:
+
+- `--skip-completed` is **content-addressed** — skip whatever already carries a score.
+- `--from` is **position-addressed** — re-run everything at or after a row, whatever those rows look like.
+- `--ids` is **identity-addressed** — re-run exactly these rows, wherever they sit and whatever they hold.
+
+**The flag's order does not matter and duplicates collapse.** Execution follows input-file order under `--concurrency` as always (§7.7), so two invocations that name the same rows in different orders produce identical output.
+
+**An id that is not in the file is a startup error**, naming every unknown id at once rather than the first. The common cause is a typo or a stale list pasted from an older eval set, and a run that silently executed the three of four ids it recognised would report a fixed row as untouched.
+
+**It does not compose with the other row selectors.** Passing `--ids` together with `--from`, `--kinds`, `--personas`, or `--skip-completed` is a startup error naming both flags. The operator has already enumerated the rows they want; a second selector can only remove some of them, and it would do so silently — `--skip-completed` most sharply of all, since the rows worth naming are usually the ones that already scored badly.
+
+**Inheriting unscored rows is a `WARN`, not an error**, exactly as under `--from`: running `--ids` against a freshly generated eval set is a legitimate way to score three rows and leave the rest for later, so the run continues and the end-of-run summary reports inherited, executed and empty counts separately (§7.11).
+
+**Updating the output files in place.** Because the output is the whole input file rather than a slice, `--out` may be the same path as the input, which is what makes repeated targeted runs practical: score the set once, then re-run the rows you are working on against the same pair of files and watch the report's pass rate move. It is safe because the CSV is written atomically at the end of the run (§7.7) — a crash leaves the previous file intact — but it is still a destructive update, so a run worth keeping as a reference should be copied aside first, and that copy is what the next run passes as `--baseline`.
+
+**A patched file is still two measurements.** Every caveat in §7.3.2 applies and applies harder here, because the executed set is small: the inherited rows were scored by whatever judge and agent revision ran before, the report states the counts, and the CSV cannot record it. A file that has been patched row by row across a week of prompt changes is a working artifact, not the measurement of record — re-run the set whole before quoting a number from it.
+
+**The obvious recipe.** The row list usually comes from the previous run's own output, so the flag is built to be fed from a shell:
+
+```
+$ evalrun kb-eval-scored.csv \
+    --backend-url http://localhost:8000 \
+    --out kb-eval-scored.csv --report kb-eval-report.html \
+    --ids "$(python3 -c 'import csv,sys; print(",".join(r["question_id"] for r in csv.DictReader(open(sys.argv[1], encoding="utf-8-sig")) if r["score"] and int(r["score"]) < 2))' kb-eval-scored.csv)"
+```
+
+Re-runs every row that scored below 2, inherits the rest, and rewrites both deliverables. Empty entries are tolerated so a generated list's trailing comma is not an error; a list that resolves to no rows at all — no row matched — is a startup error, symmetric with an empty `--kinds` filter (§7.10).
 
 ## 7.4 Execution Loop
 
@@ -4067,8 +4111,8 @@ Row-level rules:
 
 - **Row order is preserved.** Even under `--concurrency > 1`, rows are emitted in input order so `diff` on two run outputs is meaningful.
 - **Same encoding as `evalgen`.** UTF-8 with a byte-order mark (§6.7), LF line endings, RFC 4180 quoting, header row always present. Preserving the mark here is what carries the property through a round trip: an eval set that survives generation only to lose its punctuation at scoring time is no better off, and the scored CSV is the one a reviewer opens most.
-- **Never partial.** `evalrun` writes the output CSV atomically at the end of the run (temp file + rename). A crash mid-run leaves the previous output untouched, which is what makes the interrupted run's file worth resuming from: it is the last complete write, not a half-written one. Recover it with `--from` (§7.3.2) or `--skip-completed`.
-- **A resumed run writes the whole input back.** With `--from`, inherited rows are emitted in their original positions with their original `actual_answer`, `score` and `remark`, so the output is a complete eval set rather than the slice that was re-run (§7.3.2).
+- **Never partial.** `evalrun` writes the output CSV atomically at the end of the run (temp file + rename). A crash mid-run leaves the previous output untouched, which is what makes the interrupted run's file worth resuming from: it is the last complete write, not a half-written one. Recover it with `--from` (§7.3.2) or `--skip-completed`. The atomic write is also what lets `--out` name the input path for a targeted re-run (§7.3.3).
+- **A resumed or targeted run writes the whole input back.** With `--from` or `--ids`, inherited rows are emitted in their original positions with their original `actual_answer`, `score` and `remark`, so the output is a complete eval set rather than the slice that was re-run (§7.3.2, §7.3.3). This is what distinguishes both flags from `--kinds` and `--personas`, which narrow the output file too.
 - **Score column is integer or empty.** Never a string, never a float. Empty means the judge failed for that row (§7.5); `remark` explains why.
 
 Example (header + three rows, one of each outcome shape):
@@ -4086,8 +4130,8 @@ q-0021,hard-2,hr-professional,"Is the salary bar higher for our trading desk tha
 
 `evalrun` emits an HTML report to `--report` generated by promptfoo's report renderer, extended with per-kind summary panels. The report includes:
 
-- **Run summary.** Total questions, per-kind counts, overall pass rate (fraction scoring `≥ 2`), mean and median score, wall-clock elapsed, backend URL, seed, model IDs (chatbot + judge). When the run resumed from `--from`, it also states how many rows were **inherited** rather than executed, because every headline figure on the page is then computed across two runs made at different times, possibly by different judges (§7.3.2).
-- **Inherited rows are marked** in the row-level table and excluded from nothing: they count toward every figure, which is exactly why they are labelled. A reader comparing two reports needs to see that half of one was measured a day earlier.
+- **Run summary.** Total questions, per-kind counts, overall pass rate (fraction scoring `≥ 2`), mean and median score, wall-clock elapsed, backend URL, seed, model IDs (chatbot + judge). When rows were inherited rather than executed — `--from` (§7.3.2) or `--ids` (§7.3.3) — it states how many, and which flag selected the executed set, because every headline figure on the page is then computed across two runs made at different times, possibly by different judges.
+- **Inherited rows are marked** in the row-level table and excluded from nothing: they count toward every figure, which is exactly why they are labelled. A reader comparing two reports needs to see that half of one was measured a day earlier. The marking is per row and the filter follows it, so a report from a targeted `--ids` run can be narrowed to just the rows that were re-run — the view the operator making the change actually wants.
 - **Per-kind breakdown.** One panel each for `simple`, `medium`, `complex`, `hard-1`, `hard-2` showing count, mean score, score histogram (0/1/2/3 bars), and pass rate. Enables at-a-glance drift detection — a `hard-1` regression tells you retrieval selection broke; a `hard-2` regression tells you multimodal loading broke, mirroring the signal design in §6.4.
 - **Per-persona breakdown.** The same panel shape as the per-kind one, keyed on `persona` (§6.7.2), shown only when the input carries personas. This is the view the roster was built for: an overall pass rate that looks healthy while one role's rows sit a point lower says the agent handles the vocabulary of the KB's authors and not that of half its users — a phrasing and retrieval problem, not a knowledge gap, and invisible in every other panel on the page. Rows with an empty `persona` are grouped under a single *unattributed* entry rather than dropped.
 - **Persona × kind grid** when both axes are populated: mean score per cell. It separates the two readings of a weak persona — low across every kind means that role's phrasing is not being retrieved against, low only on `complex` and `hard-1` means that role simply asks harder questions.
@@ -4175,6 +4219,10 @@ Local model support mirrors `evalgen` (§6.8): `provider = "ollama"` or `"llamac
 | `--kinds` filter matches zero rows | ERROR at startup — nothing to run. |
 | `--from <id>` names a `question_id` not in the input | ERROR at startup, naming it. Starting from row one instead would re-run the whole set and cost exactly what the flag exists to save (§7.3.2). |
 | `--from` inherits rows that carry no score | WARN naming the count — the output has holes. Legitimate for a deliberate slice, so the run continues and the summary reports inherited, executed and empty separately. |
+| `--ids <list>` names `question_id`s not in the input | ERROR at startup, naming every unknown id at once (§7.3.3) — a run that executed only the ids it recognised would report a fixed row as untouched. |
+| `--ids` resolves to zero rows (empty or trailing-comma-only list) | ERROR at startup — nothing to run, symmetric with an empty `--kinds` filter. |
+| `--ids` combined with `--from`, `--kinds`, `--personas`, or `--skip-completed` | ERROR at startup naming both flags — a second selector could only silently drop rows the operator named (§7.3.3). |
+| `--ids` inherits rows that carry no score | WARN naming the count, same as `--from` — scoring a named handful of a fresh eval set is legitimate, so the run continues. |
 | `--out` or `--report` path not writable | ERROR at startup — fail fast rather than partial write. |
 | `--baseline` file schema mismatch | ERROR at startup — the report can't render a comparison. |
 
@@ -4184,10 +4232,10 @@ If any `ERROR`-level event fires, `evalrun` exits with a non-zero status. Per-ro
 
 `evalrun` writes a JSON-lines log to the path in `[log]` config (default `./evalrun.log`), matching the format used by the runtime (§2.11.3), `hcag` (§3.9), `crawl` (§4.7), and `evalgen` (§6.10):
 
-- `INFO`: run start (input path, row count, per-kind counts, backend URL, resolved model IDs, concurrency, seed, and — when resuming — the `--from` id with the inherited and executed counts it resolves to), per-row summary (`question_id`, `kind`, turn count, wall-clock elapsed, chatbot tokens, judge tokens, final `score`), run end summary (per-kind mean scores and pass rates, inherited / executed / empty counts, wall-clock elapsed).
+- `INFO`: run start (input path, row count, per-kind counts, backend URL, resolved model IDs, concurrency, seed, and — when a row selector is in play — the `--from` id or the resolved `--ids` list, with the inherited and executed counts each comes to), per-row summary (`question_id`, `kind`, turn count, wall-clock elapsed, chatbot tokens, judge tokens, final `score`), run end summary (per-kind mean scores and pass rates, inherited / executed / empty counts, wall-clock elapsed).
 - `DEBUG`: full multi-turn transcripts per row, full judge prompt + response, classifier decisions, clarifier prompts + responses.
-- `WARN`: backend errors, backend timeouts, judge malformed outputs, clarifier failures, `[max_turns_exceeded]` rows, rows filtered out by `--skip-completed`, and — on a resumed run — inherited rows that carry no score (§7.3.2).
-- `ERROR`: startup failures — unreadable input, unwritable output, unreachable backend, empty kind filter.
+- `WARN`: backend errors, backend timeouts, judge malformed outputs, clarifier failures, `[max_turns_exceeded]` rows, rows filtered out by `--skip-completed`, and — on a resumed or targeted run — inherited rows that carry no score (§7.3.2, §7.3.3).
+- `ERROR`: startup failures — unreadable input, unwritable output, unreachable backend, empty kind filter, unknown or empty `--ids` selection, conflicting row selectors.
 
 If `OTEL_EXPORTER_OTLP_ENDPOINT` is set, spans (`eval.run`, `eval.row`, `eval.chat_turn`, `eval.judge`, `eval.clarify`) are exported — symmetric with §2.11, §3.9, §4.7, and §6.10.
 
@@ -4210,6 +4258,7 @@ Design points, each answering a way the display could mislead:
 
 - **Unscored rows are counted, never averaged in.** A `[judge_failed]` row has no score; folding it in as a `0` would report a quality collapse where there is an infrastructure problem. It gets its own counter, so a run whose judge key expired mid-way is visible as it happens.
 - **The ETA is a linear extrapolation from completed rows**, and is labelled `~`. It is wrong early and honest later; rows vary by kind and by how many clarification turns they take.
+- **The denominator is the executed count, not the file length.** A `--ids` run of four rows against a hundred-row file shows `3/4`, because the inherited rows cost nothing and an ETA extrapolated over ninety-six rows that will never be dispatched is not an estimate of anything. The end-of-run summary carries both numbers (§7.3.3).
 - **Before the first row completes it says so**, rather than showing `0/N` with an ETA computed from no data.
 - **stderr, not stdout.** Progress is transient status; stdout carries the run summary. Same split as `crawl` (§4.7.1), and it keeps `evalrun ... > summary.json` clean.
 - **Non-TTY output is append-only.** A carriage return into a CI log or a file produces one unreadable mega-line, so when stderr is not a terminal the line is reprinted periodically instead of rewritten in place.

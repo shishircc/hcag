@@ -3,7 +3,9 @@
 Flow (§7.3 + §7.6):
 
 1. Read + validate input CSV.
-2. Filter rows by ``--kinds`` and ``--skip-completed`` if requested.
+2. Choose the rows to execute: ``--ids`` names them outright and every other
+   row is inherited from the input file (§7.3.3); otherwise ``--kinds``,
+   ``--personas`` and ``--skip-completed`` filter them.
 3. Probe the backend once with ``GET /health``, load the prompt registry, and
    preflight both eval LLMs; abort at startup on any failure (§7.3.1).
 4. Serialize the resolved ``EvalConfig`` to a temp JSON file the provider
@@ -12,7 +14,9 @@ Flow (§7.3 + §7.6):
    ``npx promptfoo eval --config <yaml> --output <json>``, rendering live
    per-row progress from the workers' reports while it runs (§7.11.1).
 6. Parse promptfoo's JSON output. Merge per-row results back into input order.
-7. Write the completed CSV atomically, then render the HTML report.
+7. Write the completed CSV atomically, then render the HTML report. Under
+   ``--ids`` both cover the whole input file, inherited rows included, so the
+   output is a complete eval set rather than the slice that was re-run.
 """
 
 from __future__ import annotations
@@ -38,6 +42,7 @@ from .llm_calls import preflight
 from .progress import PROGRESS_ENV, ProgressReporter
 from .promptfoo_config import PROVIDER_MODULE_PATH, write_config
 from .report import render_report
+from .row_select import IdSelection, IdSelectionError
 
 
 @dataclass
@@ -50,6 +55,9 @@ class ResolvedRun:
     #: persona-free rows included.
     personas: set[str] | None = None
     skip_completed: bool = False
+    #: Rows to execute (`--ids`, §7.3.3). When set, every other input row is
+    #: inherited verbatim and no other row selector may be combined with it.
+    ids: IdSelection | None = None
     quiet: bool = False
 
 
@@ -176,6 +184,77 @@ def _filter_rows(
     return out
 
 
+#: Row selectors that answer the same question as `--ids` and can only remove
+#: rows the operator named outright (§7.3.3).
+_CONFLICTING_SELECTORS = ("--kinds", "--personas", "--skip-completed")
+
+
+def _select_by_id(
+    rows: list[EvalRow], resolved: ResolvedRun
+) -> tuple[list[EvalRow], list[EvalRow]]:
+    """Split the input into (executed, inherited) for `--ids` (§7.3.3).
+
+    Both lists hold the row objects the CSV was read into, in file order, so the
+    executed rows are the ones the promptfoo results get merged onto and the
+    inherited ones keep whatever `actual_answer`, `score` and `remark` they were
+    read with.
+    """
+    assert resolved.ids is not None
+    conflicting = [
+        flag
+        for flag, given in zip(
+            _CONFLICTING_SELECTORS,
+            (bool(resolved.kinds), bool(resolved.personas), resolved.skip_completed),
+        )
+        if given
+    ]
+    if conflicting:
+        raise RunError(
+            f"--ids cannot be combined with {', '.join(conflicting)}: --ids already "
+            "enumerates the rows to run, and a second selector could only drop some "
+            "of them silently. Run them separately, or widen --ids."
+        )
+
+    try:
+        executed = set(resolved.ids.resolve(rows))
+    except IdSelectionError as e:
+        raise RunError(str(e)) from e
+
+    return (
+        [r for r in rows if r.question_id in executed],
+        [r for r in rows if r.question_id not in executed],
+    )
+
+
+def _assemble_output(
+    input_rows: list[EvalRow],
+    row_results: list[RowResult],
+    *,
+    whole_file: bool,
+) -> list[tuple[EvalRow, dict[str, Any]]]:
+    """Pair every output row with its report metadata, in input-file order.
+
+    A targeted run writes the whole input back (§7.7): inherited rows sit in
+    their original positions carrying the `actual_answer`, `score` and `remark`
+    they were read with, so the output is a complete eval set ready to be
+    re-run against again. Only the report is told which rows were inherited —
+    the CSV's nine columns are a contract with `evalgen`, and a tenth recording
+    one run's shape is not worth breaking it for (§7.3.2).
+
+    The filtering flags (`--kinds`, `--personas`, `--skip-completed`) subset the
+    output file instead, which is why `whole_file` is not simply always true.
+    """
+    if not whole_file:
+        return [(rr.row, rr.metadata) for rr in row_results]
+    executed = {rr.row.question_id: rr for rr in row_results}
+    return [
+        (executed[r.question_id].row, executed[r.question_id].metadata)
+        if r.question_id in executed
+        else (r, {"inherited": True})
+        for r in input_rows
+    ]
+
+
 def _write_provider_config(cfg: EvalConfig, workdir: Path) -> Path:
     path = workdir / "eval-config.json"
     with path.open("w", encoding="utf-8") as f:
@@ -262,31 +341,59 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
                 f"Present in the input: {sorted(p for p in present if p)}"
             )
 
-    all_rows = _filter_rows(
-        read.rows, resolved.kinds, resolved.personas, resolved.skip_completed
-    )
-    if not all_rows:
-        raise RunError("no rows matched the --kinds / --personas / --skip-completed filters")
-
     if resolved.kinds:
         unknown = resolved.kinds - VALID_KINDS
         if unknown:
             raise RunError(f"unknown kinds in --kinds filter: {sorted(unknown)}")
 
+    if resolved.ids is not None:
+        run_rows, inherited_rows = _select_by_id(read.rows, resolved)
+    else:
+        run_rows = _filter_rows(
+            read.rows, resolved.kinds, resolved.personas, resolved.skip_completed
+        )
+        inherited_rows = []
+        if not run_rows:
+            raise RunError(
+                "no rows matched the --kinds / --personas / --skip-completed filters"
+            )
+
+    # §7.3.3 — inheriting rows that were never run is legitimate (a deliberate
+    # slice of a fresh eval set), so it is a WARN with a count rather than an
+    # abort. The output has holes and the summary says how many.
+    unscored_inherited = [r for r in inherited_rows if r.score is None]
+    if unscored_inherited:
+        logger.warn(
+            "eval.inherited.unscored",
+            count=len(unscored_inherited),
+            question_ids=[r.question_id for r in unscored_inherited][:20],
+            detail="inherited rows carry no score — the output CSV has holes",
+        )
+
     logger.info(
         "eval.start",
         input=str(resolved.input_path),
-        rows=len(all_rows),
-        by_kind={k: sum(1 for r in all_rows if r.kind == k) for k in VALID_KINDS},
+        rows=len(run_rows),
+        by_kind={k: sum(1 for r in run_rows if r.kind == k) for k in VALID_KINDS},
         by_persona={
-            p: sum(1 for r in all_rows if r.persona == p)
-            for p in sorted({r.persona for r in all_rows if r.persona})
+            p: sum(1 for r in run_rows if r.persona == p)
+            for p in sorted({r.persona for r in run_rows if r.persona})
         },
         backend_url=cfg.backend.url,
         classifier_model=cfg.classifier.llm.model,
         judge_model=cfg.judge.llm.model,
         concurrency=cfg.run.concurrency,
         seed=cfg.run.seed,
+        **(
+            {
+                "ids": resolved.ids.raw,
+                "executed": len(run_rows),
+                "inherited": len(inherited_rows),
+                "empty_inherited": len(unscored_inherited),
+            }
+            if resolved.ids is not None
+            else {}
+        ),
     )
 
     backend = BackendClient(
@@ -326,7 +433,7 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
         cfg_json_path = _write_provider_config(cfg, workdir)
         config_yaml_path = workdir / "promptfooconfig.yaml"
         results_json_path = workdir / "promptfoo-results.json"
-        write_config(all_rows, cfg, config_yaml_path)
+        write_config(run_rows, cfg, config_yaml_path)
 
         progress_path = workdir / "progress.jsonl"
         progress_path.touch()
@@ -357,7 +464,7 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
             cwd=workdir,
             progress=ProgressReporter(
                 progress_path,
-                total=len(all_rows),
+                total=len(run_rows),
                 quiet=resolved.quiet,
                 on_row=lambda e: logger.info(
                     "eval.row.done",
@@ -391,10 +498,20 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
             promptfoo_json = json.load(f)
 
     results_map = _extract_result_map(promptfoo_json)
-    row_results = _apply_results(all_rows, results_map)
+    row_results = _apply_results(run_rows, results_map)
 
-    write_csv(resolved.out_path, [rr.row for rr in row_results])
-    logger.info("eval.csv.written", path=str(resolved.out_path), rows=len(row_results))
+    out_rows = _assemble_output(
+        read.rows, row_results, whole_file=resolved.ids is not None
+    )
+
+    write_csv(resolved.out_path, [row for row, _ in out_rows])
+    logger.info(
+        "eval.csv.written",
+        path=str(resolved.out_path),
+        rows=len(out_rows),
+        executed=len(row_results),
+        inherited=len(out_rows) - len(row_results),
+    )
 
     baseline_rows: list[EvalRow] | None = None
     if cfg.report.baseline:
@@ -404,16 +521,30 @@ def run_eval(cfg: EvalConfig, resolved: ResolvedRun, logger: HcagLogger) -> dict
         baseline_rows = read_csv(baseline_path).rows
 
     summary = render_report(
-        rows_with_meta=[(rr.row, rr.metadata) for rr in row_results],
+        rows_with_meta=out_rows,
         baseline_rows=baseline_rows,
         cfg=cfg,
         path=resolved.report_path,
+        scope=(
+            {
+                "flag": "--ids",
+                "spec": resolved.ids.raw,
+                "executed": len(row_results),
+                "inherited": len(inherited_rows),
+                "empty_inherited": len(unscored_inherited),
+            }
+            if resolved.ids is not None
+            else None
+        ),
     )
     logger.info("eval.report.written", path=str(resolved.report_path), **summary)
 
     elapsed = time.monotonic() - started
     return {
-        "rows": len(row_results),
+        "rows": len(out_rows),
+        "executed": len(row_results),
+        "inherited": len(inherited_rows),
+        "empty_inherited": len(unscored_inherited),
         "elapsed_sec": round(elapsed, 2),
         "out": str(resolved.out_path),
         "report": str(resolved.report_path),

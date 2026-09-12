@@ -147,7 +147,12 @@ def _baseline_delta(row: EvalRow, baseline_by_id: dict[str, EvalRow]) -> str:
     return f'<span style="color:{color};font-weight:600">{sign}{d}</span>'
 
 
-def _row_table(rows: list[EvalRow], baseline_by_id: dict[str, EvalRow], metas: dict[str, dict]) -> str:
+def _row_table(
+    rows: list[EvalRow],
+    baseline_by_id: dict[str, EvalRow],
+    metas: dict[str, dict],
+    inherited_ids: set[str],
+) -> str:
     parts = ['<table class="rows"><thead><tr>',
              "<th>ID</th><th>Kind</th><th>Score</th>"]
     if baseline_by_id:
@@ -160,9 +165,15 @@ def _row_table(rows: list[EvalRow], baseline_by_id: dict[str, EvalRow], metas: d
         score_class = f"score-{r.score}" if isinstance(r.score, int) else "score-none"
         score_txt = str(r.score) if isinstance(r.score, int) else "—"
         score_label = f" (scored {r.score})" if isinstance(r.score, int) else ""
+        # Inherited rows count toward every figure on the page, which is exactly
+        # why they are labelled: a reader comparing two reports needs to see
+        # that part of one was measured earlier (§7.3.3).
+        inherited = r.question_id in inherited_ids
+        scope = "inherited" if inherited else "executed"
+        badge = ' <span class="tag">inherited</span>' if inherited else ""
         parts.append(
-            f'<tr class="{score_class}" data-kind="{html.escape(r.kind)}">'
-            f'<td class="mono">{html.escape(r.question_id)}</td>'
+            f'<tr class="{score_class}" data-kind="{html.escape(r.kind)}" data-scope="{scope}">'
+            f'<td class="mono">{html.escape(r.question_id)}{badge}</td>'
             f'<td>{html.escape(r.kind)}</td>'
             f'<td class="score-cell">{score_txt}</td>'
         )
@@ -233,6 +244,34 @@ def _baseline_panel(rows: list[EvalRow], baseline_rows: list[EvalRow]) -> str:
     return "".join(out)
 
 
+def _scope_note(scope: dict[str, Any] | None, inherited: int, total: int) -> str:
+    """State, on the page, that a partial run's figures span two measurements.
+
+    A headline pass rate computed across an inherited half and a re-run half has
+    to say so where the reader is looking, not in a log file (§7.3.3).
+    """
+    if not inherited:
+        return ""
+    flag = (scope or {}).get("flag") or "a row selector"
+    spec = (scope or {}).get("spec") or ""
+    executed = (scope or {}).get("executed", total - inherited)
+    empty = (scope or {}).get("empty_inherited") or 0
+    spec_html = f" <code>{html.escape(str(spec))}</code>" if spec else ""
+    empty_html = (
+        f" {empty} inherited row(s) carry no score, so those figures have holes."
+        if empty
+        else ""
+    )
+    return (
+        '<div class="note"><b>Partial run.</b> '
+        f"{executed} row(s) were re-run, selected by <code>{html.escape(flag)}</code>"
+        f"{spec_html}; {inherited} were inherited from the input file and are marked "
+        "in the table below. Every figure on this page is computed across both, so it "
+        "spans two runs made at different times and possibly by different judges."
+        f"{empty_html}</div>"
+    )
+
+
 def _css() -> str:
     return """
     :root { --line: #e3e6e9; --ink: #24282c; --muted: #6b737a; --bg: #f6f7f8; --primary: #3554a5; }
@@ -287,6 +326,11 @@ def _css() -> str:
                         white-space: pre-wrap; word-break: break-word; font-size: 12px; }
     .toggle { background: transparent; border: 0; cursor: pointer; font-size: 14px; color: var(--muted); }
     .muted { color: var(--muted); }
+    .tag { font-family: -apple-system, sans-serif; font-size: 10px; text-transform: uppercase;
+           letter-spacing: 0.06em; color: var(--muted); background: var(--bg);
+           border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; white-space: nowrap; }
+    .note { margin: 10px 0 0; padding: 10px 14px; font-size: 13px; background: #fdf6e6;
+            border: 1px solid #e8d9a8; border-radius: 8px; }
     .bar-wrap { display: inline-block; background: var(--bg); border-radius: 3px; overflow: hidden;
                 border: 1px solid var(--line); height: 8px; vertical-align: middle; }
     .bar-fill { background: var(--primary); height: 100%; }
@@ -294,17 +338,28 @@ def _css() -> str:
 
 
 def _js() -> str:
+    """Row filtering runs on two independent dimensions — kind, and whether the
+    row was executed or inherited (§7.3.3) — so a chip group carries its own
+    name and the two intersect."""
     return """
     function toggleRow(i) {
       var d = document.getElementById('detail-' + i);
-      d.style.display = d.style.display === 'none' ? 'table-row' : 'none';
+      var open = d.style.display === 'none';
+      d.style.display = open ? 'table-row' : 'none';
+      d.dataset.open = open ? '1' : '0';
+    }
+    function activeValues(group) {
+      var on = document.querySelectorAll('.chip.on[data-group="' + group + '"]');
+      var vals = Array.prototype.map.call(on, function(c){ return c.dataset.value; });
+      // No chips, or the `all` chip, means the dimension does not filter.
+      return (vals.length === 0 || vals.indexOf('all') !== -1) ? null : vals;
     }
     function applyFilter() {
-      var active = document.querySelectorAll('.chip.on');
-      var kinds = Array.from(active).map(function(c){ return c.dataset.kind; });
-      var all = kinds.length === 0 || kinds.indexOf('all') !== -1;
+      var kinds = activeValues('kind');
+      var scopes = activeValues('scope');
       document.querySelectorAll('tr[data-kind]').forEach(function(row){
-        var show = all || kinds.indexOf(row.dataset.kind) !== -1;
+        var show = (!kinds || kinds.indexOf(row.dataset.kind) !== -1)
+                && (!scopes || scopes.indexOf(row.dataset.scope) !== -1);
         row.style.display = show ? '' : 'none';
         var next = row.nextElementSibling;
         if (next && next.classList.contains('detail')) {
@@ -313,16 +368,19 @@ def _js() -> str:
       });
     }
     document.addEventListener('click', function(e){
-      if (e.target && e.target.classList && e.target.classList.contains('chip')) {
-        if (e.target.dataset.kind === 'all') {
-          document.querySelectorAll('.chip.on').forEach(function(c){ c.classList.remove('on'); });
-          e.target.classList.add('on');
-        } else {
-          document.querySelector('.chip[data-kind="all"]').classList.remove('on');
-          e.target.classList.toggle('on');
-        }
-        applyFilter();
+      var chip = e.target;
+      if (!(chip && chip.classList && chip.classList.contains('chip'))) return;
+      var group = chip.dataset.group;
+      var sel = '.chip[data-group="' + group + '"]';
+      if (chip.dataset.value === 'all') {
+        document.querySelectorAll(sel + '.on').forEach(function(c){ c.classList.remove('on'); });
+        chip.classList.add('on');
+      } else {
+        var allChip = document.querySelector(sel + '[data-value="all"]');
+        if (allChip) allChip.classList.remove('on');
+        chip.classList.toggle('on');
       }
+      applyFilter();
     });
     """
 
@@ -333,9 +391,19 @@ def render_report(
     baseline_rows: list[EvalRow] | None,
     cfg: EvalConfig,
     path: Path,
+    scope: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """Render the run's HTML report.
+
+    ``scope`` describes a partial run — which flag chose the executed rows and
+    how many were inherited (§7.3.3). Every headline figure on the page is then
+    computed across two runs made at different times, possibly by different
+    judges, so the page says so instead of leaving it to a log the reader does
+    not have.
+    """
     rows = [r for r, _ in rows_with_meta]
     metas = {r.question_id: m for r, m in rows_with_meta}
+    inherited_ids = {r.question_id for r, m in rows_with_meta if m.get("inherited")}
 
     overall = _stats_for(rows)
     per_kind = _group_by_kind(rows)
@@ -362,12 +430,32 @@ def render_report(
             + _persona_kind_grid(rows, per_persona)
         )
     chip_html = (
-        '<div class="filters"><span class="muted">Filter:</span>'
-        '<button class="chip on" data-kind="all">all</button>'
-        + "".join(f'<button class="chip" data-kind="{k}">{k}</button>' for k in KIND_ORDER)
+        '<div class="filters"><span class="muted">Kind:</span>'
+        '<button class="chip on" data-group="kind" data-value="all">all</button>'
+        + "".join(
+            f'<button class="chip" data-group="kind" data-value="{k}">{k}</button>'
+            for k in KIND_ORDER
+        )
         + "</div>"
     )
-    table_html = _row_table(rows, baseline_by_id, metas)
+    if inherited_ids:
+        # The view the operator who re-ran a handful of rows actually wants.
+        chip_html += (
+            '<div class="filters"><span class="muted">Rows:</span>'
+            '<button class="chip on" data-group="scope" data-value="all">all</button>'
+            '<button class="chip" data-group="scope" data-value="executed">re-run</button>'
+            '<button class="chip" data-group="scope" data-value="inherited">inherited</button>'
+            "</div>"
+        )
+    table_html = _row_table(rows, baseline_by_id, metas, inherited_ids)
+
+    scope_html = _scope_note(scope, len(inherited_ids), len(rows))
+    inherited_metric = (
+        f'  <div class="metric"><div class="metric-value">{len(inherited_ids)}</div>'
+        '<div class="metric-label">inherited</div></div>\n'
+        if inherited_ids
+        else ""
+    )
 
     generated_at = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
 
@@ -391,7 +479,9 @@ def render_report(
   <div class="metric"><div class="metric-value">{overall["mean_score"]}</div><div class="metric-label">mean score</div></div>
   <div class="metric"><div class="metric-value">{int(overall["pass_rate"] * 100)}%</div><div class="metric-label">pass rate (≥2)</div></div>
   <div class="metric"><div class="metric-value">{overall["unscored"]}</div><div class="metric-label">unscored</div></div>
-</div>
+{inherited_metric}</div>
+
+{scope_html}
 
 {baseline_html}
 

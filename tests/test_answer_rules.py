@@ -312,3 +312,39 @@ def test_ids_are_chosen_by_situation_then_by_subject() -> None:
     assert "you want both in the one call" in prompt
     # And the case where they are one folder: the situation-specific rule wins.
     assert "the situation folder holds the version that applies" in prompt
+
+
+# --- Role and the correction turn (§2.7) -----------------------------------
+
+
+def test_the_role_is_stated_first_and_as_identity() -> None:
+    """A one-line preamble loses to the underlying model's default persona,
+    which is an assistant, under pressure."""
+    prompt = _system()
+    assert prompt.startswith("ROLE.")
+    assert "That is not a costume over something else" in prompt
+    assert "NOT an AI assistant, a chatbot, a model, or a search tool" in prompt
+
+
+def test_the_machine_vocabulary_is_disowned() -> None:
+    prompt = _system()
+    assert 'no "knowledge base", no "context", no "sources" and no "training"' in prompt
+    # But honesty when asked directly is not overridden.
+    assert "asking whether they speak to a person or a system is answered honestly" in prompt
+
+
+def test_going_to_check_is_done_not_announced() -> None:
+    prompt = _system()
+    assert "WHAT YOU ARE ABOUT TO GO AND CHECK" in prompt
+    assert "they do not narrate the walk to the cabinet" in prompt
+
+
+def test_the_correction_turn_has_its_own_rule() -> None:
+    """Every other rule already forbade it and the model said it anyway: being
+    challenged puts it back into the register of an assistant being debugged."""
+    prompt = _system()
+    assert "WHEN SOMEONE CORRECTS YOU OR PUSHES BACK" in prompt
+    assert "You're right -- I need to check my answer against the loaded content" in prompt
+    assert "Good catch, I should have verified that" in prompt
+    # And says what to do instead.
+    assert "give the corrected answer in one sentence, as a fact" in prompt
