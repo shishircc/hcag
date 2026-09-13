@@ -69,9 +69,9 @@ def _row_from_context(context: dict[str, Any]) -> EvalRow:
 def call_api(prompt: str, options: dict, context: dict) -> dict:  # noqa: ARG001
     """Entry point promptfoo calls once per test row.
 
-    Runs the multi-turn conversation loop, then scores the final answer with
-    the LLM judge. Returns the actual_answer as ``output`` and the score /
-    remark / transcript metadata for the runner + report to consume.
+    Runs the multi-turn conversation loop, then scores the answer with the LLM
+    judge. Returns the scored answer text as ``output`` and the score, remark,
+    turn count and transcript metadata for the runner + report to consume.
     """
     cfg = _load_cfg()
     row = _row_from_context(context)
@@ -121,13 +121,18 @@ def call_api(prompt: str, options: dict, context: dict) -> dict:  # noqa: ARG001
     )
 
     return {
-        "output": exchange.actual_answer,
+        # What the judge scored, not the closing reply alone (§7.7): a row whose
+        # answer arrived in parts is otherwise recorded in the CSV as its last
+        # fragment, which disagrees with the score sitting next to it.
+        "output": exchange.answer_text(cfg.judge.scope),
         "metadata": {
             "question_id": row.question_id,
             "kind": row.kind,
             "session_id": exchange.session_id,
             "turn_count": exchange.turn_count,
+            "bot_replies": exchange.reply_count(),
             "terminated_by": exchange.terminated_by,
+            "transcript_text": exchange.transcript_text(),
             "score": judge.score,
             "remark": judge.remark,
             "judge_error": judge.error,

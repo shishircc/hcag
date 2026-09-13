@@ -1,8 +1,10 @@
-"""Read/write the 9-column eval CSV (§6.7, §7.7).
+"""Read/write the eval CSV (§6.7, §7.7).
 
-Same on-disk format as ``hcag.evalgen.csv_writer`` but supports the full
+A superset of the nine columns ``hcag.evalgen.csv_writer`` emits: the same
 lifecycle — reading rows produced by ``evalgen``, and writing them back with
-``actual_answer``, ``score``, and ``remark`` populated (atomically).
+``actual_answer``, ``score`` and ``remark`` populated (atomically) — plus
+``turns`` and ``transcript``, which record how the answer was obtained rather
+than what it said. An `evalgen` file has neither and reads as empty for both.
 """
 
 from __future__ import annotations
@@ -27,6 +29,12 @@ COLUMNS = [
     "actual_answer",
     "score",
     "remark",
+    #: How many replies the chatbot gave, and the exchange that produced them
+    #: (§7.7). A single-turn row is the common case and says `1`; anything
+    #: higher means `evalrun` drove a clarification loop, and `transcript`
+    #: is where you see who said what.
+    "turns",
+    "transcript",
 ]
 
 #: Columns an input CSV must contain. `source` (§6.7.1) and `persona` (§6.7.2)
@@ -35,7 +43,7 @@ COLUMNS = [
 #: refusing to score either would strand every eval set already in use. A
 #: missing column reads as empty. Because the full schema is always *written*,
 #: reading an older file and writing it back upgrades it in place.
-_OPTIONAL_COLUMNS = {"source", "persona"}
+_OPTIONAL_COLUMNS = {"source", "persona", "turns", "transcript"}
 REQUIRED_COLUMNS = [c for c in COLUMNS if c not in _OPTIONAL_COLUMNS]
 
 VALID_KINDS: set[str] = {"simple", "medium", "complex", "hard-1", "hard-2"}
@@ -61,6 +69,14 @@ class EvalRow:
     actual_answer: str = ""
     score: int | None = None
     remark: str = ""
+    #: Number of chatbot replies in the exchange (§7.4). None on a row that has
+    #: not been run; 1 on the ordinary single-reply row.
+    turns: int | None = None
+    #: The whole exchange as plain text, every turn labelled with who spoke —
+    #: the original question, any clarification `evalrun` injected, and every
+    #: reply. `actual_answer` holds what the judge scored; this holds how it
+    #: was obtained.
+    transcript: str = ""
 
     def is_completed(self) -> bool:
         """A row is considered completed if it has both a score and an actual answer."""
@@ -97,7 +113,8 @@ def read_csv(path: Path) -> ReadResult:
             raise ValueError(
                 f"input CSV is missing required columns: {missing}. Expected: {COLUMNS};"
                 f" found: {header}"
-                " (`source` and `persona` are optional — older eval sets are accepted)"
+                " (`source`, `persona`, `turns` and `transcript` are optional —"
+                " older eval sets are accepted)"
             )
         for i, raw in enumerate(reader, start=2):  # line 1 is the header
             score_raw = (raw.get("score") or "").strip()
@@ -112,6 +129,14 @@ def read_csv(path: Path) -> ReadResult:
                         f"line {i}: score={score_raw!r} is not an integer; treating as empty"
                     )
                     score = None
+            turns_raw = (raw.get("turns") or "").strip()
+            try:
+                turns = int(turns_raw) if turns_raw else None
+            except ValueError:
+                result.warnings.append(
+                    f"line {i}: turns={turns_raw!r} is not an integer; treating as empty"
+                )
+                turns = None
             row = EvalRow(
                 question_id=(raw.get("question_id") or "").strip(),
                 kind=(raw.get("kind") or "").strip(),
@@ -122,6 +147,8 @@ def read_csv(path: Path) -> ReadResult:
                 actual_answer=raw.get("actual_answer") or "",
                 score=score,
                 remark=raw.get("remark") or "",
+                turns=turns,
+                transcript=raw.get("transcript") or "",
             )
             if not row.question_id:
                 result.warnings.append(f"line {i}: empty question_id; skipping")
@@ -168,6 +195,8 @@ def write_csv(path: Path, rows: Iterable[EvalRow]) -> int:
                         row.actual_answer,
                         "" if row.score is None else str(row.score),
                         row.remark,
+                        "" if row.turns is None else str(row.turns),
+                        row.transcript,
                     ]
                 )
                 n += 1

@@ -58,7 +58,10 @@ def test_an_upgraded_file_gains_an_empty_source_column(tmp_path: Path) -> None:
     write_csv(out, read_csv(src).rows)
     rows = list(csv.reader(out.open(encoding="utf-8-sig", newline="")))
     assert rows[0] == COLUMNS
-    assert rows[1] == ["q-0001", "simple", "", "Q?", "A", "", "", "", ""]
+    # Every column the older file lacked arrives empty — `persona` and `source`,
+    # and `turns`/`transcript` for a row that has not been run.
+    assert rows[1] == ["q-0001", "simple", "", "Q?", "A"] + [""] * (len(COLUMNS) - 5)
+    assert rows[1][COLUMNS.index("source")] == ""
 
 
 def test_source_is_positioned_after_expected_answer() -> None:

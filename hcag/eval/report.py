@@ -147,6 +147,63 @@ def _baseline_delta(row: EvalRow, baseline_by_id: dict[str, EvalRow]) -> str:
     return f'<span style="color:{color};font-weight:600">{sign}{d}</span>'
 
 
+#: What each transcript turn is called on the page. `evalrun` speaks in two
+#: voices — the eval set's own question, and any clarification the clarifier
+#: (§7.4.2) wrote on the asker's behalf — and a reader auditing a multi-turn row
+#: needs to know which of the two pulled the next reply out of the agent.
+_TURN_LABEL = {
+    ("user", "user"): "User (from the eval set)",
+    ("user", "clarifier"): "User (written by the clarifier)",
+    ("bot", "bot"): "Agent",
+    ("bot", "bot_final"): "Agent (final)",
+    ("system", "error"): "evalrun (why it stopped)",
+}
+
+
+def _turns_cell(row: EvalRow, meta: dict) -> str:
+    """The reply count, called out when it is more than one.
+
+    A single reply is the ordinary case and needs no emphasis. Anything higher
+    means the clarifier stepped in, which changes how the row should be read:
+    the agent may have answered well and been asked again anyway.
+    """
+    replies = meta.get("bot_replies")
+    if not isinstance(replies, int) or replies <= 0:
+        replies = row.turns if isinstance(row.turns, int) else None
+    if replies is None:
+        return '<td class="muted">—</td>'
+    if replies == 1:
+        return f'<td class="turns-cell">{replies}</td>'
+    return f'<td class="turns-cell multi" title="clarifier drove {replies - 1} extra turn(s)">{replies}</td>'
+
+
+def _transcript_html(turns: list[dict], row: EvalRow) -> str:
+    """Render the exchange turn by turn, labelled with who spoke.
+
+    The JSON dump this replaces held the same information and was unreadable at
+    the moment it matters most — when the question is why the agent was asked
+    twice. Falls back to the CSV's `transcript` column, so a report rendered
+    from a scored CSV alone still shows the exchange.
+    """
+    if not turns:
+        if row.transcript.strip():
+            return f"<pre>{html.escape(row.transcript)}</pre>"
+        return '<div class="muted">(no transcript recorded)</div>'
+    out = []
+    for t in turns:
+        label = _TURN_LABEL.get(
+            (t.get("role", ""), t.get("source", "")), t.get("role", "turn").title()
+        )
+        cls = {"bot": "turn-bot", "system": "turn-error"}.get(t.get("role", ""), "turn-user")
+        ms = t.get("elapsed_ms") or 0
+        timing = f' <span class="muted">{int(ms)} ms</span>' if ms else ""
+        out.append(
+            f'<div class="turn {cls}"><div class="turn-label">{html.escape(label)}{timing}</div>'
+            f'<pre>{html.escape(t.get("text", ""))}</pre></div>'
+        )
+    return '<div class="turns">' + "".join(out) + "</div>"
+
+
 def _row_table(
     rows: list[EvalRow],
     baseline_by_id: dict[str, EvalRow],
@@ -154,14 +211,13 @@ def _row_table(
     inherited_ids: set[str],
 ) -> str:
     parts = ['<table class="rows"><thead><tr>',
-             "<th>ID</th><th>Kind</th><th>Score</th>"]
+             "<th>ID</th><th>Kind</th><th>Score</th><th>Turns</th>"]
     if baseline_by_id:
         parts.append("<th>Δ</th>")
     parts.append("<th>Question</th><th>Actual answer</th><th>Remark</th><th></th></tr></thead><tbody>")
     for i, r in enumerate(rows):
         meta = metas.get(r.question_id) or {}
         turns = meta.get("transcript") or []
-        transcript_json = html.escape(json.dumps(turns, indent=2), quote=False)
         score_class = f"score-{r.score}" if isinstance(r.score, int) else "score-none"
         score_txt = str(r.score) if isinstance(r.score, int) else "—"
         score_label = f" (scored {r.score})" if isinstance(r.score, int) else ""
@@ -176,6 +232,7 @@ def _row_table(
             f'<td class="mono">{html.escape(r.question_id)}{badge}</td>'
             f'<td>{html.escape(r.kind)}</td>'
             f'<td class="score-cell">{score_txt}</td>'
+            f"{_turns_cell(r, meta)}"
         )
         if baseline_by_id:
             parts.append(f"<td>{_baseline_delta(r, baseline_by_id)}</td>")
@@ -191,7 +248,7 @@ def _row_table(
         )
         # colspan must cover every column including the toggle, or the expanded
         # block stops short of the table's width.
-        span = 8 if baseline_by_id else 7
+        span = 9 if baseline_by_id else 8
         parts.append(
             f'<td class="clip" title="{html.escape(r.question, quote=True)}">'
             f'{html.escape(r.question)}</td>'
@@ -207,7 +264,7 @@ def _row_table(
             f'<div class="detail-block"><b>Expected:</b><pre>{html.escape(r.expected_answer)}</pre></div>'
             f'<div class="detail-block"><b>Actual:</b><pre>{html.escape(r.actual_answer)}</pre></div>'
             f"{remark_html}"
-            f'<div class="detail-block"><b>Transcript:</b><pre>{transcript_json}</pre></div>'
+            f'<div class="detail-block"><b>Transcript:</b>{_transcript_html(turns, r)}</div>'
             f"</td></tr>"
         )
     parts.append("</tbody></table>")
@@ -329,6 +386,14 @@ def _css() -> str:
     .tag { font-family: -apple-system, sans-serif; font-size: 10px; text-transform: uppercase;
            letter-spacing: 0.06em; color: var(--muted); background: var(--bg);
            border: 1px solid var(--line); border-radius: 999px; padding: 1px 6px; white-space: nowrap; }
+    .turns-cell { text-align: center; font-variant-numeric: tabular-nums; }
+    .turns-cell.multi { font-weight: 700; color: #b4530a; }
+    .turn { margin: 6px 0; border-left: 3px solid var(--line); padding-left: 10px; }
+    .turn-user { border-left-color: #8a94a6; }
+    .turn-bot { border-left-color: var(--primary); }
+    .turn-error { border-left-color: #c53030; }
+    .turn-label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.06em;
+                  color: var(--muted); margin-bottom: 2px; }
     .note { margin: 10px 0 0; padding: 10px 14px; font-size: 13px; background: #fdf6e6;
             border: 1px solid #e8d9a8; border-radius: 8px; }
     .bar-wrap { display: inline-block; background: var(--bg); border-radius: 3px; overflow: hidden;

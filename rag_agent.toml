@@ -15,7 +15,7 @@ api_key_env = "OPENAI_API_KEY"
 # Generation LLM — the model that writes the answer.
 [llm]
 provider    = "anthropic"
-model       = "claude-haiku-4-5-20251001"
+model       = "claude-sonnet-4-5"   # matched to agent.toml so the benchmark isolates retrieval
 api_key_env = "ANTHROPIC_API_KEY"
 max_tokens  = 1024
 

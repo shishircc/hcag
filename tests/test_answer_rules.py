@@ -190,6 +190,41 @@ def test_the_two_families_that_were_getting_through_are_named() -> None:
     assert "A preamble announcing the answer is not the answer" in prompt
 
 
+def test_opinions_about_the_asker_situation_are_banned() -> None:
+    """Replies opened with "Great news!" and "That's perfect". The narration
+    rule catches phrases about the officer; these are about the asker, so every
+    test in it passed while the reply editorialised anyway."""
+    prompt = _system()
+    assert "NO OPINIONS." in prompt
+    assert "You state the position; the person decides whether it is good news" in prompt
+    # The four families, each pinned to one phrase that was actually observed
+    # or is its nearest cousin.
+    assert '"Great news!"' in prompt
+    assert '"That\'s perfect"' in prompt
+    assert '"Unfortunately"' in prompt
+    assert '"That\'s a great question"' in prompt
+    assert '"Don\'t worry"' in prompt
+    # Adjectives judging the case, not only opening interjections.
+    assert "every adjective that judges their case rather than stating it" in prompt
+
+
+def test_an_evaluative_opener_is_tied_to_the_verdict_rule() -> None:
+    """The damage is not tone: "Great news" in front of an unsettled case is a
+    verdict, and the asker acts on the opener rather than on the correction."""
+    prompt = _system()
+    assert "AN EVALUATIVE OPENER IS A VERDICT SMUGGLED AHEAD OF THE VERDICT" in prompt
+    assert "OPEN, NOT SETTLED" in prompt.split("NO OPINIONS.")[1].split("GROUNDING")[0]
+    assert "they act on the opener" in prompt
+
+
+def test_being_factual_is_not_licence_to_be_curt() -> None:
+    """A ban on warmth-words that also banned courtesy would trade one wrong
+    register for another."""
+    prompt = _system()
+    assert "Plain courtesy is not an opinion and stays" in prompt
+    assert "Being factual is not being curt" in prompt
+
+
 def test_the_weaker_duplicate_is_gone() -> None:
     """Two statements of one rule that differ in strength is its own hazard:
     the weaker is satisfiable on its own terms, and it sat later in the file."""
@@ -207,6 +242,48 @@ def test_the_word_limit_is_in_the_prompt_not_only_the_design() -> None:
     prompt = _system()
     assert "50 to 80 words" in prompt
     assert "The limit is per reply, not an average" in prompt
+
+
+def test_every_part_of_a_multi_part_question_must_be_answered() -> None:
+    """q-0033: asked for employment information, personal particulars and
+    occupation restrictions, the reply covered two and dropped the particulars —
+    a table in the packet it had already loaded. Nothing was missing from the
+    material; a part of the question went unanswered."""
+    prompt = _system()
+    assert "ANSWER EVERY PART THEY ASKED" in prompt
+    assert "count the asks before you write" in prompt
+    # The asks hide inside one sentence with one question mark, which is why
+    # counting question marks does not find them.
+    assert "THREE asks in one sentence" in prompt
+    assert "A part you never mention is a part they walk away not knowing about" in prompt
+
+
+def test_the_word_limit_does_not_license_dropping_a_part() -> None:
+    """The limit and the coverage rule collide on a three-part question, and the
+    model resolved the collision by dropping a part silently."""
+    prompt = _system()
+    assert "THE WORD LIMIT NEVER DECIDES WHICH PART TO DROP" in prompt
+    assert "What you cut to make room is detail INSIDE a part, never a part" in prompt
+    # Deferring stays available, but only out loud.
+    assert "legitimate only when you NAME what you are deferring" in prompt
+
+
+def test_a_requested_list_is_not_unnecessary_detail() -> None:
+    """The same reply that dropped the fields kept the count of restricted
+    occupations — it applied the detail rule exactly backwards."""
+    prompt = _system()
+    unnecessary = prompt.split("UNNECESSARY DETAIL.")[1].split("OFFER ADDITIONAL HELP")[0]
+    assert "A list they explicitly asked for is NOT unnecessary detail" in unnecessary
+    assert "the fields ARE the answer" in unnecessary
+    assert "how many items a list holds in total" in unnecessary
+
+
+def test_correcting_the_premise_does_not_end_the_reply() -> None:
+    """The reply opened by denying that notification was needed, and from inside
+    that frame the particulars it had loaded looked irrelevant."""
+    prompt = _system()
+    assert "A CORRECTED PREMISE IS NOT AN ANSWER TO THE QUESTION" in prompt
+    assert "you still owe them every part that survives it" in prompt
 
 
 def test_the_format_rule_bans_the_document_shape_not_markdown() -> None:

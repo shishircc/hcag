@@ -173,6 +173,7 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
   - [7.5 LLM-as-Judge Scoring](#75-llm-as-judge-scoring)
   - [7.6 Test Harness (promptfoo)](#76-test-harness-promptfoo)
   - [7.7 Output — Completed CSV](#77-output--completed-csv)
+    - [7.7.1 Turns and transcript](#771-turns-and-transcript)
   - [7.8 Output — HTML Report](#78-output--html-report)
   - [7.9 Configuration](#79-configuration)
   - [7.10 Failure Modes](#710-failure-modes)
@@ -3855,8 +3856,10 @@ The tool is symmetric with `evalgen` in scope: `evalgen` is a **generator only**
 | `actual_answer`   | no  | **populated** — the chatbot's final answer text |
 | `score`           | no  | **populated** — integer `0`–`3` per the rubric (§7.5) |
 | `remark`          | no  | **populated** — one-sentence judge justification |
+| `turns`           | no  | **populated** — how many replies the chatbot gave (§7.7.1) |
+| `transcript`      | no  | **populated** — the whole exchange, every turn labelled (§7.7.1) |
 
-The first six columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last three columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption, `--from` (§7.3.2) resumes by position instead, and `--ids` (§7.3.3) re-runs a named handful and inherits the rest.
+The first six columns are the eval set's identity; `evalrun` treats them as read-only and copies them verbatim into the output. The last five columns are `evalrun`'s work product. Rows whose `actual_answer`, `score`, and `remark` are already populated are re-run by default so re-scoring stays reproducible; `--skip-completed` short-circuits them if the caller wants incremental resumption, `--from` (§7.3.2) resumes by position instead, and `--ids` (§7.3.3) re-runs a named handful and inherits the rest.
 
 **The input may be a scored output.** Reading a completed CSV back in is how a resumed run inherits what the interrupted one achieved: the last three columns are input to `--from`, `--ids` and `--skip-completed`, and output to everything else. Nothing distinguishes a file `evalgen` wrote from one `evalrun` wrote except whether those columns are populated.
 
@@ -4105,7 +4108,7 @@ The promptfoo integration is an implementation detail — the CLI surface, input
 
 ## 7.7 Output — Completed CSV
 
-`evalrun` writes a CSV to `--out` with the same 9-column schema as the input (§6.7). Columns `question_id`, `kind`, `persona`, `question`, `expected_answer`, and `source` are copied verbatim from the input row. Columns `actual_answer`, `score`, and `remark` are populated per §7.4 and §7.5.
+`evalrun` writes a CSV to `--out` with the input's nine columns (§6.7) plus `turns` and `transcript` (§7.7.1). Columns `question_id`, `kind`, `persona`, `question`, `expected_answer`, and `source` are copied verbatim from the input row. Columns `actual_answer`, `score`, and `remark` are populated per §7.4 and §7.5.
 
 Row-level rules:
 
@@ -4114,17 +4117,37 @@ Row-level rules:
 - **Never partial.** `evalrun` writes the output CSV atomically at the end of the run (temp file + rename). A crash mid-run leaves the previous output untouched, which is what makes the interrupted run's file worth resuming from: it is the last complete write, not a half-written one. Recover it with `--from` (§7.3.2) or `--skip-completed`. The atomic write is also what lets `--out` name the input path for a targeted re-run (§7.3.3).
 - **A resumed or targeted run writes the whole input back.** With `--from` or `--ids`, inherited rows are emitted in their original positions with their original `actual_answer`, `score` and `remark`, so the output is a complete eval set rather than the slice that was re-run (§7.3.2, §7.3.3). This is what distinguishes both flags from `--kinds` and `--personas`, which narrow the output file too.
 - **Score column is integer or empty.** Never a string, never a float. Empty means the judge failed for that row (§7.5); `remark` explains why.
+- **`actual_answer` is what the judge scored.** Under the default `scope = "conversation"` (§7.5) that is every reply the chatbot gave, rendered `[part i of N]`; under `final` it is the closing reply. The column and the score beside it therefore always describe the same text, which is the property that was missing when the column held the last fragment of an exchange scored across all of it.
 
 Example (header + three rows, one of each outcome shape):
 
 ```csv
-question_id,kind,persona,question,expected_answer,source,actual_answer,score,remark
-q-0001,simple,hr-professional,"How long do we have to cancel a pass after someone resigns?","...",https://...,"Within one week of the last day of employment.",3,"States the cancellation window correctly."
-q-0007,medium,prospective-pass-holder,"My offer is $5,600 and I turn 32 next month — is that enough for an EP?","...",https://...,"Yes, $5,600 meets the Employment Pass minimum.",1,"Quotes the entry-level figure without the age and sector conditions that decide whether it applies."
-q-0021,hard-2,hr-professional,"Is the salary bar higher for our trading desk than for our engineering roles?","...",https://...,"[max_turns_exceeded] last_response=""Which sector do you mean?""",0,"Chatbot never produced an answer within the turn limit."
+question_id,kind,persona,question,expected_answer,source,actual_answer,score,remark,turns,transcript
+q-0001,simple,hr-professional,"How long do we have to cancel a pass after someone resigns?","...",https://...,"Within one week of the last day of employment.",3,"States the cancellation window correctly.",1,"USER: How long do we have...\n\nBOT: Within one week..."
+q-0007,medium,prospective-pass-holder,"My offer is $5,600 and I turn 32 next month — is that enough for an EP?","...",https://...,"Yes, $5,600 meets the Employment Pass minimum.",1,"Quotes the entry-level figure without the age and sector conditions that decide whether it applies.",1,"USER: My offer is...\n\nBOT: Yes, $5,600 meets..."
+q-0021,hard-2,hr-professional,"Is the salary bar higher for our trading desk than for our engineering roles?","...",https://...,"[max_turns_exceeded] last_response=""Which sector do you mean?""",0,"Chatbot never produced an answer within the turn limit.",5,"USER: Is the salary bar...\n\nBOT: Which sector do you mean?\n\nUSER (clarifier): The trading desk..."
 ```
 
-`expected_answer` is elided for width; each is several sentences per §6.4.0. Row `q-0007` is the failure §6.4.6 exists to catch — the persona narrowed the question to one person's case and the agent replied with the headline number instead of the conditions that decide whether it applies. An eval set whose reference answer was equally terse would have scored that a 3.
+`expected_answer` and `transcript` are elided for width; each expected answer is several sentences per §6.4.0, and a real transcript carries every turn in full. Row `q-0021` is where `turns` earns its place: five replies and no answer, visible in the spreadsheet without opening the report. Row `q-0007` is the failure §6.4.6 exists to catch — the persona narrowed the question to one person's case and the agent replied with the headline number instead of the conditions that decide whether it applies. An eval set whose reference answer was equally terse would have scored that a 3.
+
+### 7.7.1 Turns and transcript
+
+Two further columns record **how** the answer was obtained, next to the columns that record what it said.
+
+| Column | Contents |
+|---|---|
+| `turns` | Number of chatbot replies in the exchange. `1` on the ordinary row; higher means the clarification loop (§7.4.2) ran. Empty on a row that was never executed. |
+| `transcript` | The whole exchange as plain text, each turn labelled with who spoke — the eval set's question, every clarification the clarifier wrote on the asker's behalf, every reply, and, where the exchange ended badly, one `EVALRUN:` turn naming why. |
+
+**Why the CSV and not only the report.** The exchange was already in the report's expandable row, and that turned out to be the wrong and only place for it. The question a reviewer actually arrives with is *why was the agent asked twice* — and the first symptom of it is a `[part 2 of 2]` fragment in a spreadsheet, which is where triage starts. A column that says `3` where every other row says `1` puts the anomaly in the sortable artifact; the report is then where you go to read it.
+
+**They are optional on input, like `source` and `persona` (§7.6).** An `evalgen` file has neither column and both read as empty, so no eval set already in use is stranded; because the full schema is always written, reading an older file and writing it back upgrades it in place. The `evalgen` writer is unchanged — it has no exchange to record — so these two columns only ever appear on a file `evalrun` wrote.
+
+**`turns` is an integer or empty**, never a string. An unparseable value is a `WARN` naming the line and reads as empty, matching `score` (§7.7).
+
+**A failure is a turn, not an absence.** `[backend_error]`, `[backend_timeout]`, `[clarifier_failed]` and `[max_turns_exceeded]` are recorded in the transcript as a system-role turn as well as in `actual_answer`. Without it the transcript of a failed row ends on a user turn with nothing after it, which reads as a reply that went missing rather than a request that failed. Those turns are not replies: `turns` counts chatbot replies only, so a row that never got one says `0`, and the judge still receives the sentinel alone as the answer (§7.5).
+
+**What they cannot show.** Both columns describe the HTTP conversation, which is the only thing `evalrun` can observe (§7.12). A backend that re-prompts its own model inside one `/chat` call — the runtime's grounding enforcement withholding a draft and re-invoking, §2.7.2 — spends several model turns that arrive as one reply, so `turns` says `1` and the transcript holds that one reply. A row whose answer reads like a response to a question nobody asked is the signature of it, and the agent's own log is where that is visible.
 
 ## 7.8 Output — HTML Report
 
@@ -4136,8 +4159,8 @@ q-0021,hard-2,hr-professional,"Is the salary bar higher for our trading desk tha
 - **Per-persona breakdown.** The same panel shape as the per-kind one, keyed on `persona` (§6.7.2), shown only when the input carries personas. This is the view the roster was built for: an overall pass rate that looks healthy while one role's rows sit a point lower says the agent handles the vocabulary of the KB's authors and not that of half its users — a phrasing and retrieval problem, not a knowledge gap, and invisible in every other panel on the page. Rows with an empty `persona` are grouped under a single *unattributed* entry rather than dropped.
 - **Persona × kind grid** when both axes are populated: mean score per cell. It separates the two readings of a weak persona — low across every kind means that role's phrasing is not being retrieved against, low only on `complex` and `hard-1` means that role simply asks harder questions.
 - **Score distribution histogram** across all kinds.
-- **Row-level table** — every question with its score and the judge's remark, filterable by kind and by score bucket. The question and answer columns clip to one line; the remark column wraps to three, because a remark ellipsised to a single line cannot be read and it is the reason the row scored what it did. Every clipped cell carries its full text as a `title`, so hovering reads it without expanding.
-- **Expandable detail row** — the full record of one scored question, and the place where nothing is clipped: **question, expected answer, actual answer, the judge's remark (labelled with the score it justifies), and the multi-turn transcript.** A row with no remark says so rather than rendering an empty block, which distinguishes "the judge said nothing" from "the report dropped it". The detail cell spans every column of the table, including the `--baseline` Δ column when present — one short and the expanded block stops before the table's right edge.
+- **Row-level table** — every question with its score, its reply count, and the judge's remark, filterable by kind and by score bucket. The `Turns` column is emphasised when it is above one, because a row the clarifier had to drive reads differently from one answered outright: the agent may have answered well and been asked again anyway. The question and answer columns clip to one line; the remark column wraps to three, because a remark ellipsised to a single line cannot be read and it is the reason the row scored what it did. Every clipped cell carries its full text as a `title`, so hovering reads it without expanding.
+- **Expandable detail row** — the full record of one scored question, and the place where nothing is clipped: **question, expected answer, actual answer, the judge's remark (labelled with the score it justifies), and the multi-turn transcript rendered turn by turn**, each labelled with who spoke and how long the reply took. The labels distinguish the eval set's own question from a clarification the clarifier wrote, which is the whole point of reading a multi-turn row. A JSON dump held the same information and was unreadable at the moment it mattered. A row with no remark says so rather than rendering an empty block, which distinguishes "the judge said nothing" from "the report dropped it". The detail cell spans every column of the table, including the `--baseline` Δ column when present — one short and the expanded block stops before the table's right edge.
 - **Comparison bar** at the top when `--baseline <prior-output.csv>` is passed: side-by-side per-kind pass rates and a delta column, so regressions vs. a committed baseline are immediately visible.
 - **Regenerable and self-contained.** Single `.html` file — inlined CSS/JS, no external assets, safe to commit or attach to a PR.
 

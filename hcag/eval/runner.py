@@ -305,10 +305,17 @@ def _apply_results(rows: list[EvalRow], results: dict[str, dict[str, Any]]) -> l
             row.actual_answer = "[no_result] promptfoo did not return a result for this row"
             row.score = None
             row.remark = "[no_result] see evalrun.log for details"
+            row.turns = None
+            row.transcript = ""
             out.append(RowResult(row=row, metadata={}))
             continue
         meta = entry.get("metadata") or {}
         row.actual_answer = entry.get("output") or ""
+        # How the answer was obtained, alongside what it said (§7.7). Written to
+        # the CSV so a multi-turn row is visible without opening the report.
+        replies = meta.get("bot_replies")
+        row.turns = replies if isinstance(replies, int) else None
+        row.transcript = str(meta.get("transcript_text") or "")
         raw_score = meta.get("score")
         row.score = raw_score if isinstance(raw_score, int) and raw_score in (0, 1, 2, 3) else None
         row.remark = str(meta.get("remark") or "").strip()

@@ -30,9 +30,8 @@ batch_size  = 1
 # ------------------------------------------------------------------------------
 [llm]
 provider    = "anthropic"
-model       = "claude-haiku-4-5-20251001"
+model       = "claude-sonnet-4-5"
 api_key_env = "ANTHROPIC_API_KEY"
-max_tokens  = 1024
 temperature = 0.0
 
 # ------------------------------------------------------------------------------

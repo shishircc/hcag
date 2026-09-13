@@ -27,9 +27,13 @@ from .llm_calls import (
 
 @dataclass
 class TranscriptTurn:
-    role: str            # "user" | "bot"
+    role: str            # "user" | "bot" | "system"
     text: str
-    source: str = "user"  # "user" (original question), "clarifier", "bot", "bot_final"
+    #: "user" (the eval set's question), "clarifier" (a user turn the clarifier
+    #: wrote), "bot", "bot_final", or "error" — a system-role turn recording a
+    #: failure that ended the exchange, so the transcript shows why it stopped
+    #: instead of trailing off after a user turn (§7.7.1).
+    source: str = "user"
     elapsed_ms: float = 0.0
     http_status: int = 0
 
@@ -68,6 +72,17 @@ class RowExchange:
             f"[part {i} of {len(replies)}]\n{text}" for i, text in enumerate(replies, 1)
         )
 
+    def reply_count(self) -> int:
+        """Replies the chatbot actually gave.
+
+        Not ``len(turns) / 2`` and not every bot-role turn: the transcript also
+        carries system turns recording a failure, and counting one as a reply
+        would report an answer where there was none.
+        """
+        return sum(
+            1 for t in self.turns if t.role == "bot" and t.source in ("bot", "bot_final")
+        )
+
     def transcript_text(self) -> str:
         """Render the transcript as a plain-text block for the judge prompt."""
         lines = []
@@ -77,6 +92,8 @@ class RowExchange:
                 tag = "USER (clarifier)"
             elif t.source == "user":
                 tag = "USER"
+            elif t.source == "error":
+                tag = "EVALRUN"
             lines.append(f"{tag}: {t.text}")
         return "\n\n".join(lines)
 
@@ -125,10 +142,22 @@ def run_row(
         exchange.total_chat_ms += resp.elapsed_ms
 
         if not resp.ok():
-            # Hard backend failure — capture per §7.4.3 and terminate.
+            # Hard backend failure — capture per §7.4.3 and terminate. The
+            # sentinel goes in `actual_answer` for the judge, and a system turn
+            # goes in the transcript: a transcript that ends on a user turn with
+            # nothing after it reads like a lost reply rather than a failure.
             code = "backend_timeout" if "timeout" in resp.error.lower() else "backend_error"
             exchange.actual_answer = f"[{code}] {resp.error}"
             exchange.terminated_by = code
+            exchange.turns.append(
+                TranscriptTurn(
+                    role="system",
+                    text=exchange.actual_answer,
+                    source="error",
+                    elapsed_ms=resp.elapsed_ms,
+                    http_status=resp.http_status,
+                )
+            )
             return exchange
 
         exchange.turns.append(
@@ -163,6 +192,13 @@ def run_row(
         if turn_idx >= cfg.loop.max_turns:
             exchange.actual_answer = f"[max_turns_exceeded] last_response={resp.text!r}"
             exchange.terminated_by = "max_turns_exceeded"
+            exchange.turns.append(
+                TranscriptTurn(
+                    role="system",
+                    text=f"[max_turns_exceeded] the limit is {cfg.loop.max_turns} turn(s)",
+                    source="error",
+                )
+            )
             return exchange
 
         clarification = generate_clarification(
@@ -178,6 +214,13 @@ def run_row(
                 f"[clarifier_failed] {clarification.error} | last_response={resp.text!r}"
             )
             exchange.terminated_by = "classifier_error"
+            exchange.turns.append(
+                TranscriptTurn(
+                    role="system",
+                    text=f"[clarifier_failed] {clarification.error}",
+                    source="error",
+                )
+            )
             return exchange
 
         next_user_text = clarification.text

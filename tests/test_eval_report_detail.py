@@ -90,9 +90,19 @@ def test_a_row_with_no_remark_says_so_rather_than_rendering_an_empty_block(
     assert "(none recorded)" in html
 
 
+def _row_table_header(html: str) -> str:
+    """The row table's own header.
+
+    Splitting on the first `</thead>` reads whichever table renders first — the
+    baseline comparison, when there is one — and that only agreed with the row
+    table while both happened to have the same column count.
+    """
+    return html.split('<table class="rows">')[-1].split("</thead>")[0]
+
+
 def test_the_detail_cell_spans_every_column(tmp_path: Path) -> None:
     html = _render(tmp_path)
-    header = html.split("</thead>")[0]
+    header = _row_table_header(html)
 
     columns = len(re.findall(r"<th>", header))
     spans = {int(x) for x in re.findall(r'<td colspan="(\d+)"', html)}
@@ -100,13 +110,14 @@ def test_the_detail_cell_spans_every_column(tmp_path: Path) -> None:
 
 
 def test_the_detail_cell_spans_every_column_with_a_baseline(tmp_path: Path) -> None:
-    """The baseline run adds a Δ column, which the colspan has to follow."""
+    """The baseline run adds a Δ column, which the colspan has to follow — as
+    does the Turns column (§7.7)."""
     html = _render(tmp_path, baseline=_rows())
-    header = html.split("</thead>")[0]
+    header = _row_table_header(html)
 
     columns = len(re.findall(r"<th>", header))
     spans = {int(x) for x in re.findall(r'<td colspan="(\d+)"', html)}
-    assert columns == 8
+    assert columns == 9
     assert spans == {columns}
 
 

@@ -57,7 +57,8 @@ def test_reading_an_older_file_and_writing_it_back_upgrades_it(tmp_path: Path) -
     write_csv(out, read_csv(src).rows)
     written = list(csv.reader(out.open(encoding="utf-8-sig", newline="")))
     assert written[0] == COLUMNS
-    assert written[1] == ["q-0001", "simple", "", "Q?", "A", "", "", "", ""]
+    assert written[1] == ["q-0001", "simple", "", "Q?", "A"] + [""] * (len(COLUMNS) - 5)
+    assert written[1][COLUMNS.index("persona")] == ""
 
 
 def test_persona_sits_after_kind() -> None:
