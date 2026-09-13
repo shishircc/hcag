@@ -1,24 +1,22 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.dependants-pass-for-overseas-networks-expertise-pass -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 887
 descendants: 0
 id: www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.dependants-pass-for-overseas-networks-expertise-pass
 image_urls: {}
 kind: leaf
-long_description: Covers the Dependant's Pass (DP) issued to spouses and unmarried
-  children of Overseas Networks & Expertise (ONE) Pass holders, and the rules for
-  DP holders who wish to work or operate a business in Singapore. Spouses may work
-  under a free Letter of Consent (LOC) with application steps, processing time, and
-  validity details. Non-spouse dependants need a separate work pass. Defines what
-  happens when a DP holder obtains an EP, S Pass, or Work Permit — including the requirement
-  to cancel the DP before EP/S Pass issuance, and exemptions from certain Work Permit
-  conditions (medical exams, security bond, pregnancy restrictions, medical insurance
-  if already covered). Also notes that unpaid volunteer work for charitable purposes
-  does not require a work pass.
-short_description: DP eligibility for ONE Pass holders' families and how DP holders
-  (spouses/dependants) can work in Singapore via LOC or work pass.
+long_description: Covers the Dependant's Pass (DP) issued specifically to spouses
+  and unmarried children of Overseas Networks & Expertise (ONE) Pass holders, and
+  the rules for those DP holders to work in Singapore. Defines that spouses may work
+  or run a business via a free Letter of Consent (LOC) while other dependants need
+  a separate work pass. Details the LOC application process (who can apply, processing
+  time, 3-month DP validity prerequisite). Specifies what happens when a DP holder
+  obtains an EP, S Pass, or Work Permit — including the requirement to cancel the
+  DP before EP/S Pass issuance, and the exemptions DP-for-ONE-Pass holders with a
+  Work Permit enjoy (no six-monthly medical exam, security bond, pregnancy restrictions,
+  nationality restrictions, and conditional medical-insurance exemption). Also notes
+  that unpaid volunteer work for charitable purposes requires no work pass.
 source_files:
 - index.md
 - working-in-singapore.md
@@ -26,14 +24,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/dependants-pass-for-overseas-networks-expertise-pass
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/dependants-pass-for-overseas-networks-expertise-pass/working-in-singapore
 subtree_depth: 0
-title: Dependant's Pass & Work Rights for ONE Pass Dependants
+title: Dependant's Pass & work rights for ONE Pass dependants
 token_size_estimate: 887
 ---
 
-# Dependant's Pass & Work Rights for ONE Pass Dependants
+# Dependant's Pass & work rights for ONE Pass dependants
 
-DP eligibility for ONE Pass holders' families and how DP holders (spouses/dependants) can work in Singapore via LOC or work pass.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -91,3 +88,5 @@ You do not need to obtain a work pass to participate in volunteer activities if:
 
 - No payment is involved
 - The activities are for a charitable purpose
+
+<!-- HCAG:CONTENT END -->

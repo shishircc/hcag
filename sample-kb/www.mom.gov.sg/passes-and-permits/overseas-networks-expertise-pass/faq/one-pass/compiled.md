@@ -1,26 +1,25 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.faq.one-pass -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 5571
 descendants: 0
 id: www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.faq.one-pass
 image_urls: {}
 kind: leaf
-long_description: This folder contains MOM FAQ content specific to the Overseas Networks
-  & Expertise Pass (ONE Pass). It addresses practical questions about applying (from
-  overseas, while holding another work pass, or before starting employment), salary
-  and employer requirements (e.g., S$30,000 fixed monthly salary for 12 consecutive
-  months, established-company criteria including the US$200M annual revenue threshold
-  for non-publicly listed firms), concurrent work and secondary directorships without
-  LOC, spouse Letter of Consent rules (one LOC at a time, no dual employer-and-business-owner
-  status), converting from Employment Pass to ONE Pass and re-applying for dependants'
-  passes, staying in Singapore while unemployed, mandatory annual notification obligations
-  and who must submit them, professional registration requirements for certain occupations,
-  and pass cancellation when leaving Singapore permanently.
-short_description: Frequently asked questions covering application, eligibility details,
-  annual notification, family passes, spouse LOC, and employment rules for ONE Pass
-  holders.
+long_description: 'Answers frequently asked questions about Singapore''s Overseas
+  Networks & Expertise Pass (ONE Pass). Covers practical topics including: eligibility
+  when changing employers (S$30,000 fixed monthly salary for 12 consecutive months
+  from any one employer); the established-company requirement for prospective employers
+  (non-publicly listed companies must meet US$200 million annual revenue; company
+  valuation is not accepted in lieu of market capitalisation); additional professional
+  registration requirements for certain occupations (e.g. healthcare, law, sports);
+  ability to work for multiple companies and hold secondary directorships without
+  a Letter of Consent; spouse LOC rules (one LOC at a time, business ownership counts
+  as employment); applying from overseas or while holding another work pass; staying
+  in Singapore while unemployed; annual notification obligations (triggered by MOM
+  email, submittable by holder, employer, or appointed agency); re-applying for dependants''
+  passes when converting from Employment Pass; cancellation requirements when leaving
+  Singapore permanently; and family pass application timing and refund policies.'
 source_files:
 - index.md
 - are-there-any-additional-conditions-that-i-need-to-meet-for-certain-occupations.md
@@ -90,14 +89,13 @@ source_urls:
 - https://www.mom.gov.sg/faq/one-pass/will-i-receive-an-acknowledgement-after-submitting-the-annual-notification-for-onepass
 - https://www.mom.gov.sg/faq/one-pass/will-my-spouse-lose-their-existing-work-permit-if-i-change-from-an-ep-to-a-one-pass
 subtree_depth: 0
-title: Overseas Networks & Expertise Pass (ONE Pass) FAQs
+title: Overseas Networks & Expertise Pass (ONE Pass) — FAQs
 token_size_estimate: 5571
 ---
 
-# Overseas Networks & Expertise Pass (ONE Pass) FAQs
+# Overseas Networks & Expertise Pass (ONE Pass) — FAQs
 
-Frequently asked questions covering application, eligibility details, annual notification, family passes, spouse LOC, and employment rules for ONE Pass holders.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -351,3 +349,5 @@ Yes. Your spouse's existing Work Permit will no longer be valid as it is [tied 
 To avoid this, you should only cancel your EP **after** your [application for an Overseas Networks & Expertise Pass](https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/apply-for-a-pass) is successful.
 
 You will need to reapply for a [DP](https://www.mom.gov.sg/passes-and-permits/dependants-pass) for your spouse once your Overseas Networks & Expertise Pass is approved as it takes 4 weeks to process. Your spouse should make the necessary arrangements for his/her work for this transition.
+
+<!-- HCAG:CONTENT END -->

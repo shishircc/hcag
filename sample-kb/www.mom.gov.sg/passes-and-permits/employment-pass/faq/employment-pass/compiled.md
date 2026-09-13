@@ -1,27 +1,27 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.faq.employment-pass -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 3907
 descendants: 0
 id: www.mom.gov.sg.passes-and-permits.employment-pass.faq.employment-pass
 image_urls: {}
 kind: leaf
-long_description: This folder contains a collection of frequently asked questions
-  about Singapore's Employment Pass (EP). It covers employer medical obligations (clarifying
-  that medical insurance is not required for EP holders, unlike WP/S Pass), work injury
-  compensation insurance requirements for manual workers, employer duty to cancel
-  passes within one week of employment ending, rules on EP holders taking secondary
-  directorships via Letter of Consent (LOC) including the common corporate shareholding
-  requirement, employer repatriation cost obligations, the definition of fixed monthly
-  salary (basic monthly salary plus fixed monthly allowances, excluding variable components),
-  guidance on changing jobs while on an EP, eService account administration, and what
-  to do when a candidate's qualification cannot be found in the Self-Assessment Tool.
-  It also addresses whether EP holders need approval to marry Singaporeans/PRs, applying
-  for PR status, and the Financial Services sector classification for EP purposes.
-short_description: Practical Q&A for EP holders and employers on medical obligations,
-  pass cancellation, secondary directorships, repatriation costs, salary definitions,
-  and eService accounts.
+long_description: 'A collection of frequently-asked-question answers about Singapore''s
+  Employment Pass (EP). Key topics answered here include: whether employers must buy
+  medical insurance for EP holders (not required, unlike for WP/S Pass); employer
+  obligations to cancel a pass within one week after employment ends and the employee''s
+  right to resign; rules for EP holders taking up secondary directorships in related
+  or unrelated companies (Letter of Consent requirement, common corporate shareholding
+  eligibility); the definition of ''fixed monthly salary'' (basic monthly salary plus
+  fixed monthly allowances, with an explicit list of exclusions); employer repatriation
+  cost obligations for EP/S Pass holders; work injury compensation insurance requirements
+  for EP holders (mandatory only for manual workers or non-manual workers earning
+  below $1,600/month); EP eService account administration (user limits, employment
+  agency access, no need for multiple accounts); what constitutes the Financial Services
+  sector for EP purposes; that EP holders need not extend an expiring visit pass once
+  the pass is issued online; that existing passes are not auto-cancelled on job change;
+  and guidance on qualification verification for the Self-Assessment Tool (SAT) and
+  C2 criterion points.'
 source_files:
 - index.md
 - are-employers-required-to-buy-medical-insurance-for-employment-pass-holders.md
@@ -95,14 +95,13 @@ source_urls:
 - https://www.mom.gov.sg/faq/employment-pass/what-should-i-do-if-i-cant-find-my-candidates-qualification-in-the-self-assessment-tool
 - https://www.mom.gov.sg/faq/employment-pass/why-is-mom-rejecting-the-application-for-my-ep-candidate-based-on-the-high-fixed-allowances-declared
 subtree_depth: 0
-title: Employment Pass holder FAQs and obligations
+title: 'Employment Pass holder FAQs: obligations, eService, directorship, salary'
 token_size_estimate: 3907
 ---
 
-# Employment Pass holder FAQs and obligations
+# Employment Pass holder FAQs: obligations, eService, directorship, salary
 
-Practical Q&A for EP holders and employers on medical obligations, pass cancellation, secondary directorships, repatriation costs, salary definitions, and eService accounts.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -370,3 +369,5 @@ Otherwise, you may obtain a verification proof from a [Background Screening Comp
 # Why is MOM rejecting the application for my EP candidate based on the high fixed allowances declared
 
 The fixed allowances should not make up a major proportion of the fixed monthly salary. If these allowances are fixed and do not vary from month to month, they should be included in the basic monthly salary.
+
+<!-- HCAG:CONTENT END -->

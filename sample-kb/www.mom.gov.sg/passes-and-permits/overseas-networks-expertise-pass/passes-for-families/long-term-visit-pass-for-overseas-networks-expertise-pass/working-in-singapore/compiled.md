@@ -1,6 +1,5 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-for-families.long-term-visit-pass-for-overseas-networks-expertise-pass.working-in-singapore -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 5632
 descendants: 0
@@ -8,19 +7,17 @@ id: www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.passes-fo
 image_urls:
   loc_cls_application_form-Image1660.png: https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/loc_cls_application_form.pdf
 kind: leaf
-long_description: Covers the process for Long-Term Visit Pass (LTVP) holders who are
-  common-law spouses of Overseas Networks & Expertise (ONE) Pass holders to obtain
-  a Letter of Consent (LOC) to work in Singapore. Provides the step-by-step application
-  procedure (download form, submit online with supporting documents) and includes
-  the complete LOC (Common-Law Spouse) application form detailing employer company
-  information, applicant personal and employment details, salary declaration, vetting-agency
-  support requirements for regulated occupations, declarations by applicant and employer,
-  and the list of required supporting documents. Notes that LTVP holders who are not
-  common-law spouses must instead obtain a standard work pass (Employment Pass, S
-  Pass, or Work Permit) through a prospective employer.
-short_description: How LTVP holders who are common-law spouses of ONE Pass holders
-  apply for a Letter of Consent to work in Singapore, including the full application
-  form.
+long_description: 'Covers the process for Long-Term Visit Pass (LTVP) holders who
+  are common-law spouses of Overseas Networks & Expertise Pass (ONE Pass) holders
+  to obtain a Letter of Consent (LOC) to work in Singapore. Details the full LOC application
+  form: employer company information, applicant personal and employment details (salary,
+  occupation, qualifications, working experience), vetting/professional body support
+  requirements for regulated occupations, required supporting documents and file formats,
+  declarations by both applicant and employer, and the online submission procedure.
+  Notes that LTVP holders who are not common-law spouses must instead obtain a separate
+  work pass (Employment Pass, S Pass, or Work Permit) through a prospective employer.
+  Processing takes approximately 8 weeks; LTVP must have at least 3 months validity
+  before applying.'
 source_files:
 - index.md
 - loc_cls_application_form.md
@@ -28,14 +25,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/passes-for-families/long-term-visit-pass-for-overseas-networks-expertise-pass/working-in-singapore
 - https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/loc_cls_application_form.pdf
 subtree_depth: 0
-title: Letter of Consent for LTVP Common-Law Spouses of ONE Pass Holders
+title: Letter of Consent for common-law spouses of ONE Pass LTVP holders
 token_size_estimate: 5632
 ---
 
-# Letter of Consent for LTVP Common-Law Spouses of ONE Pass Holders
+# Letter of Consent for common-law spouses of ONE Pass LTVP holders
 
-How LTVP holders who are common-law spouses of ONE Pass holders apply for a Letter of Consent to work in Singapore, including the full application form.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -334,3 +330,5 @@ _Non-English documents must be accompanied by an English translation. The transl
 MOM (WPD) LOC(LTVPCLS)/20250701 
 
 Page **8** of **8**
+
+<!-- HCAG:CONTENT END -->

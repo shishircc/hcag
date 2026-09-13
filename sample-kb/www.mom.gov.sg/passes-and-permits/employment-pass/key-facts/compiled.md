@@ -1,25 +1,29 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.key-facts -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 36533
 descendants: 0
 id: www.mom.gov.sg.passes-and-permits.employment-pass.key-facts
 image_urls: {}
 kind: leaf
-long_description: This folder provides a high-level factual summary of the Singapore
-  Employment Pass (EP). It states who the pass is for (foreign professionals, managers,
-  executives), who can apply (employer or appointed agent), the qualifying fixed monthly
-  salary range (from $5,600, increasing with age, higher for financial services),
-  pass duration, renewability, that no foreign worker levy or quota applies, and that
-  family passes may be available. It includes a step-by-step pass map outlining what
-  to do before applying, before arrival, upon arrival, and on an ongoing basis (notify
-  MOM of changes, renew, replace, or cancel). It also reproduces the Employment of
-  Foreign Manpower (Work Passes) Regulations 2012, which formally establish the categories
-  of work passes (including the EP) and set out application requirements, conditions,
-  and schedules governing employer and employee obligations for each pass type.
-short_description: 'Quick-reference overview of Singapore''s Employment Pass: who
-  it is for, qualifying salary, duration, application process map, and pass features.'
+long_description: 'This folder provides two things. First, a quick-reference overview
+  of Singapore''s Employment Pass (EP): who it is for (foreign professionals/managers/executives),
+  who may apply (employer or appointed agent; local sponsor for overseas companies
+  without a Singapore office), the qualifying salary range (from $5,600, rising with
+  age to $10,700 in mid-40s, higher for financial services), pass duration (with a
+  possible 5-year duration for experienced tech professionals with skills in shortage),
+  renewability, absence of levy/quota, family-pass availability, and a step-by-step
+  pass map outlining the process before applying, before arrival, upon arrival, and
+  ongoing obligations. This page is largely a hub linking out to detailed eligibility,
+  application, renewal, cancellation, and document-requirement pages. Second, it contains
+  the full text of the Employment of Foreign Manpower (Work Passes) Regulations 2012
+  (S 569/2012), which defines the categories of work passes the Controller may issue
+  (work permit, S pass, employment pass, personalised employment pass, EntrePass,
+  work holiday pass, miscellaneous work pass, letter of consent), the application
+  and cancellation procedures for each, the schedules of conditions and regulatory
+  conditions applicable to employers and employees for each pass type, rules on in-principle
+  approvals, security furnishing and forfeiture, fees, personal identifiers, and debarment
+  considerations.'
 source_files:
 - index.md
 - wpspassconditions.md
@@ -27,14 +31,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/employment-pass/key-facts
 - https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/wpspassconditions.pdf
 subtree_depth: 0
-title: Employment Pass (EP) overview and key facts
+title: Employment Pass (EP) overview and Work Passes Regulations 2012
 token_size_estimate: 36533
 ---
 
-# Employment Pass (EP) overview and key facts
+# Employment Pass (EP) overview and Work Passes Regulations 2012
 
-Quick-reference overview of Singapore's Employment Pass: who it is for, qualifying salary, duration, application process map, and pass features.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -3122,3 +3125,5 @@ LOH KHUM YEAN Permanent Secretary, Ministry of Manpower, Singapore.
 [HQ/Legis/EFMA/EFMR; AG/LLRD/SL/91A/2010/1 Vol. 4] (To be presented to Parliament under section 29(3) of the Employment of Foreign Manpower Act). 
 
 Informal Consolidation – version in force from 1/10/2020
+
+<!-- HCAG:CONTENT END -->

@@ -1,6 +1,5 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.apply-for-a-pass -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 11604
 descendants: 0
@@ -9,16 +8,18 @@ image_urls:
   ep-and-s-pass-candidate-form-Image2504.jpeg: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/ep-and-s-pass-candidate-form.pdf
   ep_sponsor_form8-Image2901.png: https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/ep_sponsor_form8.pdf
 kind: leaf
-long_description: 'Covers the end-to-end procedure for applying for a Singapore Employment
-  Pass: submitting an application via EP eService (for Singapore-registered companies)
-  or via the sponsorship route (for overseas companies needing a local sponsor), required
-  fees ($105), processing times (10 business days or 6 weeks for sponsorship), checking
-  application status, and what happens upon approval (IPA letter issuance). Also includes
-  the candidate''s form (personal particulars, travel document, work experience, educational
-  qualifications, membership details, declarations) and the sponsorship application
-  form with instructions for candidates and local sponsors.'
-short_description: Step-by-step EP application process for employers, employment agents,
-  and overseas-company sponsors, including forms and timelines.
+long_description: 'Provides the step-by-step application process for a Singapore Employment
+  Pass, covering two tracks: the standard online EP eService route (processed within
+  10 business days) and the EP Sponsorship route for overseas companies without a
+  Singapore-registered entity (processed within 6 weeks, requiring a local sponsor).
+  Details include who submits the application, required fees ($105), how to check
+  application status, what happens upon approval (IPA letter issuance, its 6-month
+  validity as a single-entry visa, medical examination requirements), and the subsequent
+  steps of pass issuance, fingerprint/photo registration, digital work pass setup,
+  and card receipt. Also contains the full candidate''s form template (personal particulars,
+  travel document details, work experience, educational qualifications, membership/professional
+  details, and declarations) and the EP Sponsorship application form with its corresponding
+  sections.'
 source_files:
 - index.md
 - ep-and-s-pass-candidate-form.md
@@ -34,8 +35,7 @@ token_size_estimate: 11604
 
 # How to apply for a Singapore Employment Pass (EP)
 
-Step-by-step EP application process for employers, employment agents, and overseas-company sponsors, including forms and timelines.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -913,3 +913,5 @@ MOM (WPD) SPE/20260615
 Page **14** of **14** 
 
 MOM (WPD) SPE/20260615
+
+<!-- HCAG:CONTENT END -->

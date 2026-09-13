@@ -1,6 +1,5 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.notify-mom-of-changes -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 77519
 descendants: 0
@@ -9,18 +8,18 @@ image_urls:
   list_of_standard_occupation_a-i-Image10422.jpeg: https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_a-i.pdf
   list_of_standard_occupation_j-r-Image6761.jpeg: https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/list_of_standard_occupation_j-r.pdf
 kind: leaf
-long_description: This folder details the specific notification obligations for Employment
-  Pass holders and their employers when changes occur. It covers procedures and timelines
-  for reporting salary changes (lowering requires 1-month advance notice; raising
-  can wait until renewal unless applying for dependant privileges), company name/financial
-  info/address/business entity changes, occupation updates, pass holder residential
-  address or mobile number changes (within 5 days), personal particulars updates (passport,
-  name, nationality, etc.), post-approval changes to qualifications or work location,
-  missing pass holder reporting (within 1 week), transfer of pass holders to related
-  companies, and providing references for ex-pass holders. It also references a standard
-  occupation list used when updating occupation in EP eService.
-short_description: When and how EP holders and employers must notify MOM of changes
-  to salary, company details, occupation, address, personal info, and more.
+long_description: Defines the specific notification obligations, procedures, timelines,
+  and responsible parties (employer or pass holder) for reporting changes to MOM related
+  to Employment Pass holders. Covered changes include salary adjustments (lowering
+  requires 1-month advance notice; raising can wait until renewal unless dependant
+  privileges are sought), company name/paid-up capital/turnover/address updates, business
+  entity changes (e.g. restructuring, mergers), transfer of a pass holder to a related
+  company, occupation changes (with standard occupation list provided), missing pass
+  holders (police report and cancellation within 1 week), residential address or mobile
+  number changes (within 5 days), personal particulars updates (passport, name, nationality,
+  etc.), post-approval changes to qualifications or work location, and providing a
+  referee reference for ex-pass holders. Each section specifies who acts, required
+  steps, processing times, and links to relevant e-services.
 source_files:
 - index.md
 - list_of_standard_occupation_a-i.md
@@ -38,8 +37,7 @@ token_size_estimate: 77519
 
 # Notify MOM of updates for Employment Pass holders
 
-When and how EP holders and employers must notify MOM of changes to salary, company details, occupation, address, personal info, and more.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -8467,3 +8465,5 @@ This information is updated on 27 Nov 2024
 
 
 This information is updated on 27 Nov 2024
+
+<!-- HCAG:CONTENT END -->

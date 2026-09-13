@@ -1,6 +1,5 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.documents-required -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 45623
 descendants: 0
@@ -34,19 +33,20 @@ image_urls:
   verification-portal-guide-Image6.jpeg: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf
   verification-portal-guide-Image7.jpeg: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/verification-portal-guide.pdf
 kind: leaf
-long_description: This folder specifies the documents that must be prepared and uploaded
-  when submitting a Singapore Employment Pass application. Core requirements include
-  the candidate's passport biodata page, the company's ACRA business profile, and
-  qualification verification proof. It provides detailed travel-document upload specifications
-  (format, image quality, machine-readable zone visibility, name-entry rules). It
-  lists additional document requirements for regulated occupations—healthcare professionals,
-  lawyers, football players/coaches, and food-establishment employees—with the relevant
-  professional bodies and contact details. It also contains step-by-step guides for
-  submitting qualification verification proof via background screening companies,
-  government/awarding-institution verification portals, and OpenCerts digital certificates,
-  including a reference list of institutions offering online verification portals.
-short_description: 'Lists all documents needed for an EP application: passport biodata,
-  ACRA profile, qualification verification proof, and occupation-specific requirements.'
+long_description: 'Lists the specific documents that must be prepared and uploaded
+  when submitting a Singapore Employment Pass application. Covers the core requirements
+  (passport biodata page, ACRA business profile, qualification verification proof)
+  and details additional documents needed for specific occupations: healthcare professionals
+  (with a table mapping each occupation to its professional body and contact), lawyers,
+  football players/coaches, and food-establishment employees (SFA foodshop licence).
+  Provides detailed travel-document upload specifications (image format, orientation,
+  exposure, Machine Readable Zone visibility, handling of name discrepancies and accented
+  characters). Includes step-by-step guides for submitting qualification verification
+  proof via three channels: background screening companies (with MOM verification
+  reference number), government/awarding-institution online verification portals (with
+  screenshot requirements), and OpenCerts digital certificates. Also provides a reference
+  list of government portals and awarding institutions worldwide that offer online
+  verification portals.'
 source_files:
 - index.md
 - travel-doc-requirements-v1.md
@@ -68,8 +68,7 @@ token_size_estimate: 45623
 
 # Documents required for Employment Pass application
 
-Lists all documents needed for an EP application: passport biodata, ACRA profile, qualification verification proof, and occupation-specific requirements.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -559,3 +558,5 @@ Last updated on 20 Nov 2025
 ![](assets/opencerts-portal-guide-Image5.png)
 
 ![](assets/opencerts-portal-guide-Image6.jpeg)
+
+<!-- HCAG:CONTENT END -->

@@ -1,6 +1,5 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c5-skills-bonus-shortage-occupation-list-sol -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 22787
 descendants: 0
@@ -8,20 +7,17 @@ id: www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c5-ski
 image_urls:
   sol-guidebook-Image3035.png: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/sol-guidebook.pdf
 kind: leaf
-long_description: This folder contains the complete Singapore Shortage Occupation
-  List (SOL) used for the COMPASS C5 Skills Bonus and 5-year duration EP eligibility.
-  It defines what the SOL is, how occupations are selected (strategic importance,
-  labour shortage, local pipeline commitment), and that the list is updated annually
-  with a comprehensive review every three years. The bulk of the content enumerates
-  each shortage occupation organized by sector (agritech, financial services/private
-  banking, carbon services, healthcare, infocomm technology, etc.), specifying for
-  each role the eligible job titles, required job duties, additional requirements
+long_description: 'Defines Singapore''s Shortage Occupation List (SOL) for the COMPASS
+  C5 Skills Bonus and 5-year duration Employment Pass. Lists every eligible shortage
+  occupation organised by sector (agritech, financial services/private banking, carbon
+  services, healthcare/allied health, infocomm technology, and others), specifying
+  for each occupation: eligible job titles, required job duties, additional requirements
   (qualifications, work experience, employer type, supporting agency verification),
-  and application instructions such as matching the job title to the MyCareersFuture
-  advertisement. This is the authoritative reference for determining whether a specific
-  role qualifies under the SOL.
-short_description: 'Full Shortage Occupation List for COMPASS C5 Skills Bonus: eligible
-  job titles, job duties, additional requirements, and qualifying criteria by sector.'
+  and how to select the occupation in the EP application. Also states the SOL update
+  cadence (annual adjustments, comprehensive review every three years), the criteria
+  MOM/MTI use to identify occupations (strategic importance, labour shortage degree,
+  local pipeline commitment), and the application-level rules for matching the selected
+  job title to the MyCareersFuture advertisement.'
 source_files:
 - index.md
 - sol-guidebook.md
@@ -29,14 +25,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/employment-pass/eligibility/compass-c5-skills-bonus-shortage-occupation-list-sol
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/sol-guidebook.pdf
 subtree_depth: 0
-title: COMPASS C5 Skills Bonus – Shortage Occupation List (SOL)
+title: COMPASS C5 Skills Bonus – Shortage Occupation List (SOL) details
 token_size_estimate: 22787
 ---
 
-# COMPASS C5 Skills Bonus – Shortage Occupation List (SOL)
+# COMPASS C5 Skills Bonus – Shortage Occupation List (SOL) details
 
-Full Shortage Occupation List for COMPASS C5 Skills Bonus: eligible job titles, job duties, additional requirements, and qualifying criteria by sector.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -427,3 +422,5 @@ This guide is prepared to help applicants comply with the requirement that they 
 11
 
 ![](assets/sol-guidebook-Image3035.png)
+
+<!-- HCAG:CONTENT END -->

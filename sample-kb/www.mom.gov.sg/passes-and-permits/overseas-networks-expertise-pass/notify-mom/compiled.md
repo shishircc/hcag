@@ -1,23 +1,21 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.notify-mom -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 2355
 descendants: 0
 id: www.mom.gov.sg.passes-and-permits.overseas-networks-expertise-pass.notify-mom
 image_urls: {}
 kind: leaf
-long_description: Covers the obligations of ONE Pass holders to notify MOM, including
-  the annual notification exercise (employment details, income, professional activities),
-  deadlines and procedures for updating residential address, mobile number, passport
-  details, and other personal particulars (name, nationality, marital status, etc.).
-  Defines restricted occupations for ONE Pass holders — media and religion-related
-  roles requiring prior MOM approval — and provides the full enumerated list of 161
-  restricted occupation titles. Specifies processing timelines such as 2 weeks for
-  address/mobile updates, 7 working days for other particulars, and 3 weeks for restricted
-  occupation requests.
-short_description: Annual notification, updating personal details, and restricted
-  occupation rules for Overseas Networks & Expertise (ONE) Pass holders in Singapore.
+long_description: Defines the notification obligations for Singapore Overseas Networks
+  & Expertise (ONE) Pass holders. Covers the annual notification exercise (employment
+  details, income, professional activities), the requirement to update residential
+  address or mobile number within 2 weeks (with step-by-step instructions via EP eService),
+  how to update passport details and other personal particulars (name, nationality,
+  date of birth, marital status, sex, country of origin, Malaysian ID) with processing
+  timelines, and the rule that ONE Pass holders must obtain MOM approval before working
+  in restricted occupations. Includes the complete list of 161 restricted occupations,
+  predominantly media-related roles (editors, journalists, producers, reporters) and
+  religious roles (pastors, priests, monks, imams, rabbis, missionaries).
 source_files:
 - index.md
 - restricted-occupations-for-ove.md
@@ -25,14 +23,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/overseas-networks-expertise-pass/notify-mom
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/ove/restricted-occupations-for-ove.pdf
 subtree_depth: 0
-title: 'ONE Pass: Notify MOM of Updates & Restricted Occupations'
+title: 'Overseas Networks & Expertise Pass: Notifications & Updates to MOM'
 token_size_estimate: 2355
 ---
 
-# ONE Pass: Notify MOM of Updates & Restricted Occupations
+# Overseas Networks & Expertise Pass: Notifications & Updates to MOM
 
-Annual notification, updating personal details, and restricted occupation rules for Overseas Networks & Expertise (ONE) Pass holders in Singapore.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -444,3 +441,5 @@ Last updated: 19 Nov 2024
 - 161 YOUTH PASTOR 
 
 Last updated: 19 Nov 2024
+
+<!-- HCAG:CONTENT END -->

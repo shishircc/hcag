@@ -1,6 +1,5 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c1-salary-benchmarks -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 23759
 descendants: 0
@@ -8,18 +7,18 @@ id: www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c1-sal
 image_urls:
   c1-salary-benchmarks-Image4713.jpeg: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/c1-salary-benchmarks.pdf
 kind: leaf
-long_description: Contains the complete C1 salary benchmark tables released by MOM
-  (Aug 2025 and Aug 2026 editions), listing the required fixed monthly salary for
-  10 points (65th percentile) and 20 points (90th percentile) for every age band (≤23
-  through ≥45) across all COMPASS sectors—including Accommodation, Administrative
-  & Support, Air & Sea Transport, Arts/Entertainment/Recreation, Banking, Construction,
-  Education, F&B, Fund Management, Health & Social Services, ICT, Insurance, Land
-  Transport & Logistics, Manufacturing, Media, Other Community/Social/Personal Services,
-  Professional Services, Public Administration & Defence, and others. Also explains
-  that benchmarks are derived from MOM's Comprehensive Labour Force Survey and notes
-  that salary requirements increase progressively with candidate age from 23 to 45.
-short_description: Defines the exact fixed-monthly-salary thresholds (65th and 90th
-  percentile) by sector and age for scoring 10 or 20 COMPASS C1 points.
+long_description: Defines the exact fixed-monthly-salary thresholds an EP candidate
+  must meet to score 10 points (65th percentile) or 20 points (90th percentile) under
+  the COMPASS C1 Salary criterion. Provides complete age-graduated benchmark tables
+  (ages ≤23 through ≥45) for every sector classification, including Accommodation,
+  Administrative & Support, Air & Sea Transport, Arts/Entertainment/Recreation, Banking,
+  Construction, Education, Food & Beverage, Fund Management, Health & Social Services,
+  ICT, Insurance, Land Transport & Logistics, Manufacturing, Media, Other Community/Social/Personal
+  Services, Professional Services, Public Administration & Defence, and others. Also
+  explains that benchmarks are derived from MOM's annual Comprehensive Labour Force
+  Survey and are updated yearly, and notes that candidates earning ≥$22,500 fixed
+  monthly salary are exempt from COMPASS while those below the EP qualifying salary
+  are ineligible regardless of C1 score.
 source_files:
 - index.md
 - c1-salary-benchmarks.md
@@ -35,8 +34,7 @@ token_size_estimate: 23759
 
 # COMPASS C1 salary benchmarks by sector and age
 
-Defines the exact fixed-monthly-salary thresholds (65th and 90th percentile) by sector and age for scoring 10 or 20 COMPASS C1 points.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -2171,3 +2169,5 @@ _Released in Aug 2026_
 
 
 44
+
+<!-- HCAG:CONTENT END -->

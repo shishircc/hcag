@@ -1,6 +1,5 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.eligibility -->
 ---
-catalog_token_estimate: 1088
 children:
 - www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c1-salary-benchmarks
 - www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c5-skills-bonus-shortage-occupation-list-sol
@@ -27,22 +26,18 @@ image_urls:
   mom-compass-infographic-final-Image79.png: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/mom-compass-infographic-final.pdf
   mom-compass-infographic-final-Image82.jpeg: https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/mom-compass-infographic-final.pdf
 kind: mixed
-long_description: 'This folder is the authoritative source for Singapore Employment
-  Pass eligibility. It defines the two-stage framework: Stage 1 sets EP qualifying
-  salary minimums by candidate age (23–45+) for both general and financial-services
-  sectors, with current thresholds and upcoming Jan 2027/2028 increases in full age-band
-  tables. Stage 2 defines COMPASS, the points-based complementarity assessment requiring
-  40 points across six criteria — C1 Salary benchmarking, C2 Qualifications (top-tier
-  vs other degree vs none), C3 Diversity (candidate nationality share among firm PMETs),
-  C4 Support for Local Employment (local PMET share vs sector), C5 Skills Bonus (Shortage
-  Occupation List), and C6 Strategic Economic Priorities bonus — specifying point
-  thresholds, scoring rules, default scores for small firms, SEP bonus validity/renewal
-  conditions, and redeployment restrictions for SOL-dependent passes. It also defines
-  COMPASS exemptions (salary ≥$22,500, intra-corporate transferees, roles ≤1 month)
-  and includes illustrative case studies. References tools (SAT, Workforce Insights)
-  and notes that the Fair Consideration Framework job advertising requirement applies.'
-short_description: Defines the 2-stage EP eligibility framework — qualifying salary
-  thresholds by age/sector and the COMPASS points-based assessment system.
+long_description: 'Defines the two-stage eligibility framework for Singapore Employment
+  Pass (EP) applications. Stage 1 sets the EP qualifying salary thresholds by age
+  (23–45+), sector (general vs. financial services), and effective date (current and
+  from 1 Jan 2027). Stage 2 defines the COMPASS points-based assessment: the 40-point
+  pass mark and scoring rules for all six criteria — C1 Salary benchmarking, C2 Qualifications
+  (top-tier vs. other degree vs. none), C3 Diversity (candidate nationality share
+  among firm PMETs), C4 Support for local employment (local PMET share vs. sector),
+  C5 Skills bonus (Shortage Occupation List conditions and redeployment restrictions),
+  and C6 Strategic Economic Priorities bonus (eligibility, validity, renewal conditions
+  including C3/C4 minimums). Also defines COMPASS exemptions (salary ≥$22,500, intra-corporate
+  transferees, roles ≤1 month) and includes worked case-study examples of COMPASS
+  scoring.'
 source_files:
 - index.md
 - compass-c2-list-of-top-tier-institutions.md
@@ -56,52 +51,13 @@ source_urls:
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/compass-booklet.pdf
 - https://www.mom.gov.sg/-/media/mom/documents/work-passes-and-permits/compass/mom-compass-infographic-final.pdf
 subtree_depth: 1
-title: 'Employment Pass eligibility: qualifying salary & COMPASS framework'
-token_size_estimate: 48059
+title: 'Employment Pass eligibility: qualifying salary and COMPASS'
+token_size_estimate: 46971
 ---
 
-# Employment Pass eligibility: qualifying salary & COMPASS framework
+# Employment Pass eligibility: qualifying salary and COMPASS
 
-Defines the 2-stage EP eligibility framework — qualifying salary thresholds by age/sector and the COMPASS points-based assessment system.
-
-## Sub-topics
-
-#### Tree
-
-- `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c1-salary-benchmarks` — COMPASS C1 salary benchmarks by sector and age
-- `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c5-skills-bonus-shortage-occupation-list-sol` — COMPASS C5 Skills Bonus – Shortage Occupation List (SOL)
-- `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes` — COMPASS C6 SEP Bonus – Eligible Programmes List
-
-#### `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c1-salary-benchmarks`
-- **path**: `compass-c1-salary-benchmarks/`
-- **depth**: 1
-- **parent**: `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility`
-- **kind**: leaf
-- **title**: COMPASS C1 salary benchmarks by sector and age
-- **short**: Defines the exact fixed-monthly-salary thresholds (65th and 90th percentile) by sector and age for scoring 10 or 20 COMPASS C1 points.
-- **long**: Contains the complete C1 salary benchmark tables released by MOM (Aug 2025 and Aug 2026 editions), listing the required fixed monthly salary for 10 points (65th percentile) and 20 points (90th percentile) for every age band (≤23 through ≥45) across all COMPASS sectors—including Accommodation, Administrative & Support, Air & Sea Transport, Arts/Entertainment/Recreation, Banking, Construction, Education, F&B, Fund Management, Health & Social Services, ICT, Insurance, Land Transport & Logistics, Manufacturing, Media, Other Community/Social/Personal Services, Professional Services, Public Administration & Defence, and others. Also explains that benchmarks are derived from MOM's Comprehensive Labour Force Survey and notes that salary requirements increase progressively with candidate age from 23 to 45.
-- **tokens**: 23759
-
-#### `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c5-skills-bonus-shortage-occupation-list-sol`
-- **path**: `compass-c5-skills-bonus-shortage-occupation-list-sol/`
-- **depth**: 1
-- **parent**: `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility`
-- **kind**: leaf
-- **title**: COMPASS C5 Skills Bonus – Shortage Occupation List (SOL)
-- **short**: Full Shortage Occupation List for COMPASS C5 Skills Bonus: eligible job titles, job duties, additional requirements, and qualifying criteria by sector.
-- **long**: This folder contains the complete Singapore Shortage Occupation List (SOL) used for the COMPASS C5 Skills Bonus and 5-year duration EP eligibility. It defines what the SOL is, how occupations are selected (strategic importance, labour shortage, local pipeline commitment), and that the list is updated annually with a comprehensive review every three years. The bulk of the content enumerates each shortage occupation organized by sector (agritech, financial services/private banking, carbon services, healthcare, infocomm technology, etc.), specifying for each role the eligible job titles, required job duties, additional requirements (qualifications, work experience, employer type, supporting agency verification), and application instructions such as matching the job title to the MyCareersFuture advertisement. This is the authoritative reference for determining whether a specific role qualifies under the SOL.
-- **tokens**: 22787
-
-#### `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility.compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes`
-- **path**: `compass-c6-strategic-economic-priorities-sep-bonus-eligible-programmes/`
-- **depth**: 1
-- **parent**: `www.mom.gov.sg.passes-and-permits.employment-pass.eligibility`
-- **kind**: leaf
-- **title**: COMPASS C6 SEP Bonus – Eligible Programmes List
-- **short**: Lists the specific programmes and supporting agencies whose participation qualifies an organisation for the COMPASS C6 Strategic Economic Priorities bonus.
-- **long**: Defines the complete set of eligible programmes that qualify an organisation for the COMPASS C6 Strategic Economic Priorities (SEP) bonus. Covers 15 programmes across six supporting agencies: EDB (e.g. DEI, Pioneer Certificate, RISC, large manufacturers, Global Trader Programme), EnterpriseSG (Scale-Up SG, SGEP, qualifying high-growth startups), IMDA (Accreditation Digital, Spark Programme), MPA (Maritime Sector Incentive awards, Maritime Cluster Fund), STB (selected BIF grantees, Singapore Tourism Accelerator participants), and NTUC (progressive firms working with the Labour Movement via Company Training Committees or Government-supported programmes). Provides agency contact emails for queries. Relevant when determining whether a firm's programme participation satisfies the SEP bonus requirement.
-- **tokens**: 1063
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -1505,3 +1461,5 @@ For more information on **COMPASS** and answers to commonly asked questions, ple
 ![](assets/mom-compass-infographic-final-Image133.jpeg)
 
 ![](assets/mom-compass-infographic-final-Image79.png)
+
+<!-- HCAG:CONTENT END -->

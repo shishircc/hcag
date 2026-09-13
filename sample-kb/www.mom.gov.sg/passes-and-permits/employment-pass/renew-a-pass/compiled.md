@@ -1,6 +1,5 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.renew-a-pass -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 5585
 descendants: 0
@@ -8,20 +7,19 @@ id: www.mom.gov.sg.passes-and-permits.employment-pass.renew-a-pass
 image_urls:
   ep_sponsor_renewal_form-Image990.png: https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/ep_sponsor_renewal_form.pdf
 kind: leaf
-long_description: 'Covers the end-to-end process for renewing a Singapore Employment
-  Pass (EP). Specifies that renewal can be submitted up to 6 months before expiry
-  (3 months for EP Sponsorship), costs nothing beyond the pass fee, and yields a renewed
-  pass of up to 3 years. States renewal criteria: the candidate must earn at least
-  the EP qualifying salary, work in a managerial/executive/specialised role for the
-  same employer, and pass COMPASS (noting the $22,500 fixed-monthly-salary exemption,
-  with COMPASS itself defined elsewhere). Details the how-to steps via myMOM Portal
-  and the separate EP (Sponsorship) renewal application form, including all seven
-  parts of that form (personal particulars, education, sponsor company details, overseas
-  employer, and declarations). Also covers post-renewal steps: receiving the IPA letter,
-  getting the pass issued before IPA or current pass expiry, and handling the existing
-  card.'
-short_description: How to renew a Singapore Employment Pass, including timelines,
-  renewal criteria, steps, costs, and the EP (Sponsorship) renewal form.
+long_description: 'Covers the end-to-end procedure for renewing a Singapore Employment
+  Pass, including standard EP and EP (Sponsorship). Defines key operational rules:
+  renewal may be filed up to 6 months (180 days) before expiry for standard EP or
+  3 months for EP (Sponsorship); renewed pass duration is up to 3 years; remaining
+  validity (up to 6 months) carries over; the IPA letter is valid for 3 months and
+  the pass must be issued before IPA or current pass expiry. States renewal criteria
+  (qualifying salary, same employer in managerial/executive/specialised role, COMPASS
+  requirement for passes expiring from 1 Sep 2024, with the $22,500 fixed-monthly-salary
+  COMPASS exemption noted). Details processing times, costs, who may apply, post-renewal
+  card-handling rules, and includes the full EP (Sponsorship) renewal application
+  form with its parts: candidate personal/educational/employment details, sponsor
+  company details, overseas employer details, and candidate and local-sponsor declarations
+  and undertakings.'
 source_files:
 - index.md
 - ep_sponsor_renewal_form.md
@@ -29,14 +27,13 @@ source_urls:
 - https://www.mom.gov.sg/passes-and-permits/employment-pass/renew-a-pass
 - https://www.mom.gov.sg/-/media/mom/documents/services-forms/passes/ep_sponsor_renewal_form.pdf
 subtree_depth: 0
-title: Renewing an Employment Pass (EP) — process and criteria
+title: Renewing an Employment Pass (EP) — process and requirements
 token_size_estimate: 5585
 ---
 
-# Renewing an Employment Pass (EP) — process and criteria
+# Renewing an Employment Pass (EP) — process and requirements
 
-How to renew a Singapore Employment Pass, including timelines, renewal criteria, steps, costs, and the EP (Sponsorship) renewal form.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: index.md -->
@@ -310,3 +307,5 @@ I understand that the Employment Pass is subject to the following conditions upo
 Page **7** of **7** 
 
 MOM (WPD) SPE(RENEW)/20250814
+
+<!-- HCAG:CONTENT END -->

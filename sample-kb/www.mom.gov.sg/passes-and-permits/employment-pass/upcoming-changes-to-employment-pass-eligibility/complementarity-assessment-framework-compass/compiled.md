@@ -1,38 +1,36 @@
 <!-- HCAG:COMPILED id=www.mom.gov.sg.passes-and-permits.employment-pass.upcoming-changes-to-employment-pass-eligibility.complementarity-assessment-framework-compass -->
 ---
-catalog_token_estimate: 0
 children: []
 content_token_estimate: 7536
 descendants: 0
 id: www.mom.gov.sg.passes-and-permits.employment-pass.upcoming-changes-to-employment-pass-eligibility.complementarity-assessment-framework-compass
 image_urls: {}
 kind: leaf
-long_description: This folder contains the complete Singapore Shortage Occupation
-  List (SOL) used for the COMPASS C5 Skills Bonus and 5-year duration EP eligibility.
-  It defines what the SOL is, how occupations are selected (strategic importance,
-  labour shortage, local pipeline commitment), and that the list is updated annually
-  with a comprehensive review every three years. The bulk of the content enumerates
-  each shortage occupation organized by sector—including agritech, financial services
-  (ultra-high/high net worth advisory), carbon services, healthcare, and infocomm
-  technology—specifying eligible job titles, required job duties, additional qualification
-  or experience requirements, and the supporting government agency for each role.
-  It also details application procedures such as matching the job title to the MyCareersFuture
-  advertisement and uploading required documentation.
-short_description: 'Full Shortage Occupation List for COMPASS C5 Skills Bonus: eligible
-  job titles, job duties, additional requirements, and qualifying criteria by sector.'
+long_description: Defines the full Shortage Occupation List (SOL) for Singapore's
+  COMPASS C5 Skills Bonus and 5-year EP eligibility. For each listed occupation across
+  sectors (agritech, financial services/private banking, carbon services, healthcare/allied
+  health, and others), the folder specifies the eligible job titles, required job
+  duties, additional qualification and experience requirements (degree fields, minimum
+  years of experience, specific prior job titles), the supporting government agency,
+  and employer eligibility conditions (e.g. being a licensed financial institution
+  or firm in a specific sector). It also states the SOL update cadence (annual additions/removals,
+  comprehensive review every 3 years), the application-level requirements for claiming
+  the bonus (matching job title to MyCareersFuture advertisement, uploading qualifications
+  and registration proof), and how the SOL is created (MOM/MTI in consultation with
+  sector agencies based on strategic importance, labour shortage degree, and local
+  pipeline commitment).
 source_files:
 - compass-shortage-occupation-list.md
 source_urls:
 - https://www.mom.gov.sg/passes-and-permits/employment-pass/upcoming-changes-to-employment-pass-eligibility/complementarity-assessment-framework-compass/compass-shortage-occupation-list#what-additional-requirements-must-my-candidate-meet-to-obtain-the-sol-bonus-points
 subtree_depth: 0
-title: COMPASS C5 Skills Bonus – Shortage Occupation List (SOL)
+title: COMPASS C5 Skills Bonus – Shortage Occupation List (SOL) details
 token_size_estimate: 7536
 ---
 
-# COMPASS C5 Skills Bonus – Shortage Occupation List (SOL)
+# COMPASS C5 Skills Bonus – Shortage Occupation List (SOL) details
 
-Full Shortage Occupation List for COMPASS C5 Skills Bonus: eligible job titles, job duties, additional requirements, and qualifying criteria by sector.
-
+<!-- HCAG:CONTENT BEGIN -->
 ## Content
 
 <!-- source: compass-shortage-occupation-list.md -->
@@ -232,3 +230,5 @@ Show
 
  
 | Eligible job titles Process engineer Process technology engineer Process engineer (electronic) Job duties Applies engineering principles and techniques to optimise the production processes in a manufacturing environment to meet organisational objectives. Analyses and troubleshoots process engineering, manufacturing and/or maintenance issues and recommends engineering solutions, and develops work instructions for ‘out of control' processes.  Leads production and manufacturing systems improvement projects, and develops operation plans in accordance with organisational objectives and other regulatory requirements. Additional requirements Candidates should meet **both** criteria (1) and (2): (1) Be from a firm involved in the Semiconductor space. MOM verifies this directly with EDB, so no additional documentation is required. New entrants to the Semiconductor space can reach out to EDB.  (2) At least a Bachelor’s Degree in an engineering/science faculty, inclusive of, and not limited to: Electrical Engineering Mechanical Engineering  Chemical Engineering Materials Engineering  Material Sciences Supporting agency EDB |
+
+<!-- HCAG:CONTENT END -->
