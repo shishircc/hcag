@@ -4,6 +4,8 @@ An LLM agent backed by a hierarchical knowledge base. Instead of flat-index RAG 
 
 **See [DESIGN.md](./DESIGN.md) for the complete design — approach, decisions, sequence diagrams, class diagram, tech stack, and CLI semantics.**
 
+**See [`sample-benchmark-report/benchmark.md`](./sample-benchmark-report/benchmark.md) for the measured comparison against flat RAG — method, results by question difficulty, failure analysis and caveats.**
+
 ## Why HCAG
 
 Flat RAG loses on knowledge-heavy tasks in three ways ([DESIGN.md §1.2](./DESIGN.md#12-what-hcag-solves)):
@@ -14,39 +16,49 @@ Flat RAG loses on knowledge-heavy tasks in three ways ([DESIGN.md §1.2](./DESIG
 
 ## Benchmark — HCAG vs flat RAG
 
-The same 37 questions, the same knowledge base, the same generator model and the same judge. The
-only variable is the retrieval architecture. **The write-up, with what it means for agentic
-automation: [`sample-benchmark-report/benchmark-blog.md`](./sample-benchmark-report/benchmark-blog.md).** Full analysis, per-question data and
-method: [`sample-benchmark-report/`](./sample-benchmark-report/README.md) · reports:
-[HCAG](./sample-benchmark-report/hcag-kb-eval-report.html) ·
-[RAG](./sample-benchmark-report/rag-kb-eval-report.html)
+The same 58 questions, the same knowledge base, the same generator model on both sides and the same
+judge. The only variable is the retrieval architecture. Full method, findings and caveats:
+[`sample-benchmark-report/benchmark.md`](./sample-benchmark-report/benchmark.md). Per-question data
+and the judge's reasoning for every row:
+[HCAG report](./sample-benchmark-report/benchmark-set/hcag-persona-benchmark.html) ·
+[RAG report](./sample-benchmark-report/benchmark-set/rag-persona-benchmark.html) ·
+[question set](./sample-benchmark-report/benchmark-set/benchmark-persona-questions.csv).
 
-| | HCAG | Flat RAG | Gap |
-|---|---|---|---|
-| **Mean score** (0–3) | **2.76** — **91.9%** of max | 1.97 — 65.8% of max | **+39.7% relative** (+0.78 pts) |
-| **Pass rate** (score ≥ 2) | **100.0%** (37/37) | 64.9% (24/37) | +35.1 pp |
-| **Refusals on in-scope questions** | **0** | 10 of 37 (27.0%) | |
+| | HCAG | Flat RAG |
+|---|---:|---:|
+| **Mean score** (0–3) | **2.76** | 2.16 |
+| **Acceptable answers** (score ≥ 2) | **98.3%** | 72.4% |
+| **Fully correct answers** (score 3) | **78%** | 47% |
+| **Wrong and misleading** (score 0) | **0** | 2 |
 
-The average hides the shape of the result. Scored as a percentage of the 3-point maximum, by
-question difficulty:
+The average hides the shape of the result, which is the part worth reading. The gap is not constant:
+it widens with how far the answer is spread across the corpus.
 
-| Difficulty | HCAG | Flat RAG | Δ relative |
-|---|---:|---:|---:|
-| `simple` — FAQ lookup, no reasoning | 100.0% | 87.5% | +14.3% |
-| `medium` — reasoning within one paragraph | 88.9% | 77.8% | +14.3% |
-| `complex` — 3 concepts across one document | 83.3% | 70.8% | +17.6% |
-| `hard-1` — **two documents required** | 95.2% | 52.4% | **+81.8%** |
-| `hard-2` — **the answer is in an documents and images** | 91.7% | 41.7% | **+120.0%** |
+![Acceptable answers by question difficulty](./sample-benchmark-report/pass-rate-by-difficulty.svg)
 
-Flat RAG holds up where [§1.3](./DESIGN.md#13-when-to-use-hcag-vs-alternatives) says it should —
-single-passage lookup, right at the 70–80% ceiling it predicts. It falls off a cliff exactly where
-the three problems above bite: crossing a **document boundary** (knowledge isolation and multi-hop
-reasoning), and reading an **image**, which flat RAG sees only as an indexed text description while
-HCAG attaches the image itself as a content block. HCAG never dropped below 83% in any category,
-never scored a wrong answer, and never refused an in-scope question.
+| Difficulty | What it needs | HCAG | Flat RAG | Gap |
+|---|---|---:|---:|---:|
+| `simple` | one lookup | 100% | 89% | +11 pts |
+| `medium` | reasoning within one passage | 100% | 86% | +14 pts |
+| `complex` | three passages of one document | 100% | 71% | +29 pts |
+| `hard-1` | **two different documents** | 94% | 50% | **+44 pts** |
 
-*Caveat: n = 37, one KB, an LLM judge — directional, not a leaderboard.
-[Method and caveats.](./sample-benchmark-report/README.md#caveats--read-before-quoting-these-numbers)*
+Flat RAG holds up where [§1.3](./DESIGN.md#13-when-to-use-hcag-vs-alternatives) says it should, on
+single-passage lookup, and still misses about one question in ten there. It then degrades steadily as the
+answer disperses, which is exactly where knowledge isolation and multi-hop reasoning bite. HCAG's
+mean score stays between 89% and 100% of a perfect answer at every difficulty level while flat RAG's
+falls from 84% to 52%. 13 of flat RAG's 16 failures are the same shape: one part of the question
+answered well, another part not addressed at all.
+
+The questions were drafted from the KB by `evalgen` and then **validated by a subject-matter expert**
+before scoring. Two personas are represented, an HR officer filing for a company and a candidate
+managing their own pass, and the gap holds under both.
+
+*Caveat: n = 58, one KB, an LLM judge, and a benchmark run by the author of one of the two systems.
+Directional, not a leaderboard. The `hard-2` category (facts readable only inside an image) is
+excluded from these figures: the question set for it is not yet good enough to draw conclusions
+from, and this benchmark covers textual knowledge.
+[Method and caveats.](./sample-benchmark-report/benchmark.md#caveats)*
 
 ## When to Use It
 
@@ -432,7 +444,11 @@ hcag/
 │       └── README.md      # Frontend + backend run instructions
 ├── examples/              # Sample config for every CLI — copy these, don't write from scratch
 ├── sample-kb/             # A pre-crawled, pre-built KB (skips Getting Started steps 1–3)
-├── sample-benchmark-report/  # HCAG vs flat RAG — reports, scored CSVs, analysis
+├── sample-benchmark-report/  # HCAG vs flat RAG
+│   ├── benchmark.md       # The write-up: method, results, findings, caveats
+│   ├── *-by-difficulty.svg # The two charts used in the write-up
+│   └── benchmark-set/     # Question set, both systems' scored CSVs, HTML reports
+├── sep2026-blog-linkedin/ # Long-form article on harness design, and its design brief
 └── tests/
 ```
 
